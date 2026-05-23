@@ -1,0 +1,80 @@
+name: ci
+
+# Validación rápida del core (backend Rust + frontend SvelteKit) en cada PR
+# y en push a `main`. Los SDKs no se validan aquí — su publicación ya hace
+# build en `publish-sdks.yml`. El objetivo es bloquear merges rotos antes
+# de que `deploy.yml` los suba a producción.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend
+
+      - name: cargo fmt --check
+        working-directory: backend
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        working-directory: backend
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        working-directory: backend
+        run: cargo test --all-features --no-fail-fast
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: install
+        working-directory: frontend
+        run: npm ci || npm install
+
+      - name: typecheck
+        working-directory: frontend
+        run: npm run check
+
+      - name: build
+        working-directory: frontend
+        env:
+          PUBLIC_API_BASE: http://localhost:8080
+        run: npm run build
+
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: validate docker-compose
+        run: |
+          cp .env.example .env
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f docker-compose.prod.yml --env-file .env.prod.template config >/dev/null

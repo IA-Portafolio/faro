@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Vulnerabilidad de seguridad
+    url: https://github.com/IA-Portafolio/faro/security/advisories/new
+    about: NO abras issue público. Usa el canal privado de Security Advisories.
+  - name: Política de seguridad
+    url: https://github.com/IA-Portafolio/faro/blob/main/SECURITY.md
+    about: Lee primero cómo reportar vulnerabilidades.

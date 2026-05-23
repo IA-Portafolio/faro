@@ -1,0 +1,81 @@
+version: 2
+
+# Agrupamos por ecosistema para no ahogarnos en PRs.
+# Schedule semanal porque el repo no es de seguridad crítica externa
+# y la mayoría de las deps son maduras.
+
+updates:
+  # GitHub Actions usadas en .github/workflows
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Backend Rust
+  - package-ecosystem: cargo
+    directory: /backend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      rust-minor:
+        update-types: [minor, patch]
+
+  # Frontend SvelteKit
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 5
+    groups:
+      svelte:
+        patterns: ["@sveltejs/*", "svelte*", "vite*"]
+      types:
+        patterns: ["@types/*", "typescript"]
+
+  # SDKs npm
+  - package-ecosystem: npm
+    directory: /sdks/node
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: npm
+    directory: /sdks/nextjs
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: npm
+    directory: /sdks/expo
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+
+  # SDK Python
+  - package-ecosystem: pip
+    directory: /sdks/python
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+
+  # SDK Go
+  - package-ecosystem: gomod
+    directory: /sdks/go
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+
+  # SDK Flutter (pub) — todavía no soportado por Dependabot nativo;
+  # se omite hasta que GitHub lo añada.
+
+  # SDK Kotlin / Gradle
+  - package-ecosystem: gradle
+    directory: /sdks/kotlin
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 3
+
+  # Docker (Dockerfiles del backend y frontend)
+  - package-ecosystem: docker
+    directory: /backend
+    schedule: { interval: weekly }
+
+  - package-ecosystem: docker
+    directory: /frontend
+    schedule: { interval: weekly }

@@ -3,7 +3,8 @@ name = "faro"
 version = "0.1.0"
 edition = "2021"
 description = "Faro - centralized observability platform"
-license = "MIT"
+license = "LicenseRef-Proprietary"
+publish = false
 
 [[bin]]
 name = "faro"

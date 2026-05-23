@@ -1,0 +1,12 @@
+# Cada PR pide review automática a estos owners.
+# Sintaxis: https://docs.github.com/articles/about-code-owners
+
+*                       @victalejo
+
+# Áreas con owner adicional pueden listarse aquí cuando se sume gente.
+# Ejemplos (descomentar cuando aplique):
+# /backend/               @victalejo @backend-lead
+# /frontend/              @victalejo @frontend-lead
+# /sdks/                  @victalejo @sdks-lead
+# /.github/workflows/     @victalejo @platform-lead
+# /infra/                 @victalejo @platform-lead

@@ -1,18 +1,57 @@
+# Secrets / env
 .env
+.env.prod
+.env.*.local
+
+# Logs / coredumps
+*.log
+core.*
+
+# OS / editor
 .DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Artefactos de tooling local (Playwright MCP, screenshots ad-hoc)
+.playwright-mcp/
 
 # Rust
 backend/target/
 **/*.rs.bk
 Cargo.lock.bak
 
-# Node
-frontend/node_modules/
+# Node (frontend + npm SDKs)
+node_modules/
 frontend/.svelte-kit/
 frontend/build/
 frontend/.vercel/
+sdks/node/dist/
+sdks/nextjs/dist/
+sdks/nextjs/.next/
+sdks/expo/dist/
+sdks/expo/.expo/
 
-# Editor
-.vscode/
-.idea/
-*.swp
+# Python SDK
+__pycache__/
+*.py[cod]
+*.egg-info/
+sdks/python/build/
+sdks/python/dist/
+sdks/python/.venv/
+sdks/python/.pytest_cache/
+
+# Flutter SDK
+sdks/flutter/.dart_tool/
+sdks/flutter/build/
+sdks/flutter/.flutter-plugins
+sdks/flutter/.flutter-plugins-dependencies
+
+# Kotlin / Gradle SDK
+sdks/kotlin/.gradle/
+sdks/kotlin/build/
+sdks/kotlin/.idea/
+sdks/kotlin/local.properties
+
+# Go SDK
+sdks/go/vendor/
