@@ -2,6 +2,7 @@ use axum::extract::State; use axum_extra::extract::Query;
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 
 use crate::api::params::Range;
 use crate::error::ApiResult;
@@ -11,7 +12,7 @@ pub fn router() -> Router<SharedState> {
     Router::new().route("/dashboard", get(dashboard))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DashboardSummary {
     pub log_count: u64,
     pub error_count: u64,
