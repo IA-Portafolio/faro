@@ -195,11 +195,15 @@ jobs:
         run: |
           sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" build.gradle.kts
       - name: Import GPG key
+        # Pasar via env preserva los newlines del secret; el inline ${{ ... }} los come.
+        env:
+          GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          echo "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}" | gpg --batch --import
+          printf '%s' "$GPG_KEY" | gpg --batch --import
           echo "use-agent" >> ~/.gnupg/gpg.conf
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          gpg --list-secret-keys --keyid-format=long
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
