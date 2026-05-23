@@ -20,6 +20,7 @@ mod projects;
 mod state;
 mod storage;
 mod stream;
+mod versions;
 mod workers;
 
 use crate::config::Config;
