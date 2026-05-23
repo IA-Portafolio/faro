@@ -167,7 +167,8 @@ jobs:
         with: { channel: stable }
       - name: Set version
         working-directory: sdks/flutter
-        run: sed -i "s/^version: .*/version: ${{ needs.ctx.outputs.version }}/" pubspec.yaml
+        run: |
+          sed -i "s/^version: .*/version: ${{ needs.ctx.outputs.version }}/" pubspec.yaml
       - name: Restore pub credentials
         # PUB_CREDENTIALS_JSON: el contenido del archivo ~/.config/dart/pub-credentials.json
         # que se obtiene corriendo `dart pub token add https://pub.dev` localmente.
