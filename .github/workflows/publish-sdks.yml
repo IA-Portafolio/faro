@@ -195,13 +195,29 @@ jobs:
         run: |
           sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" build.gradle.kts
       - name: Import GPG key
-        # crazy-max/ghaction-import-gpg lee el armored multi-line sin que
-        # el wrapper de secrets de GitHub Actions lo corrompa.
         uses: crazy-max/ghaction-import-gpg@v6
         id: gpg
         with:
           gpg_private_key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - name: Configure GPG for non-interactive signing
+        # Sin esto gradle->gpg pide TTY al firmar (Inappropriate ioctl for device).
+        env:
+          PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          {
+            echo "use-agent"
+            echo "pinentry-mode loopback"
+            echo "batch"
+            echo "no-tty"
+          } >> ~/.gnupg/gpg.conf
+          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          gpgconf --kill gpg-agent || true
+          # Cachea la passphrase en el agente para que las firmas siguientes no la pidan.
+          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$PASSPHRASE" \
+            --local-user "${{ steps.gpg.outputs.keyid }}" --sign --armor >/dev/null
+          echo "gpg primed OK"
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
