@@ -27,3 +27,4 @@ Plantilla: [`template.md`](template.md).
 | 0003 | [Rust + axum para el backend](0003-rust-axum-backend.md) | Accepted |
 | 0004 | [OTLP/HTTP+JSON como contrato de ingesta](0004-otlp-http-json-ingest.md) | Accepted |
 | 0005 | [Sin autenticación nativa en el dashboard](0005-no-native-auth.md) | Accepted |
+| 0006 | [OpenAPI spec autogenerada con utoipa](0006-openapi-utoipa.md) | Accepted |
