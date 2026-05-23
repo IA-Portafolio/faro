@@ -30,8 +30,14 @@ fn parse_target(raw: &str) -> Option<Target> {
         .strip_prefix("tg://")
         .or_else(|| raw.strip_prefix("telegram://"))
     {
+        // Un token de bot de Telegram tiene la forma `<id>:<base64>` — el `:` permite
+        // distinguir un token explícito de un `@channel` (que nunca contiene `:`).
+        // Si lo que va después del último `@` parece un token, lo extraemos; en
+        // otro caso, el `@` pertenece al propio chat_id (canal público @nombre).
         let (chat_id, token) = match rest.rsplit_once('@') {
-            Some((chat, tok)) if !tok.is_empty() => (chat, Some(tok.to_string())),
+            Some((chat, tok)) if !chat.is_empty() && tok.contains(':') => {
+                (chat, Some(tok.to_string()))
+            }
             _ => (rest, None),
         };
         let chat_id = chat_id.trim().trim_end_matches('/').to_string();
