@@ -20,6 +20,7 @@ mod projects;
 mod state;
 mod storage;
 mod stream;
+mod telemetry;
 mod workers;
 
 use crate::config::Config;
@@ -31,6 +32,16 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,faro=debug")))
         .with_target(true)
         .init();
+
+    // Self-observability opcional. El guard se mantiene vivo hasta que
+    // `main` termina, lo cual asegura un flush ordenado al recibir SIGTERM.
+    let _otel_guard = match telemetry::init_otel() {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::warn!(error = %e, "fallo al iniciar self-observability — continuando sin OTel");
+            None
+        }
+    };
 
     let cfg = Config::from_env()?;
     tracing::info!(api = %cfg.api_addr, otlp = %cfg.otlp_addr, "arrancando faro");
