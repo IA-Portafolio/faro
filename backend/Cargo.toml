@@ -38,6 +38,14 @@ argon2 = "0.5"
 axum-extra = { version = "0.9", features = ["query", "cookie"] }
 time = "0.3"
 
+# OpenAPI / Swagger
+# `utoipa` deriva el schema desde tipos Rust; `utoipa-axum` lo integra con
+# axum::Router para mantener el documento en sync con las rutas reales.
+# Ver docs/adr/0006-openapi-utoipa.md
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-axum = "0.1"
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
+
 [profile.release]
 lto = "thin"
 codegen-units = 1
