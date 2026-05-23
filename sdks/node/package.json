@@ -19,7 +19,7 @@
   "homepage": "https://github.com/IA-Portafolio/faro/tree/main/sdks/node#readme",
   "bugs": "https://github.com/IA-Portafolio/faro/issues",
   "keywords": ["faro", "observability", "logging", "logs", "telemetry", "otel"],
-  "publishConfig": { "access": "public", "provenance": true },
+  "publishConfig": { "access": "public" },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format esm --dts --watch"

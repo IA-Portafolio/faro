@@ -253,9 +253,13 @@ pub fn protected_router() -> Router<SharedState> {
 ///   - `/healthz` (liveness)
 ///   - `/api/v1/auth/login` (no se puede estar logueado para hacer login)
 ///   - `/api/v1/ingest/*` (autenticación por token Bearer asociada al proyecto)
+///   - `/api/v1/openapi.json` y `/docs/*` (documentación de API)
 fn is_public_path(path: &str) -> bool {
     path == "/healthz"
         || path == "/api/v1/auth/login"
+        || path == "/api/v1/openapi.json"
+        || path == "/docs"
+        || path.starts_with("/docs/")
         || path.starts_with("/api/v1/ingest/")
 }
 
