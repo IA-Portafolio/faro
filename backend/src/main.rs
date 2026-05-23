@@ -15,6 +15,7 @@ mod error;
 mod fingerprint;
 mod ingest;
 mod notify;
+mod openapi;
 mod projects;
 mod state;
 mod storage;

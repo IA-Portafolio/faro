@@ -1,30 +1,42 @@
 use axum::middleware::from_fn_with_state;
 use axum::routing::get;
 use axum::{Json, Router};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::auth;
+use crate::openapi::ApiDoc;
 use crate::state::SharedState;
 
-mod alerts;
-mod dashboard;
-mod errors;
-mod logs;
-mod metrics;
-mod monitors;
-mod projects;
-mod services;
-mod traces;
-mod users;
+pub mod alerts;
+pub mod dashboard;
+pub mod errors;
+pub mod logs;
+pub mod metrics;
+pub mod monitors;
+pub mod projects;
+pub mod services;
+pub mod traces;
+pub mod users;
 
 pub fn router(state: SharedState) -> Router {
     // Un único router para que las rutas no choquen al anidarse. El propio middleware
     // decide si una petición necesita sesión autenticada según la ruta.
     Router::new()
         .route("/healthz", get(|| async { Json(serde_json::json!({"status":"ok"})) }))
+        // OpenAPI: spec JSON cruda + Swagger UI. Ambas son públicas (no
+        // pasan por require_session_mw) porque están abajo del nest de
+        // /api/v1 y se montan en paths propios.
+        .route("/api/v1/openapi.json", get(serve_openapi))
+        .merge(SwaggerUi::new("/docs").url("/api/v1/openapi.json", ApiDoc::openapi()))
         .nest("/api/v1/ingest", crate::ingest::logs::router())
         .nest("/api/v1", auth::open_router().merge(auth::protected_router()).merge(v1_router()))
         .layer(from_fn_with_state(state.clone(), auth::require_session_mw))
         .with_state(state)
+}
+
+async fn serve_openapi() -> Json<utoipa::openapi::OpenApi> {
+    Json(ApiDoc::openapi())
 }
 
 fn v1_router() -> Router<SharedState> {
