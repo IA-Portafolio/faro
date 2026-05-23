@@ -1,0 +1,82 @@
+name: deploy
+
+# Push a `main` → rsync de la copia checkouteada hacia /opt/faro y rebuild.
+# Corre en el runner self-hosted que vive dentro de infra-iaportafolio, así
+# no necesita SSH ni Tailscale en el runner: hace todo en local.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-faro
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, faro-deploy]
+    timeout-minutes: 30
+    env:
+      FARO_DIR: /opt/faro
+      COMPOSE: docker compose -f docker-compose.prod.yml --env-file .env.prod
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync source to ${{ env.FARO_DIR }}
+        # --delete para limpiar archivos eliminados del repo; conserva .env.prod,
+        # backups y volúmenes via la lista de excludes.
+        run: |
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='target' \
+            --exclude='.svelte-kit' \
+            --exclude='build' \
+            --exclude='.env' \
+            --exclude='.env.prod' \
+            --exclude='*.bak.*' \
+            ./ "$FARO_DIR/"
+
+      - name: Apply pending ClickHouse migrations
+        # Las migraciones están escritas para ser idempotentes (CREATE TABLE IF NOT
+        # EXISTS, ADD COLUMN IF NOT EXISTS), así que aplicar todas no es destructivo.
+        run: |
+          CH_PASS=$(grep '^CLICKHOUSE_PASSWORD=' "$FARO_DIR/.env.prod" | cut -d= -f2-)
+          if [ -d "$FARO_DIR/clickhouse/migrations" ]; then
+            for m in "$FARO_DIR/clickhouse/migrations"/*.sql; do
+              [ -f "$m" ] || continue
+              echo "::group::Applying $(basename "$m")"
+              docker exec -i faro-clickhouse \
+                clickhouse-client --user=faro --password="$CH_PASS" \
+                --database=faro --multiquery < "$m"
+              echo "::endgroup::"
+            done
+          fi
+
+      - name: Build images
+        working-directory: ${{ env.FARO_DIR }}
+        run: $COMPOSE build
+
+      - name: Apply & restart
+        working-directory: ${{ env.FARO_DIR }}
+        run: $COMPOSE up -d --remove-orphans
+
+      - name: Healthcheck via public domain
+        run: |
+          for i in $(seq 1 40); do
+            if curl -fsS https://faro.iaportafolio.com/healthz >/dev/null; then
+              echo "Faro responding ✓"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::healthz never responded after 120s"
+          docker compose -f "$FARO_DIR/docker-compose.prod.yml" --env-file "$FARO_DIR/.env.prod" logs --tail=80 backend
+          exit 1
+
+      - name: Prune dangling images (best-effort)
+        if: always()
+        run: docker image prune -f

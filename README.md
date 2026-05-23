@@ -1,49 +1,49 @@
 # Faro
 
-Centralised observability platform — logs, traces, metrics, error grouping, API uptime monitoring and threshold-based alerting — in a single self-hosted stack.
+Plataforma centralizada de observabilidad — logs, trazas, métricas, agrupación de errores, monitoreo de disponibilidad de APIs y alertas basadas en umbrales — todo en un único stack auto-hospedado.
 
-Inspired by Monoscope and similar projects, but built on a smaller, opinionated stack:
+Inspirada en Monoscope y proyectos similares, pero construida sobre un stack más pequeño y opinado:
 
-| Layer       | Tech                                  |
-| ----------- | ------------------------------------- |
-| Storage     | ClickHouse 24.x                       |
-| Backend     | Rust (axum, tokio, reqwest)           |
-| Ingestion   | OTLP/HTTP+JSON + native HTTP/JSON     |
-| Frontend    | SvelteKit (Svelte 4) + vanilla CSS    |
-| Queue/cache | Redis (placeholder for future use)    |
-| Deploy      | Docker Compose                        |
+| Capa         | Tecnología                            |
+| ------------ | ------------------------------------- |
+| Almacenamiento | ClickHouse 24.x                     |
+| Backend      | Rust (axum, tokio, reqwest)           |
+| Ingesta      | OTLP/HTTP+JSON + HTTP/JSON nativo     |
+| Frontend     | SvelteKit (Svelte 4) + CSS plano      |
+| Cola/caché   | Redis (reservado para uso futuro)     |
+| Despliegue   | Docker Compose                        |
 
-## What you get
+## Qué incluye
 
-- **Logs** — high-cardinality structured logs with full-text search, severity / service filters, live tail (SSE), 30-day retention.
-- **Distributed tracing** — OTLP span ingestion, trace list, span waterfall view, 14-day retention.
-- **Metrics** — gauges, counters, sums, histograms and summaries via OTLP, with on-the-fly aggregations (avg/sum/min/max/count) and time bucketing, 90-day retention.
-- **Error grouping** — automatic fingerprinting of WARN+/ERROR logs into Sentry-style issues with resolve/ignore workflow.
-- **API monitors** — synthetic HTTP checks on configurable intervals with uptime% and latency stats.
-- **Alert rules** — declarative ClickHouse queries with threshold + window, automatic firing/resolving incidents, webhook notifications (Slack/Discord/generic).
-- **Dashboard** — totals, log volume sparkline, services overview.
+- **Logs** — logs estructurados de alta cardinalidad con búsqueda de texto completo, filtros por severidad y servicio, live tail (SSE) y retención de 30 días.
+- **Tracing distribuido** — ingesta de spans OTLP, listado de trazas, vista en cascada de spans y retención de 14 días.
+- **Métricas** — gauges, counters, sums, histogramas y summaries vía OTLP, con agregaciones al vuelo (avg/sum/min/max/count) y bucketing por tiempo, retención de 90 días.
+- **Agrupación de errores** — huella digital automática de logs WARN+/ERROR en issues estilo Sentry con flujo de resolver/ignorar.
+- **Monitores de API** — chequeos HTTP sintéticos en intervalos configurables con estadísticas de uptime% y latencia.
+- **Reglas de alerta** — queries declarativas de ClickHouse con umbral + ventana, disparo/resolución automática de incidentes, notificaciones por webhook (Slack/Discord/genérico).
+- **Dashboard** — totales, sparkline del volumen de logs, vista general de servicios.
 
-## Quick start
+## Arranque rápido
 
 ```bash
-cp .env.example .env             # tweak ports / token if you like
+cp .env.example .env             # ajusta puertos / token si lo deseas
 docker compose up -d --build
 ```
 
-When everything is healthy:
+Cuando todo esté saludable:
 
-| Service        | URL                       |
+| Servicio       | URL                       |
 | -------------- | ------------------------- |
 | Dashboard      | http://localhost:3000     |
-| REST API       | http://localhost:8080     |
+| API REST       | http://localhost:8080     |
 | OTLP/HTTP      | http://localhost:4318     |
 | ClickHouse     | http://localhost:8123     |
 
-ClickHouse initialises the `faro` database and all tables on first boot from `clickhouse/init/*.sql`.
+ClickHouse inicializa la base de datos `faro` y todas las tablas en el primer arranque desde `clickhouse/init/*.sql`.
 
-## Sending data
+## Enviando datos
 
-### Native HTTP logs
+### Logs HTTP nativos
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/ingest/logs \
@@ -70,9 +70,9 @@ curl -X POST http://localhost:8080/api/v1/ingest/logs \
   }'
 ```
 
-### OpenTelemetry SDK (any language)
+### SDK de OpenTelemetry (cualquier lenguaje)
 
-Point your OTLP exporter at `http://faro-backend:4318` with the `http/json` protocol:
+Apunta tu exportador OTLP a `http://faro-backend:4318` con el protocolo `http/json`:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
@@ -80,7 +80,7 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 export OTEL_SERVICE_NAME=billing
 ```
 
-Logs go to `/v1/logs`, traces to `/v1/traces`, metrics to `/v1/metrics` — the standard OTLP/HTTP paths.
+Los logs van a `/v1/logs`, las trazas a `/v1/traces`, las métricas a `/v1/metrics` — las rutas estándar de OTLP/HTTP.
 
 ### OpenTelemetry Collector
 
@@ -96,62 +96,62 @@ service:
     metrics: { exporters: [otlphttp/faro] }
 ```
 
-## Architecture
+## Arquitectura
 
 ```
 ┌─────────────┐    ┌─────────────────────────────────────────┐
-│ Your apps   │───▶│ Faro backend (Rust, axum)               │
-│ OTel SDKs   │    │  ┌──────────┐  ┌──────────────────────┐ │
-│ Collectors  │    │  │ ingest   │  │ batch writer workers │ │
-│ HTTP client │    │  │ :4318    │─▶│ (per table)          │ │
+│ Tus apps    │───▶│ Backend Faro (Rust, axum)               │
+│ SDKs OTel   │    │  ┌──────────┐  ┌──────────────────────┐ │
+│ Collectors  │    │  │ ingesta  │  │ workers de escritura │ │
+│ Cliente HTTP│    │  │ :4318    │─▶│ por lotes (por tabla)│ │
 └─────────────┘    │  │ :8080    │  └─────┬────────────────┘ │
                    │  └──────────┘        │                  │
                    │  ┌──────────┐        ▼                  │
-                   │  │ query    │  ┌──────────────┐         │
-                   │  │ API      │◀─│ ClickHouse   │◀────────┤
+                   │  │ API de   │  ┌──────────────┐         │
+                   │  │ consulta │◀─│ ClickHouse   │◀────────┤
                    │  │ :8080    │  └──────────────┘         │
                    │  └──────────┘                           │
                    │  ┌──────────┐  ┌──────────────┐         │
-                   │  │ monitors │  │ alert eval   │         │
-                   │  │ runner   │  │ + dispatch   │         │
+                   │  │ runner   │  │ evaluador de │         │
+                   │  │ monitores│  │ alertas+envío│         │
                    │  └──────────┘  └──────────────┘         │
                    └─────────────────────────────────────────┘
                                   ▲
                                   │
                           ┌───────┴────────┐
-                          │ SvelteKit UI   │
+                          │ UI SvelteKit   │
                           │ :3000          │
                           └────────────────┘
 ```
 
-- **Two HTTP listeners**: `:4318` only serves OTLP receivers; `:8080` serves the REST/SSE API and the optional native ingest endpoint. Keeping them separate means you can expose OTLP behind a different firewall rule from the dashboard API.
-- **Batching**: ingestion handlers push rows onto bounded mpsc channels; per-table writer tasks flush every 750 ms (configurable) or 5 000 rows, whichever comes first.
-- **Error indexer**: a background task subscribes to the in-memory log broadcast bus, picks WARN+/ERROR records (or anything with `exception.*` attributes) and writes them into `error_events` with a normalised SHA-256 fingerprint over `exception_type + normalised message + first 8 stack frames`.
-- **Monitor runner**: reads `api_monitors` every 10 s, schedules each monitor on its own interval; results are sent through the same batching pipeline.
-- **Alert evaluator**: reads `alert_rules` every 15 s, runs each rule's `query` (with `:window_seconds` substitution) on its `interval_seconds` cadence. State transitions are persisted to `alert_incidents` and webhook payloads are POSTed to each `notification_targets` URL.
+- **Dos listeners HTTP**: `:4318` solo sirve receptores OTLP; `:8080` sirve la API REST/SSE y el endpoint opcional de ingesta nativa. Mantenerlos separados permite exponer OTLP detrás de una regla de firewall distinta a la del dashboard.
+- **Batching**: los handlers de ingesta empujan filas a canales mpsc acotados; las tareas de escritura por tabla hacen flush cada 750 ms (configurable) o 5 000 filas, lo que ocurra primero.
+- **Indexador de errores**: una tarea en segundo plano se suscribe al bus de broadcast de logs en memoria, toma los registros WARN+/ERROR (o cualquier cosa con atributos `exception.*`) y los escribe en `error_events` con una huella SHA-256 normalizada sobre `exception_type + mensaje normalizado + primeros 8 frames del stack`.
+- **Runner de monitores**: lee `api_monitors` cada 10 s y agenda cada monitor en su propio intervalo; los resultados se envían por la misma pipeline de batching.
+- **Evaluador de alertas**: lee `alert_rules` cada 15 s y ejecuta el `query` de cada regla (con sustitución de `:window_seconds`) en la cadencia de su `interval_seconds`. Las transiciones de estado se persisten en `alert_incidents` y los payloads de webhook se envían por POST a cada URL en `notification_targets`.
 
-## REST API surface
+## Superficie de la API REST
 
-| Method | Path                                       | Notes |
+| Método | Ruta                                       | Notas |
 | ------ | ------------------------------------------ | ----- |
 | GET    | `/healthz`                                 |       |
-| POST   | `/api/v1/ingest/logs`                      | Bearer token from `FARO_INGEST_TOKEN` |
-| GET    | `/api/v1/logs`                             | filters: `service`, `min_severity`, `query`, `trace_id`, `last_minutes`, `limit` |
-| GET    | `/api/v1/logs/live`                        | Server-Sent Events stream of new logs |
-| GET    | `/api/v1/logs/stats`                       | aggregated counts per minute/service/severity |
-| GET    | `/api/v1/traces`                           | trace list (re-aggregated from spans) |
-| GET    | `/api/v1/traces/:trace_id`                 | full span list for a trace |
-| GET    | `/api/v1/metrics/series?name=...`          | time-bucketed series with aggregation |
-| GET    | `/api/v1/metrics/names`                    | list known metric names |
-| GET    | `/api/v1/errors`                           | grouped error issues |
-| GET    | `/api/v1/errors/:fingerprint`              | issue + recent events |
-| POST   | `/api/v1/errors/:fingerprint/status`       | mark resolved/ignored/unresolved |
+| POST   | `/api/v1/ingest/logs`                      | Token Bearer desde `FARO_INGEST_TOKEN` |
+| GET    | `/api/v1/logs`                             | filtros: `service`, `min_severity`, `query`, `trace_id`, `last_minutes`, `limit` |
+| GET    | `/api/v1/logs/live`                        | Stream de Server-Sent Events de nuevos logs |
+| GET    | `/api/v1/logs/stats`                       | conteos agregados por minuto/servicio/severidad |
+| GET    | `/api/v1/traces`                           | listado de trazas (reagregado desde spans) |
+| GET    | `/api/v1/traces/:trace_id`                 | listado completo de spans para una traza |
+| GET    | `/api/v1/metrics/series?name=...`          | series con bucketing por tiempo y agregación |
+| GET    | `/api/v1/metrics/names`                    | listado de nombres de métricas conocidas |
+| GET    | `/api/v1/errors`                           | issues de errores agrupados |
+| GET    | `/api/v1/errors/:fingerprint`              | issue + eventos recientes |
+| POST   | `/api/v1/errors/:fingerprint/status`       | marcar como resuelto/ignorado/no resuelto |
 | GET    | `/api/v1/monitors`                         |       |
 | POST   | `/api/v1/monitors`                         |       |
 | PUT    | `/api/v1/monitors/:id`                     |       |
-| DELETE | `/api/v1/monitors/:id`                     | soft-delete |
+| DELETE | `/api/v1/monitors/:id`                     | borrado lógico |
 | GET    | `/api/v1/monitors/:id/results`             |       |
-| GET    | `/api/v1/monitors/:id/uptime`              | uptime% + p95 latency over range |
+| GET    | `/api/v1/monitors/:id/uptime`              | uptime% + latencia p95 sobre un rango |
 | GET    | `/api/v1/alerts/rules`                     |       |
 | POST   | `/api/v1/alerts/rules`                     |       |
 | PUT    | `/api/v1/alerts/rules/:id`                 |       |
@@ -160,9 +160,9 @@ service:
 | GET    | `/api/v1/services`                         |       |
 | GET    | `/api/v1/dashboard`                        |       |
 
-## Example alert rules
+## Reglas de alerta de ejemplo
 
-Error rate spike:
+Pico de tasa de errores:
 
 ```json
 {
@@ -178,7 +178,7 @@ Error rate spike:
 }
 ```
 
-p95 latency from spans:
+Latencia p95 desde spans:
 
 ```json
 {
@@ -193,7 +193,7 @@ p95 latency from spans:
 }
 ```
 
-Monitor uptime below 99%:
+Uptime de monitor por debajo del 99%:
 
 ```json
 {
@@ -208,60 +208,60 @@ Monitor uptime below 99%:
 }
 ```
 
-## Repository layout
+## Estructura del repositorio
 
 ```
 faro/
 ├── docker-compose.yml
 ├── .env.example
 ├── clickhouse/
-│   ├── init/        # SQL run on first ClickHouse boot
-│   └── config/      # users.d profile overrides (async inserts)
-├── backend/         # Rust workspace
+│   ├── init/        # SQL ejecutado en el primer arranque de ClickHouse
+│   └── config/      # overrides de perfil en users.d (async inserts)
+├── backend/         # workspace de Rust
 │   ├── Cargo.toml
 │   ├── Dockerfile
 │   └── src/
-│       ├── main.rs           # bootstrap, two listeners
+│       ├── main.rs           # bootstrap, dos listeners
 │       ├── config.rs / error.rs / state.rs
-│       ├── storage/          # ClickHouse HTTP client + row types
-│       ├── ingest/           # HTTP + OTLP receivers
-│       ├── api/              # REST endpoints
-│       ├── workers/          # batched writer, monitor runner, alert evaluator, error indexer
-│       ├── fingerprint.rs    # error grouping
-│       ├── notify.rs         # webhook dispatch
-│       └── stream.rs         # SSE live tail
-└── frontend/        # SvelteKit app
+│       ├── storage/          # cliente HTTP de ClickHouse + tipos de fila
+│       ├── ingest/           # receptores HTTP + OTLP
+│       ├── api/              # endpoints REST
+│       ├── workers/          # writer por lotes, runner de monitores, evaluador de alertas, indexador de errores
+│       ├── fingerprint.rs    # agrupación de errores
+│       ├── notify.rs         # despacho de webhooks
+│       └── stream.rs         # live tail por SSE
+└── frontend/        # app SvelteKit
     ├── package.json
     └── src/
-        ├── lib/api.ts        # typed REST client
+        ├── lib/api.ts        # cliente REST tipado
         ├── lib/components/
         └── routes/           # dashboard, logs, traces, metrics, errors, monitors, alerts
 ```
 
-## Configuration reference
+## Referencia de configuración
 
-| Env var                       | Default                       | Purpose |
-| ----------------------------- | ----------------------------- | ------- |
-| `FARO_API_ADDR`               | `0.0.0.0:8080`                | REST / SSE listener |
-| `FARO_BIND_ADDR`              | `0.0.0.0:4318`                | OTLP listener |
-| `CLICKHOUSE_URL`              | `http://clickhouse:8123`      | HTTP endpoint of ClickHouse |
+| Variable de entorno           | Valor por defecto             | Propósito |
+| ----------------------------- | ----------------------------- | --------- |
+| `FARO_API_ADDR`               | `0.0.0.0:8080`                | Listener REST / SSE |
+| `FARO_BIND_ADDR`              | `0.0.0.0:4318`                | Listener OTLP |
+| `CLICKHOUSE_URL`              | `http://clickhouse:8123`      | Endpoint HTTP de ClickHouse |
 | `CLICKHOUSE_DATABASE`         | `faro`                        |  |
 | `CLICKHOUSE_USER`             | `faro`                        |  |
 | `CLICKHOUSE_PASSWORD`         | `faro`                        |  |
-| `FARO_INGEST_TOKEN`           | *(required)*                  | Bearer token for `/api/v1/ingest/logs` |
-| `FARO_BATCH_MAX_ROWS`         | `5000`                        | Per-table flush threshold |
-| `FARO_BATCH_FLUSH_MS`         | `750`                         | Per-table max linger |
+| `FARO_INGEST_TOKEN`           | *(requerido)*                 | Token Bearer para `/api/v1/ingest/logs` |
+| `FARO_BATCH_MAX_ROWS`         | `5000`                        | Umbral de flush por tabla |
+| `FARO_BATCH_FLUSH_MS`         | `750`                         | Tiempo máximo de espera por tabla |
 | `RUST_LOG`                    | `info,faro=debug`             |  |
-| `PUBLIC_API_BASE`             | `http://localhost:8080`       | Frontend → backend base URL (bake time) |
+| `PUBLIC_API_BASE`             | `http://localhost:8080`       | URL base frontend → backend (en tiempo de build) |
 
-## Limitations / future work
+## Limitaciones / trabajo futuro
 
-- **No multi-tenant isolation** (intentional per spec) — anyone with the ingest token can write, anyone with API access can read everything.
-- **OTLP/gRPC and OTLP/HTTP+protobuf** are not implemented; only OTLP/HTTP+JSON. Most SDKs support JSON via `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`.
-- **Alert query DSL** is raw ClickHouse SQL — flexible but unsafe; treat as admin-only.
-- **No durable ingest buffer** — if the backend crashes between channel send and ClickHouse flush, in-flight rows are lost. Redis (already in the compose file) is wired for a future Streams-backed buffer.
-- **No authentication on the dashboard API.** Front it with an OAuth proxy / reverse proxy if you expose it publicly.
+- **Sin aislamiento multi-tenant** (intencional por diseño) — cualquiera con el token de ingesta puede escribir, cualquiera con acceso a la API puede leer todo.
+- **OTLP/gRPC y OTLP/HTTP+protobuf** no están implementados; solo OTLP/HTTP+JSON. La mayoría de los SDKs soportan JSON vía `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`.
+- **DSL de queries de alertas** es SQL crudo de ClickHouse — flexible pero inseguro; trátalo como solo-admin.
+- **Sin buffer de ingesta durable** — si el backend cae entre el envío al canal y el flush a ClickHouse, las filas en vuelo se pierden. Redis (ya presente en el compose) está cableado para un futuro buffer respaldado por Streams.
+- **Sin autenticación en la API del dashboard.** Ponlo detrás de un proxy OAuth / proxy inverso si lo expones públicamente.
 
-## Licence
+## Licencia
 
 MIT.

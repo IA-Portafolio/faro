@@ -1,12 +1,27 @@
 [project]
 name = "faro-sdk"
 version = "0.1.0"
-description = "Faro SDK for Python"
+description = "Faro SDK for Python — send logs and captured exceptions to a Faro instance."
+readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "MIT" }
+authors = [{ name = "IA Portafolio", email = "alejo@iaportafolio.com" }]
+keywords = ["faro", "observability", "logging", "telemetry"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Logging",
+]
 dependencies = [
     "requests>=2.31",
 ]
+
+[project.urls]
+Homepage = "https://github.com/IA-Portafolio/faro"
+Issues = "https://github.com/IA-Portafolio/faro/issues"
+Documentation = "https://github.com/IA-Portafolio/faro/tree/main/sdks/python#readme"
 
 [build-system]
 requires = ["hatchling"]

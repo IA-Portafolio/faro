@@ -13,6 +13,11 @@
     "./server": { "import": "./dist/server.js", "require": "./dist/server.cjs", "types": "./dist/server.d.ts" }
   },
   "files": ["dist", "src", "README.md"],
+  "repository": { "type": "git", "url": "git+https://github.com/IA-Portafolio/faro.git", "directory": "sdks/nextjs" },
+  "homepage": "https://github.com/IA-Portafolio/faro/tree/main/sdks/nextjs#readme",
+  "bugs": "https://github.com/IA-Portafolio/faro/issues",
+  "keywords": ["faro", "nextjs", "observability", "logging", "telemetry"],
+  "publishConfig": { "access": "public", "provenance": true },
   "scripts": { "build": "tsup src/index.ts src/client.ts src/server.ts --format cjs,esm --dts --clean" },
   "peerDependencies": { "@faro/node": "^0.1.0", "next": ">=13" },
   "devDependencies": { "tsup": "^8.0.0", "typescript": "^5.4.0", "@types/node": "^20.0.0" }

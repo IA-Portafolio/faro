@@ -1,0 +1,220 @@
+name: publish-sdks
+
+# Publica un SDK cuando se empuja un tag con formato `sdk-<lang>-v<semver>`.
+# Cada job se filtra por el prefijo del tag, así que un tag dispara solo el job
+# relevante. La versión del tag se inyecta en el manifiesto antes de publicar
+# (npm version, sed en pyproject/pubspec/build.gradle.kts).
+#
+# Convenciones de tag:
+#   sdk-node-v0.1.0       → @faro/node           (npm)
+#   sdk-nextjs-v0.1.0     → @faro/nextjs         (npm)
+#   sdk-expo-v0.1.0       → @faro/expo           (npm)
+#   sdk-python-v0.1.0     → faro-sdk             (PyPI)
+#   sdk-go-v0.1.0         → faro-go              (git tag → go modules)
+#   sdk-flutter-v0.1.0    → faro_sdk             (pub.dev)
+#   sdk-kotlin-v0.1.0     → com.iaportafolio:faro (Maven Central)
+
+on:
+  push:
+    tags:
+      - 'sdk-*-v*'
+  workflow_dispatch:
+    inputs:
+      sdk:
+        description: 'SDK a publicar (node|nextjs|expo|python|go|flutter|kotlin)'
+        required: true
+      version:
+        description: 'Versión (sin "v")'
+        required: true
+
+permissions:
+  contents: write   # crear releases en GitHub
+  id-token: write   # npm/pypi trusted publishing
+
+jobs:
+  ctx:
+    runs-on: ubuntu-latest
+    outputs:
+      sdk: ${{ steps.parse.outputs.sdk }}
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - id: parse
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "sdk=${{ inputs.sdk }}" >> $GITHUB_OUTPUT
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            ref="${{ github.ref_name }}"           # ej: sdk-node-v0.1.0
+            sdk="$(echo "$ref" | sed -E 's/^sdk-([^-]+)-v.*$/\1/')"
+            ver="$(echo "$ref" | sed -E 's/^sdk-[^-]+-v(.*)$/\1/')"
+            echo "sdk=$sdk" >> $GITHUB_OUTPUT
+            echo "version=$ver" >> $GITHUB_OUTPUT
+          fi
+
+  npm-node:
+    needs: ctx
+    if: needs.ctx.outputs.sdk == 'node'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: 'https://registry.npmjs.org'
+      - working-directory: sdks/node
+        run: |
+          npm version --no-git-tag-version "${{ needs.ctx.outputs.version }}"
+          npm install
+          npm run build
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  npm-nextjs:
+    needs: ctx
+    if: needs.ctx.outputs.sdk == 'nextjs'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, registry-url: 'https://registry.npmjs.org' }
+      - working-directory: sdks/nextjs
+        run: |
+          npm version --no-git-tag-version "${{ needs.ctx.outputs.version }}"
+          npm install
+          npm run build
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  npm-expo:
+    needs: ctx
+    if: needs.ctx.outputs.sdk == 'expo'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, registry-url: 'https://registry.npmjs.org' }
+      - working-directory: sdks/expo
+        run: |
+          npm version --no-git-tag-version "${{ needs.ctx.outputs.version }}"
+          npm install
+          npm run build
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  pypi:
+    needs: ctx
+    if: needs.ctx.outputs.sdk == 'python'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/faro-sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - name: Set version
+        working-directory: sdks/python
+        run: |
+          # Reemplaza la versión en pyproject.toml
+          sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" pyproject.toml
+      - name: Build
+        working-directory: sdks/python
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+      # Trusted publishing — configura el proyecto faro-sdk en PyPI con esta repo.
+      # Alternativa: usar secret PYPI_API_TOKEN y `with: password: ...`.
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: sdks/python/dist
+
+  go:
+    needs: ctx
+    if: needs.ctx.outputs.sdk == 'go'
+    runs-on: ubuntu-latest
+    steps:
+      # Go modules indexa por tags del repo. Para un SDK que vive en un subdir
+      # del monorepo, el tag debe tener prefijo de path: `sdks/go/v0.1.0`.
+      # Re-tag el commit con ese formato para que `go get` lo encuentre.
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Create go-modules-compatible tag
+        run: |
+          GO_TAG="sdks/go/v${{ needs.ctx.outputs.version }}"
+          git config user.email "ci@iaportafolio.com"
+          git config user.name "faro-ci"
+          if git rev-parse "$GO_TAG" >/dev/null 2>&1; then
+            echo "tag $GO_TAG already exists"
+          else
+            git tag "$GO_TAG" "${{ github.sha }}"
+            git push origin "$GO_TAG"
+          fi
+      - name: Warm proxy.golang.org
+        run: |
+          curl -fsSL "https://proxy.golang.org/github.com/ia-portafolio/faro/sdks/go/@v/v${{ needs.ctx.outputs.version }}.info" || true
+
+  pub-dev:
+    needs: ctx
+    if: needs.ctx.outputs.sdk == 'flutter'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable }
+      - name: Set version
+        working-directory: sdks/flutter
+        run: sed -i "s/^version: .*/version: ${{ needs.ctx.outputs.version }}/" pubspec.yaml
+      - name: Restore pub credentials
+        # PUB_CREDENTIALS_JSON: el contenido del archivo ~/.config/dart/pub-credentials.json
+        # que se obtiene corriendo `dart pub token add https://pub.dev` localmente.
+        run: |
+          mkdir -p ~/.config/dart
+          printf '%s' "${{ secrets.PUB_CREDENTIALS_JSON }}" > ~/.config/dart/pub-credentials.json
+      - working-directory: sdks/flutter
+        run: |
+          flutter pub get
+          flutter pub publish --force
+
+  maven-central:
+    needs: ctx
+    if: needs.ctx.outputs.sdk == 'kotlin'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Set version
+        working-directory: sdks/kotlin
+        run: |
+          sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" build.gradle.kts
+      - name: Import GPG key
+        run: |
+          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
+          echo "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}" | gpg --batch --import
+          echo "use-agent" >> ~/.gnupg/gpg.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+      - name: Publish to OSSRH (Central)
+        working-directory: sdks/kotlin
+        env:
+          ORG_GRADLE_PROJECT_ossrhUsername: ${{ secrets.OSSRH_USERNAME }}
+          ORG_GRADLE_PROJECT_ossrhPassword: ${{ secrets.OSSRH_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+        run: ./gradlew publish --no-daemon
+
+  github-release:
+    needs: [ctx]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true

@@ -6,6 +6,11 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": ["dist", "src", "README.md"],
+  "repository": { "type": "git", "url": "git+https://github.com/IA-Portafolio/faro.git", "directory": "sdks/expo" },
+  "homepage": "https://github.com/IA-Portafolio/faro/tree/main/sdks/expo#readme",
+  "bugs": "https://github.com/IA-Portafolio/faro/issues",
+  "keywords": ["faro", "expo", "react-native", "observability", "logging"],
+  "publishConfig": { "access": "public", "provenance": true },
   "scripts": { "build": "tsup src/index.ts --format cjs,esm --dts --clean" },
   "peerDependencies": { "react-native": ">=0.72" },
   "devDependencies": { "tsup": "^8.0.0", "typescript": "^5.4.0" }
