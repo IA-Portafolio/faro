@@ -195,12 +195,13 @@ jobs:
         run: |
           sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" build.gradle.kts
       - name: Import GPG key
-        # Pasar via env preserva los newlines del secret; el inline ${{ ... }} los come.
+        # La key viaja como base64 (sin newlines) para no romperse al pasar por
+        # los wrappers de secrets de GitHub. Se decodifica antes de importarla.
         env:
-          GPG_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          GPG_KEY_B64: ${{ secrets.MAVEN_GPG_PRIVATE_KEY_B64 }}
         run: |
           mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          printf '%s' "$GPG_KEY" | gpg --batch --import
+          printf '%s' "$GPG_KEY_B64" | base64 -d | gpg --batch --import
           echo "use-agent" >> ~/.gnupg/gpg.conf
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
           gpg --list-secret-keys --keyid-format=long
@@ -209,9 +210,16 @@ jobs:
         env:
           ORG_GRADLE_PROJECT_ossrhUsername: ${{ secrets.OSSRH_USERNAME }}
           ORG_GRADLE_PROJECT_ossrhPassword: ${{ secrets.OSSRH_PASSWORD }}
-          ORG_GRADLE_PROJECT_signingKey: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          GPG_KEY_B64: ${{ secrets.MAVEN_GPG_PRIVATE_KEY_B64 }}
           ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-        run: ./gradlew publish --no-daemon
+        run: |
+          # Decode base64 a la versión armored que useInMemoryPgpKeys espera
+          export ORG_GRADLE_PROJECT_signingKey="$(printf '%s' "$GPG_KEY_B64" | base64 -d)"
+          # gradlew aún no existe en el repo — usamos gradle del runner
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version 8.7
+          fi
+          ./gradlew publish --no-daemon
 
   github-release:
     needs: [ctx]
