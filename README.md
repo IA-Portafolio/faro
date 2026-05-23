@@ -98,31 +98,7 @@ service:
 
 ## Arquitectura
 
-```
-┌─────────────┐    ┌─────────────────────────────────────────┐
-│ Tus apps    │───▶│ Backend Faro (Rust, axum)               │
-│ SDKs OTel   │    │  ┌──────────┐  ┌──────────────────────┐ │
-│ Collectors  │    │  │ ingesta  │  │ workers de escritura │ │
-│ Cliente HTTP│    │  │ :4318    │─▶│ por lotes (por tabla)│ │
-└─────────────┘    │  │ :8080    │  └─────┬────────────────┘ │
-                   │  └──────────┘        │                  │
-                   │  ┌──────────┐        ▼                  │
-                   │  │ API de   │  ┌──────────────┐         │
-                   │  │ consulta │◀─│ ClickHouse   │◀────────┤
-                   │  │ :8080    │  └──────────────┘         │
-                   │  └──────────┘                           │
-                   │  ┌──────────┐  ┌──────────────┐         │
-                   │  │ runner   │  │ evaluador de │         │
-                   │  │ monitores│  │ alertas+envío│         │
-                   │  └──────────┘  └──────────────┘         │
-                   └─────────────────────────────────────────┘
-                                  ▲
-                                  │
-                          ┌───────┴────────┐
-                          │ UI SvelteKit   │
-                          │ :3000          │
-                          └────────────────┘
-```
+![Diagrama de arquitectura de Faro](docs/architecture.png)
 
 - **Dos listeners HTTP**: `:4318` solo sirve receptores OTLP; `:8080` sirve la API REST/SSE y el endpoint opcional de ingesta nativa. Mantenerlos separados permite exponer OTLP detrás de una regla de firewall distinta a la del dashboard.
 - **Batching**: los handlers de ingesta empujan filas a canales mpsc acotados; las tareas de escritura por tabla hacen flush cada 750 ms (configurable) o 5 000 filas, lo que ocurra primero.
@@ -264,4 +240,4 @@ faro/
 
 ## Licencia
 
-MIT.
+Propietaria. Todos los derechos reservados. El uso, copia, modificación o distribución del código fuente requiere autorización previa por escrito del propietario.
