@@ -13,5 +13,5 @@
   "publishConfig": { "access": "public" },
   "scripts": { "build": "tsup src/index.ts --format cjs,esm --dts --clean" },
   "peerDependencies": { "react-native": ">=0.72" },
-  "devDependencies": { "tsup": "^8.0.0", "typescript": "^5.4.0" }
+  "devDependencies": { "tsup": "^8.0.0", "typescript": "^6.0.3" }
 }
