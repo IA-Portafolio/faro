@@ -195,26 +195,25 @@ jobs:
         run: |
           sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" build.gradle.kts
       - name: Import GPG key
-        # La key viaja como base64. Lo trim para descartar whitespace que
-        # GitHub Actions a veces inyecta al exponer secrets multilinea.
-        env:
-          GPG_KEY_B64: ${{ secrets.MAVEN_GPG_PRIVATE_KEY_B64 }}
-        run: |
-          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          echo "$GPG_KEY_B64" | tr -d '[:space:]' | base64 -d | gpg --batch --import
-          echo "use-agent" >> ~/.gnupg/gpg.conf
-          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-          gpg --list-secret-keys --keyid-format=long
+        # crazy-max/ghaction-import-gpg lee el armored multi-line sin que
+        # el wrapper de secrets de GitHub Actions lo corrompa.
+        uses: crazy-max/ghaction-import-gpg@v6
+        id: gpg
+        with:
+          gpg_private_key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
           ORG_GRADLE_PROJECT_ossrhUsername: ${{ secrets.OSSRH_USERNAME }}
           ORG_GRADLE_PROJECT_ossrhPassword: ${{ secrets.OSSRH_PASSWORD }}
-          GPG_KEY_B64: ${{ secrets.MAVEN_GPG_PRIVATE_KEY_B64 }}
+          # Usa el GPG agent del runner (importado por la action de arriba) en
+          # vez de useInMemoryPgpKeys, así no dependemos de pasar el armored
+          # por env (que era lo que fallaba).
+          ORG_GRADLE_PROJECT_useGpgAgent: "true"
+          ORG_GRADLE_PROJECT_signingKeyId: ${{ steps.gpg.outputs.keyid }}
           ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
         run: |
-          # Decode base64 (sin whitespace) a la versión armored que useInMemoryPgpKeys espera
-          export ORG_GRADLE_PROJECT_signingKey="$(echo "$GPG_KEY_B64" | tr -d '[:space:]' | base64 -d)"
           # gradlew aún no existe en el repo — usamos gradle del runner
           if [ ! -f ./gradlew ]; then
             gradle wrapper --gradle-version 8.7
