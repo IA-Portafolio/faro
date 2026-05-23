@@ -1,48 +1,21 @@
-Licencia Propietaria
+MIT License
 
-Copyright (c) 2026 IA Portafolio. Todos los derechos reservados.
+Copyright (c) 2026 IA Portafolio
 
-Este software y su código fuente, documentación, recursos asociados y cualquier
-material relacionado (en adelante, "el Software") son propiedad exclusiva de
-IA Portafolio (en adelante, "el Titular") y están protegidos por las leyes de
-propiedad intelectual y tratados internacionales aplicables.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-1. Concesión de derechos
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-   No se concede ningún derecho, licencia ni autorización sobre el Software
-   salvo que medie acuerdo previo, expreso y por escrito con el Titular.
-
-2. Restricciones
-
-   Sin autorización previa, expresa y por escrito del Titular, queda
-   estrictamente prohibido:
-
-   a) Usar, ejecutar o desplegar el Software, total o parcialmente, en
-      cualquier entorno (productivo, de prueba, personal o comercial).
-   b) Copiar, reproducir, duplicar o almacenar el Software en cualquier medio.
-   c) Modificar, adaptar, traducir, descompilar, realizar ingeniería inversa
-      o crear obras derivadas a partir del Software.
-   d) Distribuir, publicar, transmitir, sublicenciar, vender, alquilar,
-      arrendar o ceder el Software o cualquier parte del mismo a terceros.
-   e) Eliminar, alterar u ocultar avisos de copyright, marcas, atribuciones
-      o cualquier otra identificación de propiedad presente en el Software.
-
-3. Ausencia de garantía
-
-   EL SOFTWARE SE PROPORCIONA "TAL CUAL", SIN GARANTÍA DE NINGÚN TIPO, EXPRESA
-   O IMPLÍCITA, INCLUYENDO PERO NO LIMITADO A GARANTÍAS DE COMERCIABILIDAD,
-   IDONEIDAD PARA UN PROPÓSITO PARTICULAR Y NO INFRACCIÓN. EN NINGÚN CASO EL
-   TITULAR SERÁ RESPONSABLE POR RECLAMACIONES, DAÑOS U OTRAS RESPONSABILIDADES
-   DERIVADAS DEL USO O LA IMPOSIBILIDAD DE USO DEL SOFTWARE.
-
-4. Terminación
-
-   Cualquier uso del Software en violación de los términos de esta licencia
-   resultará en la terminación automática e inmediata de cualquier derecho
-   eventualmente concedido, sin perjuicio de las acciones legales que pudiera
-   ejercer el Titular.
-
-5. Contacto
-
-   Para solicitar autorizaciones de uso, licenciamiento o consultas
-   relacionadas, contactar al Titular del software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
