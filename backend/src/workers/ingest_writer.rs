@@ -1,0 +1,79 @@
+use std::time::Duration;
+
+use serde::Serialize;
+use tokio::sync::mpsc::Receiver;
+use tokio::time::{interval, MissedTickBehavior};
+
+use crate::state::SharedState;
+use crate::storage::Client;
+
+/// Spawn one background writer per ingest channel. Each writer batches rows up
+/// to N or T and flushes to ClickHouse. On failure rows are dropped after logging
+/// — durable buffering belongs to a queue layer (Redis/Kafka) we can wire later.
+pub fn start_ingest_writers(state: SharedState) {
+    let logs_rx = state.ingest.logs_rx.lock().take().expect("logs rx already taken");
+    let spans_rx = state.ingest.spans_rx.lock().take().expect("spans rx already taken");
+    let metrics_rx = state.ingest.metrics_rx.lock().take().expect("metrics rx already taken");
+    let monitor_rx = state.ingest.monitor_results_rx.lock().take().expect("monitor rx already taken");
+
+    let max = state.cfg.batch_max_rows;
+    let flush_ms = state.cfg.batch_flush_ms;
+
+    spawn_writer("faro.logs", state.ch.clone(), logs_rx, max, flush_ms);
+    spawn_writer("faro.spans", state.ch.clone(), spans_rx, max, flush_ms);
+    spawn_writer("faro.metrics", state.ch.clone(), metrics_rx, max, flush_ms);
+    spawn_writer("faro.monitor_results", state.ch.clone(), monitor_rx, max, flush_ms);
+}
+
+fn spawn_writer<T>(
+    table: &'static str,
+    ch: Client,
+    mut rx: Receiver<T>,
+    max_rows: usize,
+    flush_ms: u64,
+) where
+    T: Serialize + Send + Sync + 'static,
+{
+    tokio::spawn(async move {
+        let mut buf: Vec<T> = Vec::with_capacity(max_rows);
+        let mut tick = interval(Duration::from_millis(flush_ms));
+        tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+        loop {
+            tokio::select! {
+                msg = rx.recv() => {
+                    match msg {
+                        Some(row) => {
+                            buf.push(row);
+                            if buf.len() >= max_rows {
+                                flush(table, &ch, &mut buf).await;
+                            }
+                        }
+                        None => {
+                            flush(table, &ch, &mut buf).await;
+                            tracing::warn!(%table, "ingest channel closed");
+                            break;
+                        }
+                    }
+                }
+                _ = tick.tick() => {
+                    if !buf.is_empty() {
+                        flush(table, &ch, &mut buf).await;
+                    }
+                }
+            }
+        }
+    });
+}
+
+async fn flush<T: Serialize>(table: &str, ch: &Client, buf: &mut Vec<T>) {
+    if buf.is_empty() {
+        return;
+    }
+    let n = buf.len();
+    match ch.insert(table, buf).await {
+        Ok(()) => tracing::debug!(%table, rows = n, "flushed batch"),
+        Err(e) => tracing::error!(%table, rows = n, error = %e, "flush failed, dropping batch"),
+    }
+    buf.clear();
+}

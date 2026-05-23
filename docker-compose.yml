@@ -1,0 +1,97 @@
+version: "3.9"
+
+# Faro - centralized observability platform
+# Services: ClickHouse (storage), Redis (queues/cache), backend (Rust), frontend (SvelteKit)
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: faro-clickhouse
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    environment:
+      CLICKHOUSE_DB: faro
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-faro}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-faro}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse/config/users.d:/etc/clickhouse-server/users.d:ro
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: faro-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: faro-backend
+    restart: unless-stopped
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      FARO_BIND_ADDR: 0.0.0.0:4318
+      FARO_API_ADDR: 0.0.0.0:8080
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: faro
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-faro}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-faro}
+      REDIS_URL: redis://redis:6379
+      FARO_INGEST_TOKEN: ${FARO_INGEST_TOKEN:-dev-ingest-token}
+      RUST_LOG: ${RUST_LOG:-info,faro=debug}
+    ports:
+      - "${FARO_API_PORT:-8080}:8080"   # REST API
+      - "${FARO_OTLP_HTTP_PORT:-4318}:4318" # OTLP/HTTP ingestion
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8080}
+    container_name: faro-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      PORT: 3000
+      ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      PUBLIC_API_BASE: ${PUBLIC_API_BASE:-http://localhost:8080}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+
+volumes:
+  clickhouse_data:
+  redis_data:

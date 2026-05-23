@@ -1,0 +1,13 @@
+<clickhouse>
+    <profiles>
+        <default>
+            <max_query_size>1073741824</max_query_size>
+            <max_memory_usage>4000000000</max_memory_usage>
+            <max_partitions_per_insert_block>1000</max_partitions_per_insert_block>
+            <async_insert>1</async_insert>
+            <wait_for_async_insert>0</wait_for_async_insert>
+            <async_insert_max_data_size>10485760</async_insert_max_data_size>
+            <async_insert_busy_timeout_ms>1000</async_insert_busy_timeout_ms>
+        </default>
+    </profiles>
+</clickhouse>

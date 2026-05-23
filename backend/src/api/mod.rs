@@ -1,0 +1,150 @@
+use axum::middleware::from_fn_with_state;
+use axum::routing::get;
+use axum::{Json, Router};
+
+use crate::auth;
+use crate::state::SharedState;
+
+mod alerts;
+mod dashboard;
+mod errors;
+mod logs;
+mod metrics;
+mod monitors;
+mod projects;
+mod services;
+mod traces;
+mod users;
+
+pub fn router(state: SharedState) -> Router {
+    // Single router so routes don't conflict when nested. The middleware itself
+    // decides whether a request needs an authenticated session based on path.
+    Router::new()
+        .route("/healthz", get(|| async { Json(serde_json::json!({"status":"ok"})) }))
+        .nest("/api/v1/ingest", crate::ingest::logs::router())
+        .nest("/api/v1", auth::open_router().merge(auth::protected_router()).merge(v1_router()))
+        .layer(from_fn_with_state(state.clone(), auth::require_session_mw))
+        .with_state(state)
+}
+
+fn v1_router() -> Router<SharedState> {
+    Router::new()
+        .merge(logs::router())
+        .merge(traces::router())
+        .merge(metrics::router())
+        .merge(errors::router())
+        .merge(monitors::router())
+        .merge(alerts::router())
+        .merge(services::router())
+        .merge(dashboard::router())
+        .merge(projects::router())
+        .merge(users::router())
+}
+
+/// Parse common time-range / pagination params used across query endpoints.
+pub mod params {
+    use std::fmt::Display;
+    use std::str::FromStr;
+
+    use chrono::{DateTime, Duration, Utc};
+    use serde::de::{Deserializer, Error};
+    use serde::Deserialize;
+
+    /// Accept either a numeric or a string-encoded number for query params.
+    pub fn de_opt_num<'de, T, D>(d: D) -> Result<Option<T>, D::Error>
+    where
+        T: FromStr + Deserialize<'de>,
+        T::Err: Display,
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum NumOrStr<T> {
+            Num(T),
+            Str(String),
+        }
+
+        match Option::<NumOrStr<T>>::deserialize(d)? {
+            None => Ok(None),
+            Some(NumOrStr::Num(n)) => Ok(Some(n)),
+            Some(NumOrStr::Str(s)) if s.is_empty() => Ok(None),
+            Some(NumOrStr::Str(s)) => s.parse().map(Some).map_err(Error::custom),
+        }
+    }
+
+    pub fn de_num_default<'de, T, D>(d: D, default: T) -> Result<T, D::Error>
+    where
+        T: FromStr + Deserialize<'de>,
+        T::Err: Display,
+        D: Deserializer<'de>,
+    {
+        Ok(de_opt_num(d)?.unwrap_or(default))
+    }
+
+    pub fn de_u32_200<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+        de_num_default(d, 200u32)
+    }
+    pub fn de_u32_0<'de, D: Deserializer<'de>>(d: D) -> Result<u32, D::Error> {
+        de_num_default(d, 0u32)
+    }
+
+    #[derive(Debug, Deserialize, Default)]
+    pub struct Range {
+        #[serde(default)]
+        pub from: Option<DateTime<Utc>>,
+        #[serde(default)]
+        pub to: Option<DateTime<Utc>>,
+        #[serde(default, deserialize_with = "de_opt_num")]
+        pub last_minutes: Option<i64>,
+        #[serde(default = "default_limit", deserialize_with = "de_u32_200")]
+        pub limit: u32,
+        #[serde(default, deserialize_with = "de_u32_0")]
+        pub offset: u32,
+        #[serde(default)]
+        pub project: Option<String>,
+    }
+
+    fn default_limit() -> u32 {
+        200
+    }
+
+    impl Range {
+        pub fn resolve(&self) -> (DateTime<Utc>, DateTime<Utc>) {
+            let to = self.to.unwrap_or_else(Utc::now);
+            let from = if let Some(f) = self.from {
+                f
+            } else if let Some(m) = self.last_minutes {
+                to - Duration::minutes(m)
+            } else {
+                to - Duration::hours(1)
+            };
+            (from, to)
+        }
+
+        pub fn limit(&self) -> u32 {
+            self.limit.min(10_000).max(1)
+        }
+
+        pub fn project_clause(&self, alias: &str) -> String {
+            match &self.project {
+                Some(s) if !s.is_empty() => {
+                    let col = if alias.is_empty() {
+                        "project_id".to_string()
+                    } else {
+                        format!("{alias}.project_id")
+                    };
+                    format!(" AND {col} = '{}'", escape_sql(s))
+                }
+                _ => String::new(),
+            }
+        }
+    }
+
+    pub fn escape_sql(s: &str) -> String {
+        s.replace('\\', "\\\\").replace('\'', "\\'")
+    }
+
+    pub fn ch_dt(t: DateTime<Utc>) -> String {
+        t.format("%Y-%m-%d %H:%M:%S%.9f").to_string()
+    }
+}
