@@ -211,8 +211,12 @@
       <div class="field"><label>Ventana (s)</label><input type="number" bind:value={editing.window_seconds} /></div>
       <div class="field"><label>Intervalo eval (s)</label><input type="number" bind:value={editing.interval_seconds} /></div>
     </div>
-    <div class="field"><label>Webhooks de notificación (uno por línea)</label>
-      <textarea bind:value={targetsText} rows="3" class="mono" placeholder="https://discord.com/api/webhooks/..."></textarea>
+    <div class="field"><label>Destinos de notificación (uno por línea)</label>
+      <textarea bind:value={targetsText} rows="4" class="mono" placeholder={'https://discord.com/api/webhooks/...\ntg://-1001234567890\ntg://@mi_canal\ntg://-1001234567890@123456:ABC-bot-token'}></textarea>
+      <small class="muted">
+        Acepta <code>https://</code> (webhook JSON tipo Slack/Discord) y <code>tg://&lt;chat_id&gt;</code> para Telegram nativo.
+        El bot global se configura con la variable <code>TELEGRAM_BOT_TOKEN</code>; también puedes incluir un token por destino con <code>tg://&lt;chat_id&gt;@&lt;token&gt;</code>.
+      </small>
     </div>
     <div class="field"><label><input type="checkbox" checked={editing.enabled === 1} on:change={(e) => (editing.enabled = (e.currentTarget).checked ? 1 : 0)} /> Activa</label></div>
 

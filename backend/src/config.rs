@@ -12,6 +12,13 @@ pub struct Config {
     pub batch_max_rows: usize,
     pub batch_flush_ms: u64,
     pub public_base_url: String,
+    /// Token global del bot de Telegram. Si se define, los targets `tg://<chat_id>`
+    /// usan este bot. Los targets `tg://<chat_id>@<token>` siempre pueden traer
+    /// su propio token y no necesitan que esté configurado a nivel global.
+    pub telegram_bot_token: Option<String>,
+    /// Base de la API de Telegram. Configurable solo para pruebas — en producción
+    /// se usa el valor por defecto.
+    pub telegram_api_base: String,
 }
 
 impl Config {
@@ -31,6 +38,11 @@ impl Config {
                 .parse()
                 .unwrap_or(750),
             public_base_url: env_or("FARO_PUBLIC_BASE_URL", "http://localhost:8080"),
+            telegram_bot_token: std::env::var("TELEGRAM_BOT_TOKEN")
+                .ok()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty()),
+            telegram_api_base: env_or("TELEGRAM_API_BASE", "https://api.telegram.org"),
         })
     }
 }

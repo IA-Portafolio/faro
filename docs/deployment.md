@@ -72,6 +72,27 @@ Valores mínimos a setear manualmente:
 Variables públicas (URL del dashboard, etc.) ya tienen valores razonables
 en el template.
 
+### Notificaciones de Telegram
+
+Para que las reglas de alerta puedan notificar por Telegram:
+
+1. Crear un bot con [@BotFather](https://t.me/BotFather), copiar el token
+   (`123456:ABC-DEF...`).
+2. Añadir el bot al chat / grupo / canal donde se recibirán las alertas
+   y obtener el `chat_id` (los grupos son negativos, los canales empiezan
+   por `-100`). Para chats privados, escribirle al bot y mirar
+   `https://api.telegram.org/bot<TOKEN>/getUpdates`.
+3. Setear `TELEGRAM_BOT_TOKEN=<token>` en `.env.prod` y redesplegar.
+4. En la UI de Alertas, añadir destinos con la forma:
+   - `tg://-1001234567890` — usa el bot global.
+   - `tg://@mi_canal` — canales públicos por nombre.
+   - `tg://<chat_id>@<otro_token>` — token por destino, útil si quieres
+     enviar a chats que pertenecen a otro bot sin tocar la variable
+     global.
+
+Los destinos `https://...` siguen funcionando como webhooks JSON
+genéricos (Slack/Discord/custom).
+
 ## Persistencia
 
 Volúmenes Docker (declarados en `docker-compose.prod.yml`):

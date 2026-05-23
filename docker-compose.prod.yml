@@ -70,6 +70,7 @@ services:
       FARO_BOOTSTRAP_ADMIN_PASSWORD: ${FARO_BOOTSTRAP_ADMIN_PASSWORD:-}
       FARO_BOOTSTRAP_ADMIN_NAME: ${FARO_BOOTSTRAP_ADMIN_NAME:-Admin}
       FARO_PUBLIC_BASE_URL: ${FARO_PUBLIC_BASE_URL:-https://faro.iaportafolio.com}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       RUST_LOG: ${RUST_LOG:-info,faro=info}
     networks: [faro-internal, ingress-caddy]
     healthcheck:

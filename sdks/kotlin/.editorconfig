@@ -1,0 +1,15 @@
+root = false
+
+# Reglas ktlint (https://pinterest.github.io/ktlint/) — el `.editorconfig`
+# es la única fuente de configuración soportada oficialmente.
+
+[*.{kt,kts}]
+indent_size = 4
+indent_style = space
+max_line_length = 120
+insert_final_newline = true
+
+ktlint_standard_no-wildcard-imports = enabled
+ktlint_standard_filename = enabled
+ktlint_standard_trailing-comma-on-call-site = enabled
+ktlint_standard_trailing-comma-on-declaration-site = enabled
