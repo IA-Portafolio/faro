@@ -1,0 +1,111 @@
+name: release-images
+
+# Builds y empuja imágenes multi-arch (amd64 + arm64) a GitHub Container
+# Registry (ghcr.io/ia-portafolio/faro-{backend,frontend}). Genera SBOM
+# (SPDX) y firma con cosign (keyless OIDC). Útil para que el deploy del
+# self-hosted runner haga `docker pull` en vez de build local, y para
+# que terceros puedan correr Faro sin clonar el repo.
+#
+# Tags producidos:
+#   - `main`           para cada push a main (rolling)
+#   - `sha-<7chars>`   inmutable
+#   - `v<semver>`      cuando empujas un tag git `core-v<semver>`
+#   - `latest`         solo para tags `core-v*` que sean estables (no pre-release)
+
+on:
+  push:
+    branches: [main]
+    tags: ['core-v*']
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write       # cosign keyless
+  attestations: write   # GitHub provenance attestations
+
+concurrency:
+  group: release-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+          - name: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/ia-portafolio/faro-${{ matrix.name }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-,format=short
+            type=match,pattern=core-v(.*),group=1
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/core-v') && !contains(github.ref, '-') }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,scope=${{ matrix.name }},mode=max
+          provenance: true
+          sbom: true
+
+      - name: GitHub artifact attestation
+        # Produce una atestación de procedencia (SLSA build L2) por imagen.
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ghcr.io/ia-portafolio/faro-${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign image (keyless via OIDC)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        # `cosign sign --yes` con OIDC: no requiere claves locales, la
+        # identidad es el workflow corriendo en este repo. Para verificar
+        # luego: `cosign verify --certificate-identity-regexp '...' ...`
+        run: |
+          for tag in $TAGS; do
+            cosign sign --yes "${tag}@${DIGEST}"
+          done
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/ia-portafolio/faro-${{ matrix.name }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          artifact-name: sbom-${{ matrix.name }}.spdx.json
+          upload-artifact: true
+          upload-release-assets: ${{ startsWith(github.ref, 'refs/tags/core-v') }}

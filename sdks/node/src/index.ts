@@ -102,7 +102,7 @@ class FaroClient {
       attributes: attrs,
     };
     if (this.queue.length >= this.opts.maxQueueSize) {
-      this.warn('cola llena, evento descartado');
+      this.diagLog('cola llena, evento descartado');
       return;
     }
     this.queue.push(wire);
@@ -147,12 +147,12 @@ class FaroClient {
       });
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
-        this.warn(`ingest HTTP ${res.status}: ${txt.slice(0, 200)}`);
+        this.diagLog(`ingest HTTP ${res.status}: ${txt.slice(0, 200)}`);
       }
     } catch (e) {
       // Re-encola ante fallos transitorios de red para no perder datos.
       this.queue.unshift(...batch);
-      this.warn('falló el flush', e);
+      this.diagLog('falló el flush', e);
     }
   }
 

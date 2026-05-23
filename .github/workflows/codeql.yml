@@ -1,0 +1,49 @@
+name: codeql
+
+# Análisis estático de seguridad de GitHub. Cubre los lenguajes con
+# motor CodeQL nativo: JavaScript/TypeScript (frontend + SDKs npm),
+# Python (sdk python), Go (sdk go), Java/Kotlin (sdk kotlin).
+# Rust (backend) y Dart (sdk flutter) no están soportados oficialmente
+# por CodeQL — se cubren con cargo-audit y dart analyze respectivamente.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Semanal, lunes 7 AM UTC (cuando aparecen advisories nuevas que pueden
+    # marcar código existente sin que haya habido cambios recientes).
+    - cron: '0 7 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+          - language: python
+          - language: go
+          - language: java-kotlin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-extended,security-and-quality
+
+      - uses: github/codeql-action/autobuild@v3
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'

@@ -1,9 +1,8 @@
 name: ci
 
 # Validación rápida del core (backend Rust + frontend SvelteKit) en cada PR
-# y en push a `main`. Los SDKs no se validan aquí — su publicación ya hace
-# build en `publish-sdks.yml`. El objetivo es bloquear merges rotos antes
-# de que `deploy.yml` los suba a producción.
+# y en push a `main`. Bloquea merges rotos antes de que deploy.yml los suba
+# a producción. Los SDKs tienen su propio workflow (sdk-tests.yml).
 
 on:
   pull_request:
@@ -17,7 +16,21 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:24-alpine
+        ports: ['8123:8123', '9000:9000']
+        env:
+          CLICKHOUSE_DB: faro
+          CLICKHOUSE_USER: faro
+          CLICKHOUSE_PASSWORD: faro
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
     steps:
       - uses: actions/checkout@v4
 
@@ -37,9 +50,43 @@ jobs:
         working-directory: backend
         run: cargo clippy --all-targets -- -D warnings
 
+      - name: Bootstrap ClickHouse schema
+        # Aplica todos los init/ y migrations/ contra el servicio levantado,
+        # para que los tests que toquen ClickHouse encuentren el esquema.
+        run: |
+          for f in clickhouse/init/*.sql clickhouse/migrations/*.sql; do
+            [ -f "$f" ] || continue
+            echo "::group::Applying $(basename "$f")"
+            curl -sS -u faro:faro \
+              "http://localhost:8123/?database=faro" \
+              --data-binary "@$f" || true
+            echo "::endgroup::"
+          done
+
       - name: cargo test
         working-directory: backend
+        env:
+          CLICKHOUSE_URL: http://localhost:8123
+          CLICKHOUSE_USER: faro
+          CLICKHOUSE_PASSWORD: faro
+          CLICKHOUSE_DATABASE: faro
+          FARO_INGEST_TOKEN: ci-test-token
         run: cargo test --all-features --no-fail-fast
+
+  backend-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo-audit
+        # Falla el build si una dep tiene un CVE conocido. Si necesitas
+        # ignorar un advisory temporalmente, añádelo a `backend/audit.toml`
+        # con justificación.
+        uses: rustsec/audit-check@v1.4.1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: backend
 
   frontend:
     runs-on: ubuntu-latest
@@ -67,12 +114,26 @@ jobs:
           PUBLIC_API_BASE: http://localhost:8080
         run: npm run build
 
+      - name: test (si está configurado)
+        working-directory: frontend
+        run: |
+          if grep -q '"test"' package.json; then
+            npm test -- --run
+          else
+            echo "No 'test' script en frontend/package.json — saltando"
+          fi
+
+      - name: npm audit (high+ only)
+        working-directory: frontend
+        # `npm audit` retorna no-cero si hay vulns ≥ nivel pedido; usamos
+        # `--audit-level=high` para no romper por low/moderate transitorios.
+        run: npm audit --omit=dev --audit-level=high
+
   compose:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-
       - name: validate docker-compose
         run: |
           cp .env.example .env
