@@ -63,7 +63,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - working-directory: sdks/node
         run: |
-          npm version --no-git-tag-version "${{ needs.ctx.outputs.version }}"
+          npm pkg set version="${{ needs.ctx.outputs.version }}"
           npm install
           npm run build
           npm publish --access public
@@ -80,7 +80,7 @@ jobs:
         with: { node-version: 20, registry-url: 'https://registry.npmjs.org' }
       - working-directory: sdks/nextjs
         run: |
-          npm version --no-git-tag-version "${{ needs.ctx.outputs.version }}"
+          npm pkg set version="${{ needs.ctx.outputs.version }}"
           npm install
           npm run build
           npm publish --access public
@@ -97,7 +97,7 @@ jobs:
         with: { node-version: 20, registry-url: 'https://registry.npmjs.org' }
       - working-directory: sdks/expo
         run: |
-          npm version --no-git-tag-version "${{ needs.ctx.outputs.version }}"
+          npm pkg set version="${{ needs.ctx.outputs.version }}"
           npm install
           npm run build
           npm publish --access public
