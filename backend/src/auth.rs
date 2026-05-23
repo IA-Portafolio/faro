@@ -114,8 +114,8 @@ fn hash_token(token: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// Look up a session by raw cookie token, returning the associated user if
-/// the session is non-revoked and not expired.
+/// Busca una sesión por el token crudo de la cookie y devuelve el usuario asociado
+/// si la sesión no está revocada ni expirada.
 pub async fn user_from_token(state: &SharedState, token: &str) -> Option<AuthUser> {
     let hash = hash_token(token);
     let sql = format!(
@@ -214,7 +214,7 @@ async fn logout(
 ) -> Result<(CookieJar, Json<serde_json::Value>), ApiError> {
     if let Some(c) = jar.get(SESSION_COOKIE) {
         let hash = hash_token(c.value());
-        // Mark revoked = 1 with bumped version so ReplacingMergeTree picks it up.
+        // Marca revoked = 1 con version aumentada para que ReplacingMergeTree la recoja.
         let sql = format!(
             "INSERT INTO faro.user_sessions \
              SELECT token_hash, user_id, user_email, user_name, user_role, created_at, expires_at, \
@@ -223,7 +223,7 @@ async fn logout(
         );
         let _ = state.ch.query_raw(&sql).await;
     }
-    // Expire the cookie client-side too.
+    // Expira la cookie también del lado del cliente.
     let mut clear = Cookie::new(SESSION_COOKIE, "");
     clear.set_path("/");
     clear.set_max_age(time::Duration::ZERO);
@@ -249,10 +249,10 @@ pub fn protected_router() -> Router<SharedState> {
 
 // ---------- Middleware ----------
 
-/// Paths that bypass the session check entirely:
+/// Rutas que se saltan el chequeo de sesión por completo:
 ///   - `/healthz` (liveness)
-///   - `/api/v1/auth/login` (you can't be logged in to log in)
-///   - `/api/v1/ingest/*` (bearer-token auth via project)
+///   - `/api/v1/auth/login` (no se puede estar logueado para hacer login)
+///   - `/api/v1/ingest/*` (autenticación por token Bearer asociada al proyecto)
 fn is_public_path(path: &str) -> bool {
     path == "/healthz"
         || path == "/api/v1/auth/login"
@@ -283,7 +283,7 @@ fn unauthorized() -> Response {
     (StatusCode::UNAUTHORIZED, body).into_response()
 }
 
-// AuthUser extractor pulls the user injected by middleware.
+// El extractor AuthUser toma el usuario inyectado por el middleware.
 #[axum::async_trait]
 impl<S: Send + Sync> axum::extract::FromRequestParts<S> for AuthUser {
     type Rejection = ApiError;

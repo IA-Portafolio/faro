@@ -1,9 +1,9 @@
-# @faro/nextjs
+# @iaportafolio/nextjs
 
 SDK para Next.js (App Router y Pages Router). Tiene dos mitades: **server** (Node runtime, captura errores de Route Handlers / Server Actions / SSR) y **client** (browser, captura `window.onerror` + `unhandledrejection` + Web Vitals manuales).
 
 ```bash
-npm install @faro/nextjs @faro/node
+npm install @iaportafolio/nextjs @iaportafolio/node
 ```
 
 ## Server-side
@@ -11,7 +11,7 @@ npm install @faro/nextjs @faro/node
 ```ts
 // instrumentation.ts (en la raíz del proyecto, junto a app/)
 export async function register() {
-  const { registerFaro } = await import('@faro/nextjs/server');
+  const { registerFaro } = await import('@iaportafolio/nextjs/server');
   registerFaro({
     endpoint: process.env.FARO_ENDPOINT!,
     token:    process.env.FARO_TOKEN!,
@@ -23,7 +23,7 @@ export async function register() {
 
 // Next 15+: hook nativo de errores de request.
 export async function onRequestError(err: unknown, request: { path: string; method: string }) {
-  const { captureRequestError } = await import('@faro/nextjs/server');
+  const { captureRequestError } = await import('@iaportafolio/nextjs/server');
   captureRequestError(err, request);
 }
 ```
@@ -31,14 +31,14 @@ export async function onRequestError(err: unknown, request: { path: string; meth
 En cualquier ruta server:
 
 ```ts
-import { faro } from '@faro/nextjs/server';
+import { faro } from '@iaportafolio/nextjs/server';
 
 export async function POST(req: Request) {
   try {
     return await procesar(req);
   } catch (e) {
     faro.captureException(e, { tags: { route: '/api/charge' } });
-    return new Response('failed', { status: 500 });
+    return new Response('fallo', { status: 500 });
   }
 }
 ```
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 // app/faro-client.tsx
 'use client';
 import { useEffect } from 'react';
-import { initFaroClient } from '@faro/nextjs/client';
+import { initFaroClient } from '@iaportafolio/nextjs/client';
 
 export function FaroClient() {
   useEffect(() => {
@@ -83,9 +83,9 @@ El cliente:
 
 ## Variables de entorno
 
-| Var                               | Dónde         | Para qué                                  |
-| --------------------------------- | ------------- | ----------------------------------------- |
-| `FARO_ENDPOINT`                   | server only   | Base URL                                  |
-| `FARO_TOKEN`                      | server only   | Token de proyecto (privado)               |
-| `NEXT_PUBLIC_FARO_ENDPOINT`       | client+server | Base URL para el browser                  |
-| `NEXT_PUBLIC_FARO_TOKEN`          | client+server | **Mismo token de proyecto**. Sí queda expuesto en el bundle — es deliberado, igual que en Sentry: el token solo permite ingerir, no leer datos del dashboard. |
+| Var                               | Dónde              | Para qué                                  |
+| --------------------------------- | ------------------ | ----------------------------------------- |
+| `FARO_ENDPOINT`                   | solo servidor      | URL base                                  |
+| `FARO_TOKEN`                      | solo servidor      | Token de proyecto (privado)               |
+| `NEXT_PUBLIC_FARO_ENDPOINT`       | cliente + servidor | URL base para el navegador                |
+| `NEXT_PUBLIC_FARO_TOKEN`          | cliente + servidor | **Mismo token de proyecto.** Sí queda expuesto en el bundle — es deliberado, igual que en Sentry: el token solo permite ingerir, no leer datos del dashboard. |

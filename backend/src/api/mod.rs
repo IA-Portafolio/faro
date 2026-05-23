@@ -17,8 +17,8 @@ mod traces;
 mod users;
 
 pub fn router(state: SharedState) -> Router {
-    // Single router so routes don't conflict when nested. The middleware itself
-    // decides whether a request needs an authenticated session based on path.
+    // Un único router para que las rutas no choquen al anidarse. El propio middleware
+    // decide si una petición necesita sesión autenticada según la ruta.
     Router::new()
         .route("/healthz", get(|| async { Json(serde_json::json!({"status":"ok"})) }))
         .nest("/api/v1/ingest", crate::ingest::logs::router())
@@ -41,7 +41,7 @@ fn v1_router() -> Router<SharedState> {
         .merge(users::router())
 }
 
-/// Parse common time-range / pagination params used across query endpoints.
+/// Parsea los parámetros comunes de rango de tiempo / paginación usados en los endpoints de consulta.
 pub mod params {
     use std::fmt::Display;
     use std::str::FromStr;
@@ -50,7 +50,7 @@ pub mod params {
     use serde::de::{Deserializer, Error};
     use serde::Deserialize;
 
-    /// Accept either a numeric or a string-encoded number for query params.
+    /// Acepta tanto un número como un número codificado en string para los query params.
     pub fn de_opt_num<'de, T, D>(d: D) -> Result<Option<T>, D::Error>
     where
         T: FromStr + Deserialize<'de>,

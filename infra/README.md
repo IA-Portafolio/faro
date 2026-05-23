@@ -26,9 +26,9 @@ El workflow `deploy.yml` se ejecuta dentro de `infra-iaportafolio`. Sirve para e
 | Operación              | Comando                                    |
 | ---------------------- | ------------------------------------------ |
 | Estado                 | `sudo /opt/actions-runner/svc.sh status`   |
-| Stop                   | `sudo /opt/actions-runner/svc.sh stop`     |
-| Start                  | `sudo /opt/actions-runner/svc.sh start`    |
-| Logs                   | `journalctl -u 'actions.runner.*' -f`      |
+| Detener                | `sudo /opt/actions-runner/svc.sh stop`     |
+| Iniciar                | `sudo /opt/actions-runner/svc.sh start`    |
+| Registros              | `journalctl -u 'actions.runner.*' -f`      |
 | Re-registrar (token nuevo)| `sudo /opt/actions-runner/svc.sh uninstall && REG_TOKEN=... bash infra/runner-install.sh` |
 
 ### Qué hace el workflow `deploy.yml`
@@ -57,7 +57,7 @@ Tags con formato `sdk-<lenguaje>-v<semver>` disparan publicación en el registry
 | `sdk-flutter-v0.1.0`       | pub.dev         | `faro_sdk`                 |
 | `sdk-kotlin-v0.1.0`        | Maven Central   | `com.iaportafolio:faro`    |
 
-Tirar un tag:
+Lanzar un tag:
 
 ```bash
 git tag sdk-node-v0.1.0
@@ -72,7 +72,7 @@ En **Settings → Secrets and variables → Actions**:
 
 | Secret                      | Para qué                                  | Cómo obtenerlo |
 | --------------------------- | ----------------------------------------- | -------------- |
-| `NPM_TOKEN`                 | Publicar a npm                            | npmjs.com → Profile → Access Tokens → Generate **Granular** token con permiso `Read and write` a la organización `@faro`. **Antes** crea la org `@faro` o el scope. |
+| `NPM_TOKEN`                 | Publicar a npm                            | npmjs.com → Profile → Access Tokens → Generate **Granular** token con permiso `Read and write` sobre la organización `@faro`. **Antes** crea la org `@faro` o el scope. |
 | `PYPI_API_TOKEN` *(o configurar Trusted Publishing — recomendado)* | Publicar a PyPI | pypi.org → Account settings → API tokens. **Trusted publishing** (sin secret) es preferible: registra el proyecto en pypi.org/manage/account/publishing/ apuntando a este repo + workflow. |
 | `PUB_CREDENTIALS_JSON`      | Publicar a pub.dev                        | Localmente: `dart pub token add https://pub.dev` → autoriza con Google → copia el contenido de `~/.config/dart/pub-credentials.json` |
 | `OSSRH_USERNAME`            | Maven Central                             | Tu username en https://central.sonatype.com/ (o legacy s01.oss.sonatype.org) |

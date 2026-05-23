@@ -38,17 +38,17 @@ func main() {
                 "order_id":    r.URL.Query().Get("order_id"),
                 "http.method": r.Method,
             })
-            http.Error(w, "failed", http.StatusInternalServerError)
+            http.Error(w, "fallo", http.StatusInternalServerError)
             return
         }
         w.WriteHeader(http.StatusNoContent)
     })
 
-    // Wrap your mux to capture panics from any handler:
+    // Envuelve tu mux para capturar panics de cualquier handler:
     http.ListenAndServe(":8080", faro.Default().HTTPMiddleware(mux))
 }
 
-func charge(r *http.Request) error { return errors.New("upstream timeout") }
+func charge(r *http.Request) error { return errors.New("timeout del upstream") }
 ```
 
 ## Captura de panics en goroutines

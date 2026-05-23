@@ -59,7 +59,7 @@
   <div class="card"><div class="label">Errores</div><div class="value" style="color: var(--danger);">{summary?.error_count?.toLocaleString() ?? '–'}</div></div>
   <div class="card"><div class="label">Servicios</div><div class="value">{summary?.service_count ?? '–'}</div></div>
   <div class="card"><div class="label">Trazas</div><div class="value">{summary?.trace_count?.toLocaleString() ?? '–'}</div></div>
-  <div class="card"><div class="label">Issues abiertas</div><div class="value" style="color: var(--warn);">{summary?.open_issue_count ?? '–'}</div></div>
+  <div class="card"><div class="label">Problemas abiertos</div><div class="value" style="color: var(--warn);">{summary?.open_issue_count ?? '–'}</div></div>
   <div class="card"><div class="label">Alertas activas</div><div class="value" style="color: var(--danger);">{summary?.firing_incident_count ?? '–'}</div></div>
   <div class="card"><div class="label">Monitores caídos</div><div class="value" style="color: var(--danger);">{summary?.monitors_down ?? 0}/{summary?.monitors_total ?? 0}</div></div>
 </div>

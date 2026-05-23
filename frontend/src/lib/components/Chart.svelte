@@ -57,7 +57,7 @@
 <div style="width: 100%; overflow: hidden;">
   {#if label}<div class="muted" style="font-size: 12px; margin-bottom: 4px;">{label}</div>{/if}
   {#if numeric.length === 0}
-    <div class="empty">No data</div>
+    <div class="empty">Sin datos</div>
   {:else}
     <svg viewBox="0 0 {width} {height}" style="width: 100%; height: {height}px;" preserveAspectRatio="none">
       {#each gridLines as gl}

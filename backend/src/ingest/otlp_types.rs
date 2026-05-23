@@ -340,8 +340,8 @@ pub struct KvListValue {
     pub values: Vec<KeyValue>,
 }
 
-/// Some OTel exporters emit large integers as JSON strings (since 64-bit ints
-/// exceed JS safe-int range); others emit them as numbers. Accept either.
+/// Algunos exportadores OTel emiten enteros grandes como strings JSON (porque los enteros
+/// de 64 bits exceden el rango seguro de JS); otros los emiten como números. Acepta ambos.
 #[derive(Debug, Clone)]
 pub struct StringOrU64(pub u64);
 

@@ -17,7 +17,7 @@
   let loading = true;
   let error = '';
 
-  // Form state
+  // Estado del formulario
   let email = '';
   let name = '';
   let role = 'admin';

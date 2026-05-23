@@ -6,7 +6,7 @@
  *   // app/faro-client.tsx
  *   'use client';
  *   import { useEffect } from 'react';
- *   import { initFaroClient } from '@faro/nextjs/client';
+ *   import { initFaroClient } from '@iaportafolio/nextjs/client';
  *
  *   export function FaroClient() {
  *     useEffect(() => {
@@ -22,7 +22,7 @@
  *   // and render <FaroClient /> inside app/layout.tsx
  */
 
-import type { FaroOptions } from '@faro/node';
+import type { FaroOptions } from '@iaportafolio/node';
 
 let client: ReturnType<typeof newClient> | null = null;
 

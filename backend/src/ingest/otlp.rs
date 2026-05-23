@@ -71,7 +71,7 @@ async fn ingest_logs(
             }
         }
     }
-    tracing::debug!(accepted, "otlp logs ingested");
+    tracing::debug!(accepted, "logs otlp ingestados");
     Ok(ok().into_response())
 }
 
@@ -152,7 +152,7 @@ async fn ingest_traces(
             }
         }
     }
-    tracing::debug!(accepted, "otlp spans ingested");
+    tracing::debug!(accepted, "spans otlp ingestados");
     Ok(ok().into_response())
 }
 
@@ -240,7 +240,7 @@ async fn ingest_metrics(
             }
         }
     }
-    tracing::debug!(accepted, "otlp metrics ingested");
+    tracing::debug!(accepted, "métricas otlp ingestadas");
     Ok(ok().into_response())
 }
 

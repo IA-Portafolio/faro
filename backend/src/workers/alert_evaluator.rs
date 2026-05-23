@@ -9,9 +9,9 @@ use uuid::Uuid;
 use crate::state::SharedState;
 use crate::storage::{AlertIncidentRow, AlertRuleRow};
 
-/// Evaluates each alert rule on its own cadence. A rule's `query` must return a
-/// single Float64 value, optionally referencing :window_seconds. We append
-/// FORMAT JSONEachRow at execution time.
+/// Evalúa cada regla de alerta en su propia cadencia. El `query` de una regla debe devolver
+/// un único valor Float64, opcionalmente referenciando :window_seconds. Añadimos
+/// FORMAT JSONEachRow en tiempo de ejecución.
 pub fn start_alert_evaluator(state: SharedState) {
     tokio::spawn(async move {
         let mut next_run: HashMap<Uuid, Instant> = HashMap::new();
@@ -29,7 +29,7 @@ pub fn start_alert_evaluator(state: SharedState) {
                 _ = reload.tick() => {
                     match load_rules(&state).await {
                         Ok(r) => rules = r,
-                        Err(e) => tracing::warn!(error = %e, "alert rule reload failed"),
+                        Err(e) => tracing::warn!(error = %e, "falló el reload de reglas de alerta"),
                     }
                 }
                 _ = tick.tick() => {
@@ -83,7 +83,7 @@ async fn evaluate_rule(
         Ok(Some(s)) => s.value.unwrap_or(0.0),
         Ok(None) => 0.0,
         Err(e) => {
-            tracing::warn!(rule = %rule.name, error = %e, "alert query failed");
+            tracing::warn!(rule = %rule.name, error = %e, "falló el query de alerta");
             return;
         }
     };
@@ -95,7 +95,7 @@ async fn evaluate_rule(
         "lte" => value <= rule.threshold,
         "eq" => (value - rule.threshold).abs() < f64::EPSILON,
         _ => {
-            tracing::warn!(condition = %rule.condition, "unknown condition operator");
+            tracing::warn!(condition = %rule.condition, "operador de condición desconocido");
             return;
         }
     };
@@ -118,18 +118,18 @@ async fn evaluate_rule(
                 version: 1,
             };
             if let Err(e) = state.ch.insert("faro.alert_incidents", &[incident.clone()]).await {
-                tracing::error!(error = %e, "incident insert failed");
+                tracing::error!(error = %e, "falló el insert del incidente");
             }
             active.insert(rule.id, incident.clone());
             let _ = crate::notify::dispatch(&rule.notification_targets, &incident).await;
-            tracing::warn!(rule = %rule.name, value, threshold = rule.threshold, "alert firing");
+            tracing::warn!(rule = %rule.name, value, threshold = rule.threshold, "alerta disparada");
         }
     } else if let Some(mut incident) = active.remove(&rule.id) {
         incident.resolved_at = Some(now);
         incident.status = "resolved".into();
         incident.version = incident.version.saturating_add(1);
         if let Err(e) = state.ch.insert("faro.alert_incidents", &[incident.clone()]).await {
-            tracing::error!(error = %e, "incident resolve insert failed");
+            tracing::error!(error = %e, "falló el insert de resolución del incidente");
         }
         let _ = crate::notify::dispatch(&rule.notification_targets, &incident).await;
         tracing::info!(rule = %rule.name, "alert resolved");

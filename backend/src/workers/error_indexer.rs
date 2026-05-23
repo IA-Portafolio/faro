@@ -6,9 +6,9 @@ use crate::fingerprint::fingerprint;
 use crate::state::{LiveBus, SharedState};
 use crate::storage::{AttrMap, ErrorEventRow, LogRow};
 
-/// Subscribes to the live logs broadcast bus, detects error-level records, computes
-/// a fingerprint, and writes them to faro.error_events. Counts are computed at read
-/// time from that table — no separate counter needs to be maintained.
+/// Se suscribe al bus de broadcast de logs en vivo, detecta registros con nivel de error,
+/// calcula una huella y los escribe en faro.error_events. Los conteos se calculan en lectura
+/// desde esa tabla — no se mantiene un contador aparte.
 pub fn start_error_indexer(state: SharedState, bus: LiveBus) {
     let mut rx = bus.logs.subscribe();
     let ch = state.ch.clone();
@@ -31,7 +31,7 @@ pub fn start_error_indexer(state: SharedState, bus: LiveBus) {
                             }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
-                            tracing::warn!(missed = n, "error indexer lagged behind log bus");
+                            tracing::warn!(missed = n, "indexador de errores rezagado respecto al bus de logs");
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
@@ -47,8 +47,8 @@ pub fn start_error_indexer(state: SharedState, bus: LiveBus) {
 }
 
 fn log_to_error(log: &LogRow) -> Option<ErrorEventRow> {
-    // Only consider WARN+ entries; treat ERROR/FATAL as definite errors. WARN is
-    // included only if it carries an exception.* attribute (OTel convention).
+    // Solo considera entradas WARN+; trata ERROR/FATAL como errores definitivos. WARN
+    // se incluye únicamente si trae un atributo exception.* (convención de OTel).
     if log.severity_number < 13 {
         return None;
     }

@@ -9,7 +9,7 @@
 
   let ready = false;
 
-  // The login page handles its own auth check. Everything else needs a session.
+  // La página de login maneja su propia comprobación de auth. Todo lo demás necesita sesión.
   $: isLogin = $page.url.pathname.startsWith('/login');
 
   onMount(async () => {
@@ -22,7 +22,7 @@
       currentUser.set(u);
       ready = true;
     } catch (_e) {
-      // Redirect to /login preserving the intended destination.
+      // Redirige a /login preservando el destino original.
       const next = $page.url.pathname + $page.url.search;
       await goto('/login?next=' + encodeURIComponent(next), { replaceState: true });
     }

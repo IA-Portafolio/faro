@@ -95,12 +95,12 @@ pub fn json_to_attr_map(v: Option<&Value>) -> AttrMap {
     out
 }
 
-// Re-exported for clarity even though the ingest::resolve_project handles validation now.
+// Re-exportado por claridad aunque ingest::resolve_project ya maneja la validación.
 #[allow(dead_code)]
 pub fn legacy_require_token(_h: &HeaderMap, _t: &str) -> bool {
     false
 }
 
-// Marker so error.rs's Unauthorized variant remains used.
+// Marcador para mantener en uso la variante Unauthorized de error.rs.
 #[allow(dead_code)]
 fn _types(_: ApiError) {}

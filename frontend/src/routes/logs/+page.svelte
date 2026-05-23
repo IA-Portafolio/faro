@@ -4,6 +4,7 @@
   import { timeRange, rangeMinutes, formatTimestamp, selectedProject } from '$lib/stores';
   import TimeRangePicker from '$lib/components/TimeRangePicker.svelte';
   import SeverityBadge from '$lib/components/SeverityBadge.svelte';
+  import LogVolumeHistogram from '$lib/components/LogVolumeHistogram.svelte';
 
   let logs: LogRow[] = [];
   let service = '';
@@ -15,20 +16,27 @@
   let live = false;
   let evtSource: EventSource | null = null;
   let selected: LogRow | null = null;
+  let subRange: { from: string; to: string } | null = null;
 
   async function load(): Promise<void> {
     loading = true;
     error = '';
     try {
-      logs = await fetchLogs({
-        last_minutes: rangeMinutes($timeRange),
+      const base: Record<string, unknown> = {
         project: $selectedProject || undefined,
         service: service || undefined,
         min_severity: minSeverity || undefined,
         query: queryStr || undefined,
         trace_id: traceId || undefined,
         limit: 500
-      });
+      };
+      if (subRange) {
+        base.from = subRange.from;
+        base.to = subRange.to;
+      } else {
+        base.last_minutes = rangeMinutes($timeRange);
+      }
+      logs = await fetchLogs(base);
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
@@ -36,12 +44,35 @@
     }
   }
 
+  function onHistogramSelection(e: CustomEvent<{ from: string; to: string } | null>): void {
+    subRange = e.detail;
+    if (subRange && live) {
+      // El live tail no tiene sentido sobre un sub-rango congelado — se detiene.
+      stopLive();
+    }
+    load();
+  }
+
+  function clearSubRange(): void {
+    if (!subRange) return;
+    subRange = null;
+    load();
+  }
+
+  function stopLive(): void {
+    evtSource?.close();
+    evtSource = null;
+    live = false;
+  }
+
   function toggleLive(): void {
     if (live) {
-      evtSource?.close();
-      evtSource = null;
-      live = false;
+      stopLive();
       return;
+    }
+    if (subRange) {
+      // Limpia el sub-rango al iniciar el live tail.
+      subRange = null;
     }
     const params = new URLSearchParams();
     if ($selectedProject) params.set('project', $selectedProject);
@@ -59,25 +90,48 @@
       }
     });
     evtSource.onerror = () => {
-      console.warn('SSE error');
+      console.warn('error de SSE');
     };
     live = true;
   }
 
   onMount(load);
   onDestroy(() => evtSource?.close());
-  $: $timeRange, $selectedProject, load();
+
+  // Recarga al cambiar rango / proyecto, y resetea cualquier selección de sub-rango
+  // activa para que no se arrastre entre rangos.
+  let prevRange = $timeRange;
+  let prevProject = $selectedProject;
+  $: {
+    if (prevRange !== $timeRange || prevProject !== $selectedProject) {
+      prevRange = $timeRange;
+      prevProject = $selectedProject;
+      subRange = null;
+      load();
+    }
+  }
 </script>
 
 <div class="page-header">
   <h1 class="page-title">Logs</h1>
   <div class="flex gap-12 center">
     <TimeRangePicker />
-    <button class:primary={live} on:click={toggleLive}>
+    <button class:primary={live} on:click={toggleLive} disabled={!!subRange && !live} title={subRange ? 'Limpia el sub-rango para activar el tail' : ''}>
       {#if live}<span class="live-dot"></span> En vivo{:else}▶ Activar tail{/if}
     </button>
   </div>
 </div>
+
+<LogVolumeHistogram
+  lastMinutes={rangeMinutes($timeRange)}
+  service={service || undefined}
+  minSeverity={minSeverity || undefined}
+  query={queryStr || undefined}
+  traceId={traceId || undefined}
+  project={$selectedProject || undefined}
+  selection={subRange}
+  on:selectionchange={onHistogramSelection}
+/>
 
 <div class="toolbar">
   <input placeholder="Servicio" bind:value={service} on:change={load} style="width: 180px" />
@@ -91,6 +145,9 @@
   <input placeholder="Buscar en el mensaje…" bind:value={queryStr} on:keydown={(e) => e.key === 'Enter' && load()} style="flex: 1; min-width: 200px;" />
   <input placeholder="ID de traza" bind:value={traceId} on:keydown={(e) => e.key === 'Enter' && load()} class="mono" style="width: 200px;" />
   <button on:click={load}>{loading ? 'Cargando…' : 'Buscar'}</button>
+  {#if subRange}
+    <button class="danger" on:click={clearSubRange} title="Volver a ver todo el rango">Limpiar sub-rango</button>
+  {/if}
 </div>
 
 {#if error}<div style="color: var(--danger);">Error: {error}</div>{/if}

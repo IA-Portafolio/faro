@@ -1,11 +1,11 @@
-# @faro/node
+# @iaportafolio/node
 
 SDK de Node.js / TypeScript para Faro.
 
 ## Instalación
 
 ```bash
-npm install @faro/node
+npm install @iaportafolio/node
 ```
 
 Requiere Node.js ≥ 18 (usa `fetch` nativo).
@@ -13,7 +13,7 @@ Requiere Node.js ≥ 18 (usa `fetch` nativo).
 ## Uso
 
 ```ts
-import * as faro from '@faro/node';
+import * as faro from '@iaportafolio/node';
 
 faro.init({
   endpoint: 'https://faro.iaportafolio.com',
@@ -54,7 +54,7 @@ await faro.close();
 
 ## Logger integrado (pino / winston)
 
-`@faro/node` no instala hooks en otros loggers; usa los atajos `info/warn/error` directamente o llama desde un transport custom:
+`@iaportafolio/node` no instala hooks en otros loggers; usa los atajos `info/warn/error` directamente o llama desde un transport custom:
 
 ```ts
 // pino transport simplificado

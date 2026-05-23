@@ -18,7 +18,7 @@
       const next = $page.url.searchParams.get('next') || '/';
       await goto(next, { replaceState: true });
     } catch (_e) {
-      // not logged in — show form
+      // sin sesión — muestra el formulario
     }
   });
 

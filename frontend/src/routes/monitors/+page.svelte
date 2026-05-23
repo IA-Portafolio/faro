@@ -15,7 +15,7 @@
   let monitors: Monitor[] = [];
   let projects: Project[] = [];
   let uptime: Record<string, { uptime_pct: number; avg_duration_ms: number; total: number }> = {};
-  // The edit form mirrors Monitor plus a `project` slug field for create flow.
+  // El formulario de edición replica Monitor más un campo `project` (slug) para el flujo de creación.
   let editing: (Partial<Monitor> & { project?: string }) | null = null;
   let error = '';
 

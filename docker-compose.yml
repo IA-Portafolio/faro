@@ -20,12 +20,12 @@ services:
     volumes:
       - clickhouse_data:/var/lib/clickhouse
       - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
-      - ./clickhouse/config/users.d:/etc/clickhouse-server/users.d:ro
+      - ./clickhouse/config/users.d/faro.xml:/etc/clickhouse-server/users.d/faro.xml:ro
     ports:
       - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"
       - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8123/ping"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -65,6 +65,12 @@ services:
       CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-faro}
       REDIS_URL: redis://redis:6379
       FARO_INGEST_TOKEN: ${FARO_INGEST_TOKEN:-dev-ingest-token}
+      FARO_BOOTSTRAP_PROJECT_SLUG: ${FARO_BOOTSTRAP_PROJECT_SLUG:-default}
+      FARO_BOOTSTRAP_PROJECT_NAME: ${FARO_BOOTSTRAP_PROJECT_NAME:-Default}
+      FARO_BOOTSTRAP_INGEST_TOKEN: ${FARO_BOOTSTRAP_INGEST_TOKEN:-dev-ingest-token}
+      FARO_BOOTSTRAP_ADMIN_EMAIL: ${FARO_BOOTSTRAP_ADMIN_EMAIL:-admin@local.test}
+      FARO_BOOTSTRAP_ADMIN_PASSWORD: ${FARO_BOOTSTRAP_ADMIN_PASSWORD:-admin12345}
+      FARO_BOOTSTRAP_ADMIN_NAME: ${FARO_BOOTSTRAP_ADMIN_NAME:-Admin}
       RUST_LOG: ${RUST_LOG:-info,faro=debug}
     ports:
       - "${FARO_API_PORT:-8080}:8080"   # REST API

@@ -25,11 +25,11 @@ fn rfc3339_millis_opt<S: serde::Serializer>(
     }
 }
 
-/// Accept either RFC3339 ("2024-01-01T12:34:56.123Z") or ClickHouse's space-separated
-/// `toString(DateTime64)` output ("2024-01-01 12:34:56.123456789").
+/// Acepta tanto RFC3339 ("2024-01-01T12:34:56.123Z") como la salida con espacio de
+/// `toString(DateTime64)` de ClickHouse ("2024-01-01 12:34:56.123456789").
 pub fn de_dt<'de, D: Deserializer<'de>>(d: D) -> Result<DateTime<Utc>, D::Error> {
     let s = String::deserialize(d)?;
-    parse_dt(&s).ok_or_else(|| serde::de::Error::custom(format!("invalid datetime: {s}")))
+    parse_dt(&s).ok_or_else(|| serde::de::Error::custom(format!("datetime inválido: {s}")))
 }
 
 fn de_dt_opt<'de, D: Deserializer<'de>>(d: D) -> Result<Option<DateTime<Utc>>, D::Error> {

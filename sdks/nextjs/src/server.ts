@@ -8,7 +8,7 @@
  *
  *   // instrumentation.ts
  *   export async function register() {
- *     const { registerFaro } = await import('@faro/nextjs/server');
+ *     const { registerFaro } = await import('@iaportafolio/nextjs/server');
  *     registerFaro({
  *       endpoint: process.env.FARO_ENDPOINT!,
  *       token: process.env.FARO_TOKEN!,
@@ -19,12 +19,12 @@
  *   }
  *
  *   export async function onRequestError(err: unknown, request: { path: string; method: string }) {
- *     const { captureRequestError } = await import('@faro/nextjs/server');
+ *     const { captureRequestError } = await import('@iaportafolio/nextjs/server');
  *     captureRequestError(err, request);
  *   }
  */
 
-import * as faro from '@faro/node';
+import * as faro from '@iaportafolio/node';
 
 export type ServerOptions = faro.FaroOptions;
 

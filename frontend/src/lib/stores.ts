@@ -25,7 +25,7 @@ if (browser) {
       if (v) window.localStorage.setItem(PROJECT_KEY, v);
       else window.localStorage.removeItem(PROJECT_KEY);
     } catch {
-      // ignore quota errors
+      // ignora errores de cuota
     }
   });
 }

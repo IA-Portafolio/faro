@@ -8,7 +8,7 @@ use tokio_stream::StreamExt;
 
 use crate::storage::LogRow;
 
-/// Convert a broadcast receiver into an SSE stream, dropping lagged messages.
+/// Convierte un receptor broadcast en un stream SSE, descartando mensajes rezagados.
 pub fn live_logs_sse(
     rx: tokio::sync::broadcast::Receiver<LogRow>,
     filter: Option<LogFilter>,

@@ -7,8 +7,8 @@ use crate::config::Config;
 use crate::projects::ProjectCache;
 use crate::storage::{Client, LogRow, MetricRow, MonitorResultRow, SpanRow};
 
-/// Channel-based batching: ingestion handlers push rows here, a writer task pulls
-/// batches and flushes them to ClickHouse.
+/// Batching basado en canales: los handlers de ingesta empujan filas aquí y una tarea
+/// writer toma lotes y los vuelca a ClickHouse.
 pub struct IngestChannels {
     pub logs_tx: mpsc::Sender<LogRow>,
     pub spans_tx: mpsc::Sender<SpanRow>,
@@ -39,7 +39,7 @@ impl IngestChannels {
     }
 }
 
-/// Broadcast bus for live tailing & cross-task notifications.
+/// Bus de broadcast para live tailing y notificaciones entre tareas.
 #[derive(Clone)]
 pub struct LiveBus {
     pub logs: broadcast::Sender<LogRow>,

@@ -42,7 +42,7 @@
 </script>
 
 <div class="page-header">
-  <h1 class="page-title">{issue?.exception_type ?? 'Issue'}</h1>
+  <h1 class="page-title">{issue?.exception_type ?? 'Problema'}</h1>
   {#if issue}
     <div class="flex gap-8">
       <button on:click={() => setStatus('resolved')}>Marcar resuelto</button>

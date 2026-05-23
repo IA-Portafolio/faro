@@ -103,8 +103,8 @@ async fn create_project(
     if slug.is_empty() {
         return Err(ApiError::BadRequest("slug vacío".into()));
     }
-    // Check slug uniqueness — ReplacingMergeTree dedupes by `id`, not by slug, so we
-    // enforce slug uniqueness at the app layer.
+    // Verifica unicidad del slug — ReplacingMergeTree deduplica por `id`, no por slug,
+    // así que la unicidad del slug se impone en la capa de aplicación.
     let existing: Option<ProjectRow> = state
         .ch
         .select_one(&format!(
@@ -129,7 +129,7 @@ async fn create_project(
         version: now.timestamp_millis() as u64,
     };
     state.ch.insert("faro.projects", &[row.clone()]).await?;
-    // Refresh cache so the new token can be used immediately.
+    // Refresca la caché para que el nuevo token pueda usarse de inmediato.
     let _ = state.projects.reload(&state.ch).await;
     Ok(Json(ProjectView::from_row(row, &state.cfg.public_base_url)))
 }
@@ -164,7 +164,7 @@ async fn update_project(
         .ok_or(ApiError::NotFound)?;
     row.name = input.name;
     row.description = input.description;
-    // slug is immutable; ignore any value provided.
+    // el slug es inmutable; ignora cualquier valor recibido.
     row.updated_at = Utc::now();
     row.version = Utc::now().timestamp_millis() as u64;
     state.ch.insert("faro.projects", &[row.clone()]).await?;

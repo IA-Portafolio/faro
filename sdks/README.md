@@ -25,7 +25,7 @@ init({
   environment: "production",                   // dev/staging/production
   release:  "v1.2.3",                          // opcional, para correlacionar con deploy
   attributes: { region: "eu-west-1" },         // adjuntos a TODOS los eventos
-  // Tuning opcional:
+  // Ajustes opcionales:
   flushIntervalMs: 750,
   maxBatchSize: 200,
   maxQueueSize: 10_000,
@@ -50,9 +50,9 @@ Si prefieres **OpenTelemetry** estándar en lugar del SDK propio, apunta el OTLP
 
 | Lenguaje / Plataforma | Carpeta              | Instalación                                   |
 | --------------------- | -------------------- | --------------------------------------------- |
-| Node.js + TypeScript  | [`node/`](./node)    | `npm install @faro/node`                      |
-| Next.js               | [`nextjs/`](./nextjs)| `npm install @faro/nextjs`                    |
-| Expo / React Native   | [`expo/`](./expo)    | `npm install @faro/expo`                      |
+| Node.js + TypeScript  | [`node/`](./node)    | `npm install @iaportafolio/node`                      |
+| Next.js               | [`nextjs/`](./nextjs)| `npm install @iaportafolio/nextjs`                    |
+| Expo / React Native   | [`expo/`](./expo)    | `npm install @iaportafolio/expo`                      |
 | Python                | [`python/`](./python)| `pip install faro-sdk`                        |
 | Go                    | [`go/`](./go)        | `go get github.com/iaportafolio/faro-go`      |
 | Flutter (Dart)        | [`flutter/`](./flutter)| `flutter pub add faro_sdk`                  |

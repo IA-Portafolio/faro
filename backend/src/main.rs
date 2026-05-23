@@ -32,35 +32,35 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = Config::from_env()?;
-    tracing::info!(api = %cfg.api_addr, otlp = %cfg.otlp_addr, "starting faro");
+    tracing::info!(api = %cfg.api_addr, otlp = %cfg.otlp_addr, "arrancando faro");
 
     let storage = storage::Client::new(&cfg).await?;
     storage.wait_until_ready().await?;
 
     let state = Arc::new(AppState::new(cfg.clone(), storage));
 
-    // Project bootstrap + cache.
+    // Bootstrap + caché de proyectos.
     if let Err(e) = projects::bootstrap_if_empty(&state).await {
-        tracing::warn!(error = %e, "project bootstrap failed");
+        tracing::warn!(error = %e, "falló el bootstrap de proyectos");
     }
     if let Err(e) = state.projects.reload(&state.ch).await {
-        tracing::warn!(error = %e, "initial project cache load failed");
+        tracing::warn!(error = %e, "falló la carga inicial de la caché de proyectos");
     }
     projects::spawn_refresh(state.clone());
 
-    // Dashboard admin bootstrap.
+    // Bootstrap del admin del dashboard.
     if let Err(e) = auth::bootstrap_admin_if_empty(&state).await {
-        tracing::warn!(error = %e, "admin bootstrap failed");
+        tracing::warn!(error = %e, "falló el bootstrap de admin");
     }
 
-    // Background workers.
+    // Workers en segundo plano.
     let bus = state.live_bus.clone();
     workers::start_ingest_writers(state.clone());
     workers::start_monitor_runner(state.clone());
     workers::start_alert_evaluator(state.clone());
     workers::start_error_indexer(state.clone(), bus);
 
-    // Two listeners so OTLP and the dashboard API can be exposed independently.
+    // Dos listeners para poder exponer OTLP y la API del dashboard de forma independiente.
     let api_router = api::router(state.clone());
     let otlp_router = ingest::otlp_router(state.clone());
 
@@ -72,8 +72,8 @@ async fn main() -> Result<()> {
 
     tokio::select! {
         _ = signal::ctrl_c() => tracing::info!("ctrl-c received, shutting down"),
-        r = api_task => { tracing::error!(?r, "api server exited"); }
-        r = otlp_task => { tracing::error!(?r, "otlp server exited"); }
+        r = api_task => { tracing::error!(?r, "el servidor api terminó"); }
+        r = otlp_task => { tracing::error!(?r, "el servidor otlp terminó"); }
     }
 
     Ok(())
@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
 
 async fn serve(name: &'static str, addr: String, router: Router) -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
-    tracing::info!(%name, %addr, "listening");
+    tracing::info!(%name, %addr, "escuchando");
     let app = router
         .layer(TraceLayer::new_for_http())
         .layer(

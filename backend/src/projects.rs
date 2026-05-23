@@ -65,21 +65,22 @@ impl ProjectCache {
     }
 }
 
-/// Background task that refreshes the cache every 15 seconds.
+/// Tarea en segundo plano que refresca la caché cada 15 segundos.
 pub fn spawn_refresh(state: crate::state::SharedState) {
     tokio::spawn(async move {
         let mut tick = interval(Duration::from_secs(15));
         loop {
             tick.tick().await;
             if let Err(e) = state.projects.reload(&state.ch).await {
-                tracing::warn!(error = %e, "project cache reload failed");
+                tracing::warn!(error = %e, "falló el reload de la caché de proyectos");
             }
         }
     });
 }
 
-/// Bootstrap a default project from env vars if no projects exist. Lets a fresh
-/// deployment start ingesting without manually hitting the API first.
+/// Crea un proyecto por defecto a partir de variables de entorno si no existe ningún
+/// proyecto. Permite que un despliegue nuevo empiece a ingestar sin tener que llamar
+/// manualmente a la API primero.
 pub async fn bootstrap_if_empty(state: &crate::state::SharedState) -> anyhow::Result<()> {
     let count: Option<CountRow> = state
         .ch
@@ -111,7 +112,7 @@ pub async fn bootstrap_if_empty(state: &crate::state::SharedState) -> anyhow::Re
         version: 1,
     };
     state.ch.insert("faro.projects", &[row]).await?;
-    tracing::info!(%slug, "bootstrap project created");
+    tracing::info!(%slug, "proyecto de bootstrap creado");
     Ok(())
 }
 

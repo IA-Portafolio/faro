@@ -8,14 +8,14 @@ pub mod logs;
 pub mod otlp;
 pub mod otlp_types;
 
-/// OTLP-compatible HTTP endpoints, served on a dedicated port (defaults to 4318)
-/// so they can be exposed independently from the dashboard API.
+/// Endpoints HTTP compatibles con OTLP, servidos en un puerto dedicado (por defecto 4318)
+/// para poder exponerlos de forma independiente de la API del dashboard.
 pub fn otlp_router(state: SharedState) -> Router {
     Router::new().merge(otlp::router()).with_state(state)
 }
 
-/// Resolve the bearer token in incoming headers to a project slug. Returns 401
-/// when the token is missing or doesn't match any known project.
+/// Resuelve el token Bearer de las cabeceras entrantes a un slug de proyecto. Devuelve 401
+/// cuando el token falta o no coincide con ningún proyecto conocido.
 pub fn resolve_project(state: &SharedState, headers: &HeaderMap) -> Result<String, ApiError> {
     let token = extract_token(headers).ok_or(ApiError::Unauthorized)?;
     state.projects.lookup(&token).ok_or(ApiError::Unauthorized)

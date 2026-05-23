@@ -54,12 +54,12 @@ curl -X POST http://localhost:8080/api/v1/ingest/logs \
     "logs": [
       {
         "level": "INFO",
-        "message": "charge succeeded",
+        "message": "cobro exitoso",
         "attributes": { "customer_id": "cus_42", "amount": "19.99" }
       },
       {
         "level": "ERROR",
-        "message": "payment provider 502",
+        "message": "proveedor de pagos 502",
         "attributes": {
           "exception.type": "UpstreamError",
           "exception.message": "bad gateway",
@@ -142,7 +142,7 @@ Pico de tasa de errores:
 
 ```json
 {
-  "name": "High error rate",
+  "name": "Tasa de errores alta",
   "source": "logs",
   "query": "(SELECT countIf(severity_number >= 17) FROM faro.logs WHERE timestamp > now() - INTERVAL :window_seconds SECOND)",
   "condition": "gt",
@@ -173,7 +173,7 @@ Uptime de monitor por debajo del 99%:
 
 ```json
 {
-  "name": "Checkout endpoint down",
+  "name": "Endpoint de checkout caído",
   "source": "monitors",
   "query": "(SELECT sum(success)/count()*100 FROM faro.monitor_results WHERE monitor_id = 'YOUR-UUID' AND timestamp > now() - INTERVAL :window_seconds SECOND)",
   "condition": "lt",

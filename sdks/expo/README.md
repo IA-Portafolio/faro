@@ -1,15 +1,15 @@
-# @faro/expo
+# @iaportafolio/expo
 
 SDK para Expo / React Native. Sin módulos nativos — funciona en Expo Go sin development build.
 
 ```bash
-npx expo install @faro/expo
+npx expo install @iaportafolio/expo
 ```
 
 ```tsx
 // App.tsx
 import { useEffect } from 'react';
-import * as faro from '@faro/expo';
+import * as faro from '@iaportafolio/expo';
 
 faro.init({
   endpoint: 'https://faro.iaportafolio.com',

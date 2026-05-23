@@ -59,12 +59,12 @@ async fn list_traces(
         filters.push(format!("duration_ns >= {}", min_ms * 1_000_000));
     }
 
-    // Re-aggregate from spans on read so we always reflect the latest data.
-    // Inner alias `ts` avoids shadowing the column `timestamp` under CH 24's analyzer
-    // (otherwise toUnixTimestamp64Nano() receives the String alias and errors out).
-    // Inner aliases use distinct names (ts, svc, root, dur, status, count) to avoid
-    // shadowing actual columns under CH 24's new analyzer; the outer SELECT renames
-    // them back to the API contract.
+    // Re-agrega desde spans en cada lectura para reflejar siempre los datos más recientes.
+    // El alias interno `ts` evita sombrear la columna `timestamp` bajo el analizador de CH 24
+    // (de lo contrario toUnixTimestamp64Nano() recibe el alias String y falla).
+    // Los alias internos usan nombres distintos (ts, svc, root, dur, status, count) para
+    // evitar sombrear columnas reales con el nuevo analizador de CH 24; el SELECT externo
+    // los renombra al contrato de la API.
     let sql = format!(
         "SELECT trace_id, toString(ts) AS timestamp, svc AS service_name, root AS root_name, \
                 dur AS duration_ns, status AS status_code, span_count \

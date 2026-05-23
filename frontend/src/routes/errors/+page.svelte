@@ -58,7 +58,7 @@
 <div style="background: var(--bg-elev); border: 1px solid var(--border); border-radius: 6px; overflow: hidden;">
   <table>
     <thead>
-      <tr><th>Estado</th><th>Issue</th><th>Servicio</th><th>Eventos</th><th>Última vez</th></tr>
+      <tr><th>Estado</th><th>Problema</th><th>Servicio</th><th>Eventos</th><th>Última vez</th></tr>
     </thead>
     <tbody>
       {#each issues as i}

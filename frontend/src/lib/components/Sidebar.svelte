@@ -42,7 +42,7 @@
     try {
       await logout();
     } catch (_e) {
-      // ignore — we redirect anyway
+      // ignorar — igual redirigimos
     }
     currentUser.set(null);
     await goto('/login', { replaceState: true });

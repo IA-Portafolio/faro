@@ -1,20 +1,21 @@
 use sha2::{Digest, Sha256};
 
-/// Compute a deterministic fingerprint for an error so events that share the same
-/// underlying defect get bucketed together. Normalises stack frames (drops line
-/// numbers, hex addresses, anonymous closure suffixes) before hashing.
+/// Calcula una huella determinista para un error de modo que los eventos que comparten
+/// el mismo defecto subyacente quedan agrupados juntos. Normaliza los frames del stack
+/// (descarta números de línea, direcciones hex, sufijos anónimos de clausuras) antes de
+/// hashear.
 pub fn fingerprint(exception_type: &str, exception_message: &str, stack: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(exception_type.as_bytes());
     hasher.update(b"\x00");
 
-    // Normalise message: collapse digits + hex.
+    // Normaliza el mensaje: colapsa dígitos + hex.
     let norm_msg = normalize(exception_message);
     hasher.update(norm_msg.as_bytes());
     hasher.update(b"\x00");
 
     if !stack.is_empty() {
-        // Keep first 8 frames; that's plenty for grouping while still discriminating.
+        // Conserva los primeros 8 frames; alcanza para agrupar y aun así discriminar.
         let mut frames = 0;
         for line in stack.lines() {
             let l = normalize(line);

@@ -1,5 +1,5 @@
 {
-  "name": "@faro/node",
+  "name": "@iaportafolio/node",
   "version": "0.1.0",
   "description": "Faro SDK for Node.js and TypeScript",
   "license": "MIT",

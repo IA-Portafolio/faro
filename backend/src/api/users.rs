@@ -152,7 +152,7 @@ async fn delete_user(
     row.updated_at = Utc::now();
     row.version = Utc::now().timestamp_millis() as u64;
     state.ch.insert("faro.users", &[row]).await?;
-    // Also revoke any active sessions for that user — they should not stay logged in.
+    // También revoca cualquier sesión activa de ese usuario — no deben permanecer logueados.
     let _ = state.ch.query_raw(&format!(
         "INSERT INTO faro.user_sessions \
          SELECT token_hash, user_id, user_email, user_name, user_role, created_at, expires_at, \
@@ -176,7 +176,7 @@ async fn change_password(
     if input.password.len() < 8 {
         return Err(ApiError::BadRequest("contraseña de al menos 8 caracteres".into()));
     }
-    // Only the owner or an admin can change a password. For now everyone is admin.
+    // Solo el dueño o un admin pueden cambiar una contraseña. Por ahora todos son admin.
     let _ = admin;
     let mut row: UserRow = state
         .ch

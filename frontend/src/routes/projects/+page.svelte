@@ -19,7 +19,7 @@
   let error = '';
   let loading = true;
 
-  // Form state for create / edit modal
+  // Estado del formulario del modal de creación / edición
   let formName = '';
   let formSlug = '';
   let formDescription = '';
@@ -107,8 +107,8 @@
       {
         id: 'node',
         label: 'Node.js',
-        install: 'npm install @faro/node',
-        code: `import * as faro from '@faro/node';
+        install: 'npm install @iaportafolio/node',
+        code: `import * as faro from '@iaportafolio/node';
 
 faro.init({
   endpoint: '${base}',
@@ -129,10 +129,10 @@ try {
       {
         id: 'nextjs',
         label: 'Next.js',
-        install: 'npm install @faro/nextjs @faro/node',
+        install: 'npm install @iaportafolio/nextjs @iaportafolio/node',
         code: `// instrumentation.ts
 export async function register() {
-  const { registerFaro } = await import('@faro/nextjs/server');
+  const { registerFaro } = await import('@iaportafolio/nextjs/server');
   registerFaro({
     endpoint: '${base}',
     token: process.env.FARO_TOKEN!,
@@ -144,7 +144,7 @@ export async function register() {
 // app/faro-client.tsx
 'use client';
 import { useEffect } from 'react';
-import { initFaroClient } from '@faro/nextjs/client';
+import { initFaroClient } from '@iaportafolio/nextjs/client';
 
 export function FaroClient() {
   useEffect(() => {
@@ -247,8 +247,8 @@ try { pay() } catch (e: Throwable) {
       {
         id: 'expo',
         label: 'Expo / React Native',
-        install: 'npx expo install @faro/expo',
-        code: `import * as faro from '@faro/expo';
+        install: 'npx expo install @iaportafolio/expo',
+        code: `import * as faro from '@iaportafolio/expo';
 
 faro.init({
   endpoint: '${base}',

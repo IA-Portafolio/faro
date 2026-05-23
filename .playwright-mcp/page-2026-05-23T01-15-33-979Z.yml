@@ -1,0 +1,135 @@
+- generic [ref=e2]:
+  - generic [ref=e19]:
+    - complementary [ref=e20]:
+      - generic [ref=e23]: Faro
+      - generic [ref=e24]:
+        - text: Proyecto
+        - combobox [ref=e25]:
+          - option "Todos los proyectos" [selected]
+          - option "Default"
+      - navigation [ref=e26]:
+        - link "◐ Resumen" [ref=e27] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e28]: ◐
+          - generic [ref=e29]: Resumen
+        - link "≡ Logs" [ref=e30] [cursor=pointer]:
+          - /url: /logs
+          - generic [ref=e31]: ≡
+          - generic [ref=e32]: Logs
+        - link "⤳ Trazas" [ref=e33] [cursor=pointer]:
+          - /url: /traces
+          - generic [ref=e34]: ⤳
+          - generic [ref=e35]: Trazas
+        - link "◢ Métricas" [ref=e36] [cursor=pointer]:
+          - /url: /metrics
+          - generic [ref=e37]: ◢
+          - generic [ref=e38]: Métricas
+        - link "⚠ Errores" [ref=e39] [cursor=pointer]:
+          - /url: /errors
+          - generic [ref=e40]: ⚠
+          - generic [ref=e41]: Errores
+        - link "◉ Monitores" [ref=e42] [cursor=pointer]:
+          - /url: /monitors
+          - generic [ref=e43]: ◉
+          - generic [ref=e44]: Monitores
+        - link "⏰ Alertas" [ref=e45] [cursor=pointer]:
+          - /url: /alerts
+          - generic [ref=e46]: ⏰
+          - generic [ref=e47]: Alertas
+        - link "⚙ Proyectos" [ref=e48] [cursor=pointer]:
+          - /url: /projects
+          - generic [ref=e49]: ⚙
+          - generic [ref=e50]: Proyectos
+        - link "👤 Usuarios" [ref=e51] [cursor=pointer]:
+          - /url: /users
+          - generic [ref=e52]: 👤
+          - generic [ref=e53]: Usuarios
+      - generic [ref=e54]:
+        - generic [ref=e55]:
+          - generic [ref=e56]: Admin
+          - generic [ref=e57]: admin@local.test
+        - button "Salir" [ref=e58] [cursor=pointer]
+        - generic [ref=e59]: faro v0.3.0
+    - main [ref=e60]:
+      - generic [ref=e61]:
+        - heading "Resumen" [level=1] [ref=e62]
+        - generic [ref=e63]:
+          - generic [ref=e64]: "Rango:"
+          - combobox [ref=e65]:
+            - option "Últimos 5 min"
+            - option "Últimos 15 min"
+            - option "Última hora" [selected]
+            - option "Últimas 6 h"
+            - option "Últimas 24 h"
+            - option "Últimos 7 días"
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e68]: Logs
+          - generic [ref=e69]: "1319"
+        - generic [ref=e70]:
+          - generic [ref=e71]: Errores
+          - generic [ref=e72]: "72"
+        - generic [ref=e73]:
+          - generic [ref=e74]: Servicios
+          - generic [ref=e75]: "4"
+        - generic [ref=e76]:
+          - generic [ref=e77]: Trazas
+          - generic [ref=e78]: "0"
+        - generic [ref=e79]:
+          - generic [ref=e80]: Problemas abiertos
+          - generic [ref=e81]: "7"
+        - generic [ref=e82]:
+          - generic [ref=e83]: Alertas activas
+          - generic [ref=e84]: "0"
+        - generic [ref=e85]:
+          - generic [ref=e86]: Monitores caídos
+          - generic [ref=e87]: 0/0
+      - generic [ref=e89]:
+        - generic [ref=e90]: Logs por minuto
+        - img [ref=e91]:
+          - generic [ref=e92]: "0.0000"
+          - generic [ref=e93]: "25.50"
+          - generic [ref=e94]: "51.00"
+          - generic [ref=e95]: "76.50"
+          - generic [ref=e96]: "102.00"
+          - generic [ref=e99]: 19:16
+          - generic [ref=e100]: 19:44
+          - generic [ref=e101]: 20:12
+      - heading "Servicios" [level=2] [ref=e102]
+      - table [ref=e104]:
+        - rowgroup [ref=e105]:
+          - row "Servicio Logs Errores Visto por última vez" [ref=e106]:
+            - columnheader "Servicio" [ref=e107]
+            - columnheader "Logs" [ref=e108]
+            - columnheader "Errores" [ref=e109]
+            - columnheader "Visto por última vez" [ref=e110]
+        - rowgroup [ref=e111]:
+          - row "web 340 22 22/05/2026, 20:12:08,851" [ref=e112]:
+            - cell "web" [ref=e113]:
+              - link "web" [ref=e114] [cursor=pointer]:
+                - /url: /logs?service=web
+            - cell "340" [ref=e115]
+            - cell "22" [ref=e116]
+            - cell "22/05/2026, 20:12:08,851" [ref=e117]
+          - row "billing 322 11 22/05/2026, 20:12:03,763" [ref=e118]:
+            - cell "billing" [ref=e119]:
+              - link "billing" [ref=e120] [cursor=pointer]:
+                - /url: /logs?service=billing
+            - cell "322" [ref=e121]
+            - cell "11" [ref=e122]
+            - cell "22/05/2026, 20:12:03,763" [ref=e123]
+          - row "api-gateway 340 18 22/05/2026, 20:11:57,019" [ref=e124]:
+            - cell "api-gateway" [ref=e125]:
+              - link "api-gateway" [ref=e126] [cursor=pointer]:
+                - /url: /logs?service=api-gateway
+            - cell "340" [ref=e127]
+            - cell "18" [ref=e128]
+            - cell "22/05/2026, 20:11:57,019" [ref=e129]
+          - row "auth 317 21 22/05/2026, 20:11:46,198" [ref=e130]:
+            - cell "auth" [ref=e131]:
+              - link "auth" [ref=e132] [cursor=pointer]:
+                - /url: /logs?service=auth
+            - cell "317" [ref=e133]
+            - cell "21" [ref=e134]
+            - cell "22/05/2026, 20:11:46,198" [ref=e135]
+  - generic [ref=e18]: Iniciar sesión · Faro

@@ -7,9 +7,10 @@ use tokio::time::{interval, MissedTickBehavior};
 use crate::state::SharedState;
 use crate::storage::Client;
 
-/// Spawn one background writer per ingest channel. Each writer batches rows up
-/// to N or T and flushes to ClickHouse. On failure rows are dropped after logging
-/// — durable buffering belongs to a queue layer (Redis/Kafka) we can wire later.
+/// Arranca un writer en segundo plano por cada canal de ingesta. Cada writer agrupa filas
+/// hasta N o hasta T y vuelca a ClickHouse. En caso de fallo, las filas se descartan tras
+/// loguear — el buffering durable corresponde a una capa de cola (Redis/Kafka) que podemos
+/// cablear más adelante.
 pub fn start_ingest_writers(state: SharedState) {
     let logs_rx = state.ingest.logs_rx.lock().take().expect("logs rx already taken");
     let spans_rx = state.ingest.spans_rx.lock().take().expect("spans rx already taken");

@@ -9,8 +9,8 @@ use uuid::Uuid;
 use crate::state::SharedState;
 use crate::storage::{MonitorResultRow, MonitorRow};
 
-/// Periodically polls api_monitors and runs each configured HTTP check on its
-/// own interval. Reuses a single reqwest client for connection pooling.
+/// Hace polling periódico de api_monitors y ejecuta cada chequeo HTTP configurado en
+/// su propio intervalo. Reutiliza un único cliente reqwest para hacer connection pooling.
 pub fn start_monitor_runner(state: SharedState) {
     tokio::spawn(async move {
         let mut next_run: HashMap<Uuid, Instant> = HashMap::new();
@@ -31,7 +31,7 @@ pub fn start_monitor_runner(state: SharedState) {
                 _ = reload.tick() => {
                     match load_monitors(&state).await {
                         Ok(m) => monitors = m,
-                        Err(e) => tracing::warn!(error = %e, "monitor list reload failed"),
+                        Err(e) => tracing::warn!(error = %e, "falló el reload de la lista de monitores"),
                     }
                 }
                 _ = tick.tick() => {
@@ -107,7 +107,7 @@ async fn run_check(client: reqwest::Client, m: MonitorRow, state: SharedState) {
                 match Regex::new(&m.expected_body_regex) {
                     Ok(re) => ok = re.is_match(&body),
                     Err(e) => {
-                        tracing::warn!(regex = %m.expected_body_regex, error = %e, "invalid monitor regex");
+                        tracing::warn!(regex = %m.expected_body_regex, error = %e, "regex de monitor inválido");
                     }
                 }
             }
