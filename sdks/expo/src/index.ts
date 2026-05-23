@@ -1,9 +1,9 @@
 /**
- * Faro SDK for Expo / React Native.
+ * SDK de Faro para Expo / React Native.
  *
- * Uses fetch (RN ships it) and ErrorUtils.setGlobalHandler for native
- * uncaught-error capture. No native modules → works on Expo Go without
- * a custom development client.
+ * Usa fetch (RN lo incluye) y ErrorUtils.setGlobalHandler para captura nativa
+ * de errores no atrapados. Sin módulos nativos → funciona en Expo Go sin
+ * un development client personalizado.
  */
 
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
@@ -21,7 +21,7 @@ export interface FaroExpoOptions {
   installGlobalHandlers?: boolean;
 }
 
-// ErrorUtils is a React Native global, not in normal TS types.
+// ErrorUtils es un global de React Native, no está en los tipos TS normales.
 declare const ErrorUtils:
   | {
       setGlobalHandler: (h: (err: Error, isFatal?: boolean) => void) => void;
@@ -60,7 +60,7 @@ class FaroExpoClient {
         attrs[k] = typeof v === 'string' ? v : JSON.stringify(v);
       }
     }
-    if (this.queue.length >= this.opts.maxQueueSize) return; // drop silently
+    if (this.queue.length >= this.opts.maxQueueSize) return; // descartar silenciosamente
     this.queue.push({
       level: entry.level ?? 'INFO',
       message: entry.message,
@@ -102,7 +102,7 @@ class FaroExpoClient {
       });
       if (!res.ok && res.status >= 500) this.queue.unshift(...batch);
     } catch (_e) {
-      this.queue.unshift(...batch); // network fail — keep them for next tick
+      this.queue.unshift(...batch); // fallo de red — los conservamos para el siguiente tick
     }
   }
 
@@ -121,7 +121,7 @@ class FaroExpoClient {
     this.prevHandler = ErrorUtils.getGlobalHandler();
     ErrorUtils.setGlobalHandler((err, isFatal) => {
       this.captureException(err, { isFatal });
-      // best effort sync flush — we can't await but the keepalive helps
+      // flush síncrono best-effort — no podemos hacer await, pero el keepalive ayuda
       void this.flush();
       this.prevHandler?.(err, isFatal);
     });
@@ -148,7 +148,7 @@ export function init(opts: FaroExpoOptions): FaroExpoClient {
 }
 
 function need(): FaroExpoClient {
-  if (!singleton) throw new Error('faro: init() must be called before use');
+  if (!singleton) throw new Error('faro: hay que llamar a init() antes de usarlo');
   return singleton;
 }
 

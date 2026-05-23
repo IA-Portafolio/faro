@@ -1,7 +1,7 @@
 /**
- * Faro for Next.js — client side (runs in the browser).
+ * Faro para Next.js — lado cliente (corre en el navegador).
  *
- * Usage:
+ * Uso:
  *
  *   // app/faro-client.tsx
  *   'use client';
@@ -19,7 +19,7 @@
  *     return null;
  *   }
  *
- *   // and render <FaroClient /> inside app/layout.tsx
+ *   // y renderiza <FaroClient /> dentro de app/layout.tsx
  */
 
 import type { FaroOptions } from '@iaportafolio/node';
@@ -53,7 +53,7 @@ function newClient(opts: FaroOptions): BrowserClient {
     if (queue.length === 0) return;
     const batch = queue.splice(0, maxBatch);
     try {
-      // sendBeacon copes with `pagehide` better than fetch.
+      // sendBeacon maneja `pagehide` mejor que fetch.
       const body = JSON.stringify({ service: opts.service, logs: batch });
       const ok =
         typeof navigator !== 'undefined' &&
@@ -75,7 +75,7 @@ function newClient(opts: FaroOptions): BrowserClient {
         body,
       });
       if (!res.ok) {
-        // Best-effort re-queue if not a 4xx (the request is unrecoverable then).
+        // Re-encola en best-effort si no es un 4xx (ahí la request es irrecuperable).
         if (res.status >= 500) queue.unshift(...batch);
       }
     } catch (_e) {
@@ -129,21 +129,21 @@ function newClient(opts: FaroOptions): BrowserClient {
 
 export function initFaroClient(opts: FaroOptions): BrowserClient {
   if (typeof window === 'undefined') {
-    // Server-side render — return a no-op so the same import works.
+    // Render en servidor — devolvemos un no-op para que el mismo import funcione.
     return {
       log() {}, info() {}, warn() {}, error() {}, captureException() {}, flush: async () => undefined,
     };
   }
   client = newClient(opts);
 
-  // Capture unhandled errors in the browser.
+  // Captura errores no manejados en el navegador.
   window.addEventListener('error', (ev) => {
     client?.captureException(ev.error ?? ev.message, { tags: { origin: 'window.error' } });
   });
   window.addEventListener('unhandledrejection', (ev) => {
     client?.captureException(ev.reason, { tags: { origin: 'unhandledrejection' } });
   });
-  // Flush when the tab hides.
+  // Hace flush cuando la pestaña se oculta.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void client?.flush();
   });
@@ -153,6 +153,6 @@ export function initFaroClient(opts: FaroOptions): BrowserClient {
 }
 
 export function faroClient(): BrowserClient {
-  if (!client) throw new Error('initFaroClient() must be called before use');
+  if (!client) throw new Error('Hay que llamar a initFaroClient() antes de usarlo');
   return client;
 }

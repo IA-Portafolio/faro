@@ -292,11 +292,11 @@
     return parts.length > 0 ? parts.join(' · ') : '0';
   }
 
-  function rangeLabel(): string {
-    if (bucketSec < 60) return `${bucketSec}s`;
-    if (bucketSec < 3600) return `${Math.round(bucketSec / 60)} min`;
-    return `${Math.round(bucketSec / 3600)} h`;
-  }
+  $: rangeLabel = bucketSec < 60
+    ? `${bucketSec}s`
+    : bucketSec < 3600
+      ? `${Math.round(bucketSec / 60)} min`
+      : `${Math.round(bucketSec / 3600)} h`;
 
   $: totalCount = buckets.reduce((s, b) => s + b.total, 0);
 </script>
@@ -304,7 +304,7 @@
 <div class="hist" bind:this={containerEl}>
   <div class="hist-header">
     <span class="muted hist-label">
-      Volumen ({rangeLabel()}/bar) · total {totalCount.toLocaleString()} logs
+      Volumen ({rangeLabel}/bar) · total {totalCount.toLocaleString()} logs
     </span>
     {#if loading}<span class="spinner" aria-label="cargando"></span>{/if}
     {#if selection}

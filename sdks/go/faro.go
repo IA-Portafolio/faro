@@ -1,4 +1,4 @@
-// Package faro is the Go SDK for Faro (https://github.com/iaportafolio/faro).
+// Package faro es el SDK de Go para Faro (https://github.com/iaportafolio/faro).
 package faro
 
 import (
@@ -25,23 +25,23 @@ const (
 	SevFatal Severity = "FATAL"
 )
 
-// Options configures the SDK.
+// Options configura el SDK.
 type Options struct {
 	Endpoint         string            // https://faro.iaportafolio.com
-	Token            string            // project ingest token
+	Token            string            // token de ingesta del proyecto
 	Service          string            // service.name
 	Environment      string            // deployment.environment
 	Release          string            // service.version
-	Attributes       map[string]string // default attrs
-	FlushInterval    time.Duration     // default 750ms
-	MaxBatchSize     int               // default 200
-	MaxQueueSize     int               // default 10_000
-	HTTPTimeout      time.Duration     // default 5s
-	HTTPClient       *http.Client      // injectable
-	OnInternalError  func(err error)   // called on background failures; defaults to stderr
+	Attributes       map[string]string // atributos por defecto
+	FlushInterval    time.Duration     // por defecto 750ms
+	MaxBatchSize     int               // por defecto 200
+	MaxQueueSize     int               // por defecto 10_000
+	HTTPTimeout      time.Duration     // por defecto 5s
+	HTTPClient       *http.Client      // inyectable
+	OnInternalError  func(err error)   // se llama ante fallos en segundo plano; por defecto va a stderr
 }
 
-// Entry is a single log event ready for the wire.
+// Entry es un evento de log único, listo para enviarse por la red.
 type Entry struct {
 	Level      Severity          `json:"level"`
 	Message    string            `json:"message"`
@@ -59,7 +59,7 @@ type Client struct {
 	once   sync.Once
 }
 
-// New starts a Faro client and returns it. It also spawns a background flusher.
+// New arranca un cliente de Faro y lo devuelve. También lanza un flusher en segundo plano.
 func New(opts Options) (*Client, error) {
 	if opts.Endpoint == "" {
 		opts.Endpoint = os.Getenv("FARO_ENDPOINT")
@@ -68,7 +68,7 @@ func New(opts Options) (*Client, error) {
 		opts.Token = os.Getenv("FARO_TOKEN")
 	}
 	if opts.Endpoint == "" || opts.Token == "" {
-		return nil, fmt.Errorf("faro: Endpoint and Token are required")
+		return nil, fmt.Errorf("faro: Endpoint y Token son obligatorios")
 	}
 	if opts.FlushInterval == 0 {
 		opts.FlushInterval = 750 * time.Millisecond
@@ -101,7 +101,7 @@ func New(opts Options) (*Client, error) {
 	return c, nil
 }
 
-// Log enqueues an entry. Non-blocking: drops if the queue is full.
+// Log encola una entrada. No bloquea: descarta si la cola está llena.
 func (c *Client) Log(level Severity, msg string, attrs map[string]any) {
 	if c == nil {
 		return
@@ -128,7 +128,7 @@ func (c *Client) Log(level Severity, msg string, attrs map[string]any) {
 	select {
 	case c.ch <- entry:
 	default:
-		c.opts.OnInternalError(fmt.Errorf("queue full, dropping event"))
+		c.opts.OnInternalError(fmt.Errorf("cola llena, evento descartado"))
 	}
 }
 
@@ -136,7 +136,7 @@ func (c *Client) Info(msg string, attrs map[string]any)  { c.Log(SevInfo, msg, a
 func (c *Client) Warn(msg string, attrs map[string]any)  { c.Log(SevWarn, msg, attrs) }
 func (c *Client) Error(msg string, attrs map[string]any) { c.Log(SevError, msg, attrs) }
 
-// CaptureException reports an error with stack trace + optional tags.
+// CaptureException reporta un error con stack trace y tags opcionales.
 func (c *Client) CaptureException(err error, tags map[string]string) {
 	if c == nil || err == nil {
 		return
@@ -151,8 +151,8 @@ func (c *Client) CaptureException(err error, tags map[string]string) {
 	c.Log(SevError, err.Error(), attrs)
 }
 
-// Recover should be deferred at goroutine entry points. It captures panics,
-// reports them to Faro, then re-panics so normal Go semantics apply.
+// Recover debe ir con defer en los puntos de entrada de goroutines. Captura los panics,
+// los reporta a Faro y luego vuelve a lanzar el panic para mantener la semántica normal de Go.
 func (c *Client) Recover(tags map[string]string) {
 	if r := recover(); r != nil {
 		var err error
@@ -167,19 +167,19 @@ func (c *Client) Recover(tags map[string]string) {
 	}
 }
 
-// Flush blocks until either the queue is empty or the deadline passes.
+// Flush bloquea hasta que la cola se vacíe o se cumpla el deadline.
 func (c *Client) Flush(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) && len(c.ch) > 0 {
 		time.Sleep(50 * time.Millisecond)
 	}
 	if len(c.ch) > 0 {
-		return fmt.Errorf("flush timed out with %d events pending", len(c.ch))
+		return fmt.Errorf("timeout de flush con %d eventos pendientes", len(c.ch))
 	}
 	return nil
 }
 
-// Close stops the background flusher. Safe to call multiple times.
+// Close detiene el flusher en segundo plano. Es seguro llamarlo varias veces.
 func (c *Client) Close(ctx context.Context) error {
 	if c == nil {
 		return nil
@@ -217,7 +217,7 @@ func (c *Client) loop() {
 	for {
 		select {
 		case <-c.closed:
-			// Drain remaining queue then exit.
+			// Drena la cola restante y luego sale.
 			for {
 				select {
 				case e := <-c.ch:
@@ -268,7 +268,7 @@ func (c *Client) send(batch []Entry) {
 	}
 }
 
-// HTTPMiddleware wraps an http.Handler and captures panics + 5xx responses.
+// HTTPMiddleware envuelve un http.Handler y captura panics + respuestas 5xx.
 func (c *Client) HTTPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -288,7 +288,7 @@ func (c *Client) HTTPMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// ---------- Package-level singleton helpers ----------
+// ---------- Helpers singleton a nivel de paquete ----------
 
 var defaultClient *Client
 

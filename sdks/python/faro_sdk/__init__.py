@@ -1,6 +1,6 @@
-"""Faro SDK for Python.
+"""SDK de Faro para Python.
 
-Usage:
+Uso:
 
     import faro_sdk as faro
     faro.init(endpoint="https://faro.iaportafolio.com", token="...", service="mi-app")
@@ -73,7 +73,7 @@ class _Client:
             self._install_handlers()
         atexit.register(self.close)
 
-    # ---------- Public API ----------
+    # ---------- API pública ----------
 
     def log(
         self,
@@ -111,7 +111,7 @@ class _Client:
         try:
             self._queue.put_nowait(entry)
         except queue.Full:
-            sys.stderr.write("[faro] queue full, dropping event\n")
+            sys.stderr.write("[faro] cola llena, evento descartado\n")
 
     def capture_exception(
         self,
@@ -139,7 +139,7 @@ class _Client:
         )
 
     def flush(self, timeout: float = 5.0) -> None:
-        # Wake the worker; if it's not running anymore, send synchronously.
+        # Despierta al worker; si ya no está corriendo, envía de forma síncrona.
         deadline = time.monotonic() + timeout
         while not self._queue.empty() and time.monotonic() < deadline:
             time.sleep(0.05)
@@ -149,9 +149,9 @@ class _Client:
             return
         self._closed.set()
         self.flush(timeout=3.0)
-        # Worker exits on next loop iteration once _closed is set + queue empty.
+        # El worker termina en la próxima iteración una vez que _closed esté set y la cola vacía.
 
-    # ---------- Worker ----------
+    # ---------- Worker (en segundo plano) ----------
 
     def _run(self) -> None:
         batch: list[dict[str, Any]] = []
@@ -186,12 +186,12 @@ class _Client:
             if r.status_code >= 400:
                 sys.stderr.write(f"[faro] ingest HTTP {r.status_code}: {r.text[:200]}\n")
         except requests.RequestException as e:
-            sys.stderr.write(f"[faro] flush failed: {e}\n")
+            sys.stderr.write(f"[faro] falló el flush: {e}\n")
 
-    # ---------- Auto-capture ----------
+    # ---------- Auto-captura ----------
 
     def _install_handlers(self) -> None:
-        # sys.excepthook fires for unhandled exceptions in the main thread.
+        # sys.excepthook se dispara ante excepciones no manejadas en el thread principal.
         prev_excepthook = sys.excepthook
 
         def hook(exc_type, exc, tb):
@@ -203,7 +203,7 @@ class _Client:
 
         sys.excepthook = hook
 
-        # threading.excepthook (3.8+) for crashes in worker threads.
+        # threading.excepthook (3.8+) para crashes en threads worker.
         if hasattr(threading, "excepthook"):
             prev_thread = threading.excepthook
 
@@ -219,7 +219,7 @@ class _Client:
             threading.excepthook = thook
 
 
-# ---------- Module-level singleton ----------
+# ---------- Singleton a nivel de módulo ----------
 
 _client: _Client | None = None
 
@@ -237,12 +237,12 @@ def init(
     install_global_handlers: bool = True,
     timeout: float = 5.0,
 ) -> _Client:
-    """Initialise the SDK. Endpoint and token fall back to FARO_ENDPOINT / FARO_TOKEN env vars."""
+    """Inicializa el SDK. Si no se pasan, endpoint y token caen en las env vars FARO_ENDPOINT / FARO_TOKEN."""
     global _client
     endpoint = endpoint or os.environ.get("FARO_ENDPOINT")
     token = token or os.environ.get("FARO_TOKEN")
     if not endpoint or not token:
-        raise ValueError("faro.init: 'endpoint' and 'token' are required (or set FARO_ENDPOINT/FARO_TOKEN)")
+        raise ValueError("faro.init: 'endpoint' y 'token' son obligatorios (o define FARO_ENDPOINT/FARO_TOKEN)")
     if _client is not None:
         _client.close()
     _client = _Client(
@@ -265,7 +265,7 @@ def init(
 
 def _need() -> _Client:
     if _client is None:
-        raise RuntimeError("faro_sdk: call faro.init() before logging")
+        raise RuntimeError("faro_sdk: llama a faro.init() antes de loguear")
     return _client
 
 
@@ -306,7 +306,7 @@ def close() -> None:
 
 
 class FaroHandler(logging.Handler):
-    """Drop-in logging.Handler. Forwards stdlib logging records to Faro."""
+    """logging.Handler de uso directo. Reenvía los registros del logging estándar a Faro."""
 
     def emit(self, record: logging.LogRecord) -> None:
         if _client is None:
@@ -319,7 +319,7 @@ class FaroHandler(logging.Handler):
             "module": record.module,
             "lineno": record.lineno,
         }
-        # Surface exception info when log.exception() / exc_info=True is used.
+        # Expone la info de excepción cuando se usa log.exception() / exc_info=True.
         if record.exc_info:
             etype, evalue, tb = record.exc_info
             attrs["exception.type"] = etype.__name__ if etype else "Exception"

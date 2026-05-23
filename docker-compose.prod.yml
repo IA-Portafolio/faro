@@ -1,8 +1,9 @@
 version: "3.9"
 
-# Production stack for faro.iaportafolio.com (deployed on infra-iaportafolio).
-# Public ingress is the existing tokenscounter Caddy. We join its network
-# (tokenscounter_default) so Caddy can reach backend / frontend by container name.
+# Stack de producción para faro.iaportafolio.com (desplegado en infra-iaportafolio).
+# El ingreso público lo gestiona el Caddy existente de tokenscounter. Nos unimos
+# a su red (tokenscounter_default) para que Caddy alcance backend / frontend por
+# nombre de contenedor.
 
 services:
   clickhouse:
@@ -100,7 +101,7 @@ volumes:
 networks:
   faro-internal:
     driver: bridge
-  # Provided by the tokenscounter compose project — that's where Caddy lives.
+  # La provee el proyecto compose de tokenscounter — ahí vive Caddy.
   ingress-caddy:
     external: true
     name: tokenscounter_default

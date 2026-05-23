@@ -1,7 +1,7 @@
 # faro-go
 
 ```bash
-go get github.com/iaportafolio/faro-go
+go get github.com/IA-Portafolio/faro/sdks/go
 ```
 
 ```go
@@ -13,7 +13,7 @@ import (
     "net/http"
     "time"
 
-    faro "github.com/iaportafolio/faro-go"
+    faro "github.com/IA-Portafolio/faro/sdks/go"
 )
 
 func main() {

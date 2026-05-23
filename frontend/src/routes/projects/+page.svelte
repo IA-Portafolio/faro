@@ -181,8 +181,8 @@ except Exception as exc:
       {
         id: 'go',
         label: 'Go',
-        install: 'go get github.com/iaportafolio/faro-go',
-        code: `import faro "github.com/iaportafolio/faro-go"
+        install: 'go get github.com/IA-Portafolio/faro/sdks/go',
+        code: `import faro "github.com/IA-Portafolio/faro/sdks/go"
 
 faro.Init(faro.Options{
     Endpoint:    "${base}",

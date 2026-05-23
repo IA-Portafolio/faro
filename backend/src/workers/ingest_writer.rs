@@ -12,10 +12,10 @@ use crate::storage::Client;
 /// loguear — el buffering durable corresponde a una capa de cola (Redis/Kafka) que podemos
 /// cablear más adelante.
 pub fn start_ingest_writers(state: SharedState) {
-    let logs_rx = state.ingest.logs_rx.lock().take().expect("logs rx already taken");
-    let spans_rx = state.ingest.spans_rx.lock().take().expect("spans rx already taken");
-    let metrics_rx = state.ingest.metrics_rx.lock().take().expect("metrics rx already taken");
-    let monitor_rx = state.ingest.monitor_results_rx.lock().take().expect("monitor rx already taken");
+    let logs_rx = state.ingest.logs_rx.lock().take().expect("rx de logs ya tomado");
+    let spans_rx = state.ingest.spans_rx.lock().take().expect("rx de spans ya tomado");
+    let metrics_rx = state.ingest.metrics_rx.lock().take().expect("rx de metrics ya tomado");
+    let monitor_rx = state.ingest.monitor_results_rx.lock().take().expect("rx de monitor ya tomado");
 
     let max = state.cfg.batch_max_rows;
     let flush_ms = state.cfg.batch_flush_ms;
@@ -52,7 +52,7 @@ fn spawn_writer<T>(
                         }
                         None => {
                             flush(table, &ch, &mut buf).await;
-                            tracing::warn!(%table, "ingest channel closed");
+                            tracing::warn!(%table, "canal de ingesta cerrado");
                             break;
                         }
                     }
@@ -73,7 +73,7 @@ async fn flush<T: Serialize>(table: &str, ch: &Client, buf: &mut Vec<T>) {
     }
     let n = buf.len();
     match ch.insert(table, buf).await {
-        Ok(()) => tracing::debug!(%table, rows = n, "flushed batch"),
+        Ok(()) => tracing::debug!(%table, rows = n, "lote volcado"),
         Err(e) => tracing::error!(%table, rows = n, error = %e, "flush failed, dropping batch"),
     }
     buf.clear();

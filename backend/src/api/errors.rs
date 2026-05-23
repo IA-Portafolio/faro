@@ -135,7 +135,7 @@ async fn update_status(
     Json(req): Json<StatusUpdate>,
 ) -> ApiResult<Json<serde_json::Value>> {
     if !matches!(req.status.as_str(), "unresolved" | "resolved" | "ignored") {
-        return Err(crate::error::ApiError::BadRequest("invalid status".into()));
+        return Err(crate::error::ApiError::BadRequest("estado inválido".into()));
     }
     let row = serde_json::json!({
         "service_name": req.service_name,

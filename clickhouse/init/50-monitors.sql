@@ -1,4 +1,4 @@
--- API monitors: synthetic HTTP checks executed on a schedule.
+-- Monitores de API: chequeos HTTP sintéticos ejecutados en un horario programado.
 CREATE TABLE IF NOT EXISTS faro.api_monitors
 (
     id                   UUID,

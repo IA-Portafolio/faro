@@ -153,8 +153,9 @@ jobs:
             git push origin "$GO_TAG"
           fi
       - name: Warm proxy.golang.org
+        # proxy.golang.org case-folded path: mayúsculas se escapan como !letra.
         run: |
-          curl -fsSL "https://proxy.golang.org/github.com/ia-portafolio/faro/sdks/go/@v/v${{ needs.ctx.outputs.version }}.info" || true
+          curl -fsSL "https://proxy.golang.org/github.com/!i!a-!portafolio/faro/sdks/go/@v/v${{ needs.ctx.outputs.version }}.info" || true
 
   pub-dev:
     needs: ctx

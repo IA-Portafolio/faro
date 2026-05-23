@@ -1,4 +1,4 @@
--- Dashboard users + active sessions. Ingest tokens (faro.projects) are unrelated.
+-- Usuarios del dashboard + sesiones activas. Los tokens de ingesta (faro.projects) son independientes.
 CREATE TABLE IF NOT EXISTS faro.users
 (
     id             UUID,

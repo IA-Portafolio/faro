@@ -1,7 +1,7 @@
 /**
- * Faro for Next.js — server side (instrumentation.ts).
+ * Faro para Next.js — lado servidor (instrumentation.ts).
  *
- * Usage (Next.js 13.4+ App Router):
+ * Uso (Next.js 13.4+ App Router):
  *
  *   // next.config.mjs
  *   export default { experimental: { instrumentationHook: true } };  // Next 14- only
@@ -32,8 +32,8 @@ let installed = false;
 
 export function registerFaro(opts: ServerOptions): void {
   if (installed) return;
-  // The Edge Runtime is a different process; we only initialise in Node runtime.
-  // Next exposes process.env.NEXT_RUNTIME = 'nodejs' | 'edge'.
+  // El Edge Runtime es un proceso distinto; solo inicializamos en el runtime de Node.
+  // Next expone process.env.NEXT_RUNTIME = 'nodejs' | 'edge'.
   if (process.env.NEXT_RUNTIME && process.env.NEXT_RUNTIME !== 'nodejs') {
     return;
   }
@@ -42,8 +42,8 @@ export function registerFaro(opts: ServerOptions): void {
 }
 
 /**
- * Bind this to Next.js's `onRequestError` instrumentation hook (Next 15+).
- * Reports the error with the request context attached as tags.
+ * Engánchalo al hook de instrumentación `onRequestError` de Next.js (Next 15+).
+ * Reporta el error con el contexto de la request adjunto como tags.
  */
 export function captureRequestError(
   err: unknown,

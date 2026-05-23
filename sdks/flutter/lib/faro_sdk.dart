@@ -1,6 +1,6 @@
-/// Faro SDK for Flutter / Dart.
+/// SDK de Faro para Flutter / Dart.
 ///
-/// Usage:
+/// Uso:
 /// ```dart
 /// import 'package:faro_sdk/faro_sdk.dart';
 ///
@@ -76,7 +76,7 @@ class _Entry {
 class Faro {
   static Faro? _instance;
   static Faro get instance =>
-      _instance ?? (throw StateError('Faro.init() must be called first'));
+      _instance ?? (throw StateError('Hay que llamar primero a Faro.init()'));
 
   final FaroOptions options;
   final List<_Entry> _queue = [];
@@ -85,8 +85,8 @@ class Faro {
 
   Faro._(this.options);
 
-  /// Initialise the SDK manually. Prefer [Faro.run] for Flutter apps because it
-  /// also installs the zone-based async error guard.
+  /// Inicializa el SDK manualmente. En apps Flutter prefiere [Faro.run] porque
+  /// también instala el guard de errores asíncronos basado en zonas.
   static Faro init(FaroOptions options) {
     if (_instance != null) _instance!.close();
     final f = Faro._(options);
@@ -95,8 +95,8 @@ class Faro {
     return f;
   }
 
-  /// Recommended entry point for Flutter apps. Wraps [appRunner] in a
-  /// guarded zone so async errors outside the framework are caught too.
+  /// Punto de entrada recomendado para apps Flutter. Envuelve [appRunner] en una
+  /// zona protegida para capturar también los errores asíncronos fuera del framework.
   static Future<void> run({
     required FaroOptions options,
     required FutureOr<void> Function() appRunner,
@@ -128,7 +128,7 @@ class Faro {
       });
     }
     if (_queue.length >= options.maxQueueSize) {
-      developer.log('queue full, dropping', name: 'faro');
+      developer.log('cola llena, descartando', name: 'faro');
       return;
     }
     _queue.add(_Entry(level.toUpperCase(), message, attrs, traceId: traceId, spanId: spanId));
@@ -181,12 +181,12 @@ class Faro {
           .timeout(options.httpTimeout);
       if (res.statusCode >= 400) {
         developer.log('ingest ${res.statusCode}: ${res.body}', name: 'faro');
-        // Put back so a future flush retries.
+        // Reinserta para que un flush futuro reintente.
         _queue.insertAll(0, batch);
       }
     } catch (e, _) {
       _queue.insertAll(0, batch);
-      developer.log('flush failed: $e', name: 'faro');
+      developer.log('falló el flush: $e', name: 'faro');
     }
   }
 
@@ -206,7 +206,7 @@ class Faro {
   }
 
   void _installFlutterHandlers() {
-    // Errors inside the Flutter framework (build/layout/paint/gesture).
+    // Errores dentro del framework de Flutter (build/layout/paint/gesture).
     final prevFlutter = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
       captureException(details.exception, stack: details.stack, tags: {
@@ -216,7 +216,7 @@ class Faro {
       prevFlutter?.call(details);
     };
 
-    // Errors that escape the framework (Dart isolate level — Flutter 3.3+).
+    // Errores que escapan del framework (a nivel de isolate de Dart — Flutter 3.3+).
     final prevPlatform = PlatformDispatcher.instance.onError;
     PlatformDispatcher.instance.onError = (error, stack) {
       captureException(error, stack: stack, tags: {'origin': 'platform'});

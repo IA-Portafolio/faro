@@ -17,7 +17,7 @@ pub fn start_monitor_runner(state: SharedState) {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
             .build()
-            .expect("reqwest client");
+            .expect("cliente reqwest");
 
         let mut reload = interval(Duration::from_secs(10));
         reload.set_missed_tick_behavior(MissedTickBehavior::Delay);

@@ -1,4 +1,4 @@
--- Errors: individual events captured from logs/spans with exception data.
+-- Errores: eventos individuales capturados de logs/spans con datos de excepción.
 CREATE TABLE IF NOT EXISTS faro.error_events
 (
     timestamp         DateTime64(9, 'UTC')                CODEC(Delta, ZSTD(1)),
@@ -22,7 +22,7 @@ ORDER BY (service_name, fingerprint, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
--- Issue status (resolved / ignored / unresolved). Counts are computed from error_events on read.
+-- Estado del problema (resolved / ignored / unresolved). Los conteos se calculan desde error_events en lectura.
 CREATE TABLE IF NOT EXISTS faro.error_issue_status
 (
     project_id   LowCardinality(String) DEFAULT 'default',

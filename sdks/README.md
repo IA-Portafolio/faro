@@ -54,7 +54,7 @@ Si prefieres **OpenTelemetry** estándar en lugar del SDK propio, apunta el OTLP
 | Next.js               | [`nextjs/`](./nextjs)| `npm install @iaportafolio/nextjs`                    |
 | Expo / React Native   | [`expo/`](./expo)    | `npm install @iaportafolio/expo`                      |
 | Python                | [`python/`](./python)| `pip install faro-sdk`                        |
-| Go                    | [`go/`](./go)        | `go get github.com/iaportafolio/faro-go`      |
+| Go                    | [`go/`](./go)        | `go get github.com/IA-Portafolio/faro/sdks/go`      |
 | Flutter (Dart)        | [`flutter/`](./flutter)| `flutter pub add faro_sdk`                  |
 | Kotlin (Android + JVM)| [`kotlin/`](./kotlin)| `implementation("com.iaportafolio:faro:0.1.0")` |
 

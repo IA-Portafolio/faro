@@ -1,11 +1,11 @@
-# Build stage
+# Etapa de build
 FROM rust:1-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config ca-certificates && rm -rf /var/lib/apt/lists/*
 
-# Cache deps
+# Cachea dependencias
 COPY Cargo.toml Cargo.lock* ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs && \
     cargo build --release && rm -rf src target/release/deps/faro*
@@ -13,7 +13,7 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs && \
 COPY src ./src
 RUN cargo build --release
 
-# Runtime stage
+# Etapa de runtime
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates wget && rm -rf /var/lib/apt/lists/*

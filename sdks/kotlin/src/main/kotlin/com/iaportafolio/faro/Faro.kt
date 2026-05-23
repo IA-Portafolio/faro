@@ -15,7 +15,7 @@ import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Faro SDK for Kotlin (Android + JVM).
+ * SDK de Faro para Kotlin (Android + JVM).
  *
  * ```kotlin
  * Faro.init(FaroOptions(
@@ -105,7 +105,7 @@ object Faro {
         )
         val result = channel.trySend(entry)
         if (result.isFailure) {
-            System.err.println("[faro] queue full, dropping event")
+            System.err.println("[faro] cola llena, evento descartado")
         }
     }
 
@@ -132,8 +132,8 @@ object Faro {
     fun flush(timeoutMs: Long = 3000) {
         runBlocking {
             withTimeoutOrNull(timeoutMs) {
-                // Drain by yielding until the flusher has caught up. The flusher
-                // sees the empty channel and idles, so a small wait suffices.
+                // Drena cediendo el control hasta que el flusher se ponga al día. El flusher
+                // ve el canal vacío y se queda inactivo, así que una espera corta basta.
                 while (!channel.isEmpty) delay(50)
             }
         }
@@ -142,7 +142,7 @@ object Faro {
     fun close() {
         if (!closed.compareAndSet(false, true)) return
         flush(timeoutMs = 2000)
-        scope.cancel("faro close")
+        scope.cancel("cierre de faro")
         prevUncaughtHandler?.let { Thread.setDefaultUncaughtExceptionHandler(it) }
         prevUncaughtHandler = null
         started.set(false)
@@ -154,10 +154,10 @@ object Faro {
         val o = opts ?: return
         val batch = ArrayList<WireEntry>(o.maxBatchSize)
         while (true) {
-            // Wait for either an entry or the flush interval.
+            // Espera o bien una entrada o bien el intervalo de flush.
             val first = withTimeoutOrNull(o.flushIntervalMs) { channel.receive() }
             if (first != null) batch += first
-            // Drain anything else that arrived in the meantime.
+            // Drena cualquier otra cosa que haya llegado mientras tanto.
             while (batch.size < o.maxBatchSize) {
                 val next = channel.tryReceive().getOrNull() ?: break
                 batch += next
@@ -189,7 +189,7 @@ object Faro {
             }
             conn.disconnect()
         } catch (t: Throwable) {
-            System.err.println("[faro] flush failed: ${t.message}")
+            System.err.println("[faro] falló el flush: ${t.message}")
         }
     }
 

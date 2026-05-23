@@ -349,7 +349,7 @@ pub async fn bootstrap_admin_if_empty(state: &SharedState) -> anyhow::Result<()>
         version: Utc::now().timestamp_millis() as u64,
     };
     state.ch.insert("faro.users", &[row]).await?;
-    tracing::info!(%email, "bootstrap admin user created");
+    tracing::info!(%email, "usuario admin de bootstrap creado");
     let _ = Duration::default(); // silence unused import warning under some feature combos
     Ok(())
 }

@@ -1,33 +1,33 @@
 /**
- * Faro SDK for Node.js / TypeScript.
+ * SDK de Faro para Node.js / TypeScript.
  *
- * One file, no runtime deps. Uses globalThis.fetch (Node 18+ ships it).
+ * Un único archivo, sin dependencias en runtime. Usa globalThis.fetch (Node 18+ lo incluye).
  */
 
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
 
 export interface FaroOptions {
-  /** Faro base URL, e.g. https://faro.iaportafolio.com */
+  /** URL base de Faro, p. ej. https://faro.iaportafolio.com */
   endpoint: string;
-  /** Project ingest token (from the Faro dashboard /projects page) */
+  /** Token de ingesta del proyecto (desde la página /projects del dashboard de Faro) */
   token: string;
-  /** OTel service.name attached to every event */
+  /** service.name de OTel adjuntado a cada evento */
   service: string;
-  /** e.g. "production" / "staging" — added as attribute `deployment.environment` */
+  /** p. ej. "production" / "staging" — se añade como atributo `deployment.environment` */
   environment?: string;
-  /** Release / commit / tag — added as `service.version` */
+  /** Release / commit / tag — se añade como `service.version` */
   release?: string;
-  /** Default attributes merged into every event */
+  /** Atributos por defecto que se mezclan en cada evento */
   attributes?: Record<string, string | number | boolean>;
-  /** Flush cadence in ms (default 750) */
+  /** Cadencia de flush en ms (por defecto 750) */
   flushIntervalMs?: number;
-  /** Max events per HTTP batch (default 200) */
+  /** Máximo de eventos por lote HTTP (por defecto 200) */
   maxBatchSize?: number;
-  /** Drop new events past this in-memory queue size (default 10_000) */
+  /** Descarta nuevos eventos al superar este tamaño de cola en memoria (por defecto 10_000) */
   maxQueueSize?: number;
-  /** Install process-level error handlers (default true). Disable for embedded use. */
+  /** Instala handlers de error a nivel de proceso (por defecto true). Desactivar en uso embebido. */
   installGlobalHandlers?: boolean;
-  /** Logger for the SDK's own warnings. Defaults to console.warn. */
+  /** Logger para las advertencias internas del SDK. Por defecto console.warn. */
   diag?: (msg: string, err?: unknown) => void;
 }
 
@@ -73,7 +73,7 @@ class FaroClient {
       diag: opts.diag,
     };
     this.timer = setInterval(() => void this.flush(), this.opts.flushIntervalMs);
-    // Allow Node to exit while the timer is the only thing left.
+    // Permite a Node salir aunque el timer sea lo único que quede.
     if (typeof (this.timer as { unref?: () => void }).unref === 'function') {
       (this.timer as { unref: () => void }).unref();
     }
@@ -102,7 +102,7 @@ class FaroClient {
       attributes: attrs,
     };
     if (this.queue.length >= this.opts.maxQueueSize) {
-      this.warn('queue full, dropping event');
+      this.warn('cola llena, evento descartado');
       return;
     }
     this.queue.push(wire);
@@ -150,9 +150,9 @@ class FaroClient {
         this.warn(`ingest HTTP ${res.status}: ${txt.slice(0, 200)}`);
       }
     } catch (e) {
-      // Re-queue on transient network failures so we don't lose data.
+      // Re-encola ante fallos transitorios de red para no perder datos.
       this.queue.unshift(...batch);
-      this.warn('flush failed', e);
+      this.warn('falló el flush', e);
     }
   }
 
@@ -163,11 +163,11 @@ class FaroClient {
     this.timer = null;
     for (const off of this.installedHandlers) off();
     this.installedHandlers = [];
-    // One final flush attempt — drain everything pending.
+    // Un último intento de flush — drena todo lo pendiente.
     while (this.queue.length > 0) {
       const before = this.queue.length;
       await this.flush();
-      if (this.queue.length >= before) break; // network probably down; give up
+      if (this.queue.length >= before) break; // probablemente la red esté caída; rendirse
     }
   }
 
@@ -175,7 +175,7 @@ class FaroClient {
     if (typeof process === 'undefined') return;
     const onUncaught = (err: Error): void => {
       this.captureException(err, { message: '[uncaughtException] ' + (err?.message ?? '') });
-      // Drain on best-effort basis; do NOT swallow — let Node print + exit.
+      // Drena en best-effort; NO tragar — dejar que Node imprima y salga.
       void this.flush();
     };
     const onRejection = (reason: unknown): void => {
@@ -183,7 +183,7 @@ class FaroClient {
       void this.flush();
     };
     const onExit = (): void => {
-      // We can't await here. Fire one last fetch synchronously-ish.
+      // No podemos hacer await aquí. Lanza un último fetch lo más síncrono posible.
       void this.flush();
     };
     process.on('uncaughtException', onUncaught);
@@ -221,11 +221,11 @@ export function init(opts: FaroOptions): FaroClient {
 }
 
 export function getClient(): FaroClient {
-  if (!singleton) throw new Error('faro: init() must be called before use');
+  if (!singleton) throw new Error('faro: hay que llamar a init() antes de usarlo');
   return singleton;
 }
 
-// Module-level helpers so users don't need to pass the client around.
+// Helpers a nivel de módulo para que los usuarios no tengan que ir pasando el cliente.
 export function log(entry: LogEntry): void { getClient().log(entry); }
 export function info(msg: string, attrs?: Record<string, unknown>): void { getClient().info(msg, attrs); }
 export function warn(msg: string, attrs?: Record<string, unknown>): void { getClient().warn(msg, attrs); }

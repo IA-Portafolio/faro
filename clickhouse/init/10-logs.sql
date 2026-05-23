@@ -1,4 +1,4 @@
--- Logs: structured log records. OTel-aligned columns plus ergonomic fields.
+-- Logs: registros de log estructurados. Columnas alineadas con OTel más campos ergonómicos.
 CREATE TABLE IF NOT EXISTS faro.logs
 (
     timestamp           DateTime64(9, 'UTC')                CODEC(Delta, ZSTD(1)),
@@ -26,7 +26,7 @@ ORDER BY (service_name, severity_number, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 30 DAY
 SETTINGS index_granularity = 8192;
 
--- Per-minute aggregate for dashboard sparklines and histograms.
+-- Agregación por minuto para los sparklines e histogramas del dashboard.
 CREATE TABLE IF NOT EXISTS faro.logs_stats
 (
     minute        DateTime               CODEC(Delta, ZSTD(1)),

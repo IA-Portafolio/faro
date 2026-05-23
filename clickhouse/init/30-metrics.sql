@@ -1,4 +1,4 @@
--- Metrics: numeric measurements. Single table with type column to keep ingestion simple.
+-- Métricas: mediciones numéricas. Una sola tabla con columna de tipo para mantener simple la ingesta.
 CREATE TABLE IF NOT EXISTS faro.metrics
 (
     timestamp           DateTime64(9, 'UTC')                CODEC(Delta, ZSTD(1)),

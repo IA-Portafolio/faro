@@ -1,4 +1,4 @@
--- Distributed tracing: one row per span. Trace = collection of spans sharing trace_id.
+-- Tracing distribuido: una fila por span. Traza = colección de spans que comparten trace_id.
 CREATE TABLE IF NOT EXISTS faro.spans
 (
     timestamp           DateTime64(9, 'UTC')                CODEC(Delta, ZSTD(1)),
@@ -30,7 +30,7 @@ ORDER BY (service_name, name, timestamp)
 TTL toDateTime(timestamp) + INTERVAL 14 DAY
 SETTINGS index_granularity = 8192;
 
--- Root-span index to quickly list traces (one row per trace).
+-- Índice de root-span para listar trazas rápido (una fila por traza).
 CREATE TABLE IF NOT EXISTS faro.traces_index
 (
     timestamp      DateTime64(3, 'UTC')   CODEC(Delta, ZSTD(1)),

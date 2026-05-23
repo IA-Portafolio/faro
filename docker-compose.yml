@@ -1,7 +1,7 @@
 version: "3.9"
 
-# Faro - centralized observability platform
-# Services: ClickHouse (storage), Redis (queues/cache), backend (Rust), frontend (SvelteKit)
+# Faro - plataforma centralizada de observabilidad
+# Servicios: ClickHouse (almacenamiento), Redis (colas/caché), backend (Rust), frontend (SvelteKit)
 
 services:
   clickhouse:

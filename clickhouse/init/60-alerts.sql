@@ -1,4 +1,4 @@
--- Alert rules: declarative thresholds evaluated periodically against ClickHouse.
+-- Reglas de alerta: umbrales declarativos evaluados periódicamente contra ClickHouse.
 CREATE TABLE IF NOT EXISTS faro.alert_rules
 (
     id                    UUID,

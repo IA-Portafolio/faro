@@ -1,5 +1,5 @@
--- Projects: logical grouping. Each project has its own ingest token; ingest is
--- rejected if the token doesn't match an active project.
+-- Proyectos: agrupación lógica. Cada proyecto tiene su propio token de ingesta; la
+-- ingesta se rechaza si el token no coincide con un proyecto activo.
 CREATE TABLE IF NOT EXISTS faro.projects
 (
     id             UUID,

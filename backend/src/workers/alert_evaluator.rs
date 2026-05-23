@@ -132,6 +132,6 @@ async fn evaluate_rule(
             tracing::error!(error = %e, "falló el insert de resolución del incidente");
         }
         let _ = crate::notify::dispatch(&rule.notification_targets, &incident).await;
-        tracing::info!(rule = %rule.name, "alert resolved");
+        tracing::info!(rule = %rule.name, "alerta resuelta");
     }
 }
