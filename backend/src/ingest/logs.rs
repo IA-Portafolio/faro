@@ -46,6 +46,11 @@ async fn ingest_logs(
 ) -> ApiResult<Json<serde_json::Value>> {
     let project = super::resolve_project(&state, &headers)?;
 
+    // Telemetría de compatibilidad de SDK — por ahora solo loggeamos, no
+    // rechazamos. La política de rechazo (cuando `Unsupported`) se activa
+    // en un PR de seguimiento; ver ADR-0008.
+    log_sdk_compat(&headers);
+
     let now = Utc::now();
     let svc_default = payload.service.unwrap_or_else(|| "unknown".into());
     let mut accepted = 0u64;
@@ -104,3 +109,27 @@ pub fn legacy_require_token(_h: &HeaderMap, _t: &str) -> bool {
 // Marcador para mantener en uso la variante Unauthorized de error.rs.
 #[allow(dead_code)]
 fn _types(_: ApiError) {}
+
+/// Loggea un warning si el SDK declara un protocolo desfasado. No
+/// rechaza la request — la política de rechazo se activa en un PR
+/// posterior; ver ADR-0008. Útil ahora para tener visibilidad real
+/// de qué versiones de SDK están en uso antes de subir mínimos.
+fn log_sdk_compat(headers: &HeaderMap) {
+    use crate::versions::{
+        classify_protocol, CompatStatus, HEADER_PROTOCOL, HEADER_SDK_NAME, HEADER_SDK_VERSION,
+    };
+    let proto = headers.get(HEADER_PROTOCOL).and_then(|v| v.to_str().ok());
+    let status = classify_protocol(proto);
+    if status == CompatStatus::Ok {
+        return;
+    }
+    let sdk_name = headers.get(HEADER_SDK_NAME).and_then(|v| v.to_str().ok()).unwrap_or("unknown");
+    let sdk_version = headers.get(HEADER_SDK_VERSION).and_then(|v| v.to_str().ok()).unwrap_or("unknown");
+    tracing::warn!(
+        sdk_name,
+        sdk_version,
+        protocol = proto.unwrap_or("missing"),
+        status = status.header_value(),
+        "SDK con protocolo fuera de rango — se acepta por ahora",
+    );
+}

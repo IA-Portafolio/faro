@@ -21,6 +21,7 @@ mod state;
 mod storage;
 mod stream;
 mod telemetry;
+mod versions;
 mod workers;
 
 use crate::config::Config;

@@ -23,7 +23,7 @@ pub fn router(state: SharedState) -> Router {
     // Un único router para que las rutas no choquen al anidarse. El propio middleware
     // decide si una petición necesita sesión autenticada según la ruta.
     Router::new()
-        .route("/healthz", get(|| async { Json(serde_json::json!({"status":"ok"})) }))
+        .route("/healthz", get(healthz))
         // OpenAPI: spec JSON cruda + Swagger UI. Ambas son públicas (no
         // pasan por require_session_mw) porque están abajo del nest de
         // /api/v1 y se montan en paths propios.
@@ -37,6 +37,14 @@ pub fn router(state: SharedState) -> Router {
 
 async fn serve_openapi() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
+}
+
+/// Liveness + información del protocolo wire. Los SDKs pueden hacer GET
+/// aquí al init para descubrir el rango de protocolo que el backend
+/// soporta y advertir al desarrollador si la versión del SDK está
+/// desfasada. Ver `crate::versions` y ADR-0008.
+async fn healthz() -> Json<crate::versions::HealthResponse> {
+    Json(crate::versions::HealthResponse::current())
 }
 
 fn v1_router() -> Router<SharedState> {

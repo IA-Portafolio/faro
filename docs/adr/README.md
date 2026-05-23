@@ -29,3 +29,4 @@ Plantilla: [`template.md`](template.md).
 | 0005 | [Sin autenticación nativa en el dashboard](0005-no-native-auth.md) | Accepted |
 | 0006 | [OpenAPI spec autogenerada con utoipa](0006-openapi-utoipa.md) | Accepted |
 | 0007 | [Self-observability via OTLP a sí mismo](0007-self-observability.md) | Accepted |
+| 0008 | [Compatibilidad SDK ↔ backend vía Faro-Protocol-Version](0008-sdk-version-compatibility.md) | Accepted |
