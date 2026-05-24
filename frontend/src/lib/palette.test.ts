@@ -345,6 +345,7 @@ describe('staticCommands', () => {
     const ids = cmds.map((c) => c.id);
     expect(ids).toContain('nav.logs');
     expect(ids).toContain('nav.traces');
+    expect(ids).toContain('nav.insights');
     expect(ids).toContain('nav.product-users');
     expect(ids).toContain('nav.sessions');
     expect(ids).toContain('nav.retention');

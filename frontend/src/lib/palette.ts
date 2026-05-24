@@ -61,6 +61,7 @@ export function staticCommands(): Command[] {
     { id: 'nav.traces',   group: 'Navegar', icon: '⤳', label: 'Ir a Trazas',        shortcut: 'g t', run: () => goto('/traces') },
     { id: 'nav.metrics',  group: 'Navegar', icon: '◢', label: 'Ir a Métricas',      shortcut: 'g m', run: () => goto('/metrics') },
     { id: 'nav.errors',   group: 'Navegar', icon: '⚠', label: 'Ir a Errores',       shortcut: 'g e', run: () => goto('/errors') },
+    { id: 'nav.insights', group: 'Navegar', icon: '◈', label: 'Ir a Insights',       run: () => goto('/insights') },
     { id: 'nav.monitors', group: 'Navegar', icon: '◉', label: 'Ir a Monitores',     shortcut: 'g o', run: () => goto('/monitors') },
     { id: 'nav.settings', group: 'Navegar', icon: '⚙', label: 'Ir a Configuración', shortcut: 'g s', run: () => goto('/settings') },
     { id: 'nav.alerts',   group: 'Navegar', icon: '⏰', label: 'Ir a Alertas',       shortcut: 'g a', run: () => goto('/settings/alerts') },

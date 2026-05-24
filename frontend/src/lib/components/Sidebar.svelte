@@ -14,6 +14,7 @@
     { href: '/service-map', label: 'Service map', icon: '⌬' },
     { href: '/metrics', label: 'Métricas', icon: '◢' },
     { href: '/errors', label: 'Errores', icon: '⚠' },
+    { href: '/insights', label: 'Insights', icon: '◈' },
     { href: '/events', label: 'Eventos', icon: '◆' },
     { href: '/users', label: 'Usuarios', icon: '◌' },
     { href: '/sessions', label: 'Sesiones', icon: '▤' },
