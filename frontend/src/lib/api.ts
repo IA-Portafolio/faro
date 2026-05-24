@@ -390,6 +390,33 @@ export const fetchEventStats = (
   params: RangeArgs & { event_name?: string; bucket_seconds?: number } = {}
 ) => api<EventBucket[]>(`/api/v1/events/stats${qs(params)}`);
 
+// ---------- Retention (product analytics) ----------
+export type RetentionCohort = {
+  cohort_date: string;
+  cohort_size: number;
+  d1_users: number;
+  d7_users: number;
+  d30_users: number;
+};
+
+export type RetentionResult = {
+  from: string;
+  to: string;
+  event_name: string;
+  interval: 'day';
+  columns: Array<1 | 7 | 30>;
+  cohorts: RetentionCohort[];
+  took_ms: number;
+};
+
+export type RetentionFilters = RangeArgs & {
+  event_name?: string;
+  interval?: 'day';
+};
+
+export const fetchRetention = (params: RetentionFilters = {}) =>
+  api<RetentionResult>(`/api/v1/retention${qs(params)}`);
+
 // ---------- Product users ----------
 export type ProductUserSummary = {
   project_id: string;
@@ -565,6 +592,46 @@ export type TimeToConvertRequest = {
 
 export const previewTimeToConvert = (body: TimeToConvertRequest) =>
   api<TimeToConvertResult>(`/api/v1/funnels/time-to-convert`, {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+
+// ---------- Experiments (feature flag A/B stats) ----------
+export type ExperimentVariantResult = {
+  variant: 'A' | 'B' | string;
+  sample: number;
+  conversions: number;
+  conversion_rate: number;
+};
+
+export type ExperimentAnalyzeRequest = {
+  flag_key: string;
+  conversion_event: string;
+  project?: string;
+  from?: string;
+  to?: string;
+  last_minutes?: number;
+};
+
+export type ExperimentAnalyzeResult = {
+  flag_key: string;
+  conversion_event: string;
+  project: string;
+  from: string;
+  to: string;
+  variants: ExperimentVariantResult[];
+  sample: number;
+  winner: string;
+  absolute_delta: number;
+  relative_lift: number;
+  p_value: number;
+  ci95_low: number;
+  ci95_high: number;
+  summary: string;
+};
+
+export const analyzeExperiment = (body: ExperimentAnalyzeRequest) =>
+  api<ExperimentAnalyzeResult>(`/api/v1/experiments/analyze`, {
     method: 'POST',
     body: JSON.stringify(body)
   });
