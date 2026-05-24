@@ -82,16 +82,24 @@ Para que las reglas de alerta puedan notificar por Telegram:
    y obtener el `chat_id` (los grupos son negativos, los canales empiezan
    por `-100`). Para chats privados, escribirle al bot y mirar
    `https://api.telegram.org/bot<TOKEN>/getUpdates`.
-3. Setear `TELEGRAM_BOT_TOKEN=<token>` en `.env.prod` y redesplegar.
+3. En el dashboard, ir a **Integraciones** y pegar el token. Persiste en
+   ClickHouse (`faro.integrations`) y queda compartido entre réplicas del
+   backend. Desde ahí mismo puedes mandar un mensaje de prueba.
 4. En la UI de Alertas, añadir destinos con la forma:
-   - `tg://-1001234567890` — usa el bot global.
+   - `tg://-1001234567890` — usa el bot configurado en Integraciones.
    - `tg://@mi_canal` — canales públicos por nombre.
    - `tg://<chat_id>@<otro_token>` — token por destino, útil si quieres
-     enviar a chats que pertenecen a otro bot sin tocar la variable
+     enviar a chats que pertenecen a otro bot sin tocar la configuración
      global.
 
 Los destinos `https://...` siguen funcionando como webhooks JSON
 genéricos (Slack/Discord/custom).
+
+> Compatibilidad: la variable de entorno `TELEGRAM_BOT_TOKEN` sigue
+> funcionando como fallback cuando no hay integración guardada — útil
+> para self-host con configuración 100 % declarativa. El orden de
+> resolución es **token inline → integración en BD → variable de
+> entorno**.
 
 ## Persistencia
 

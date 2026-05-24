@@ -311,6 +311,25 @@ fn default_window() -> u32 { 300 }
 fn default_check_interval() -> u32 { 60 }
 fn default_severity() -> String { "warn".into() }
 
+// ---------- Integrations ----------
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IntegrationRow {
+    pub kind: String,
+    #[serde(default = "default_true")]
+    pub enabled: u8,
+    /// JSON serializado con la config concreta de la integración. El esquema
+    /// vive en el lado del módulo que la consume.
+    #[serde(default)]
+    pub config: String,
+    #[serde(serialize_with = "rfc3339_millis", deserialize_with = "de_dt", default = "Utc::now")]
+    pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub updated_by: String,
+    #[serde(default = "default_version")]
+    pub version: u64,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlertIncidentRow {
     pub id: Uuid,

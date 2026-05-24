@@ -14,7 +14,8 @@
     { href: '/monitors', label: 'Monitores', icon: '◉' },
     { href: '/alerts', label: 'Alertas', icon: '⏰' },
     { href: '/projects', label: 'Proyectos', icon: '⚙' },
-    { href: '/users', label: 'Usuarios', icon: '👤' }
+    { href: '/users', label: 'Usuarios', icon: '👤' },
+    { href: '/settings/integrations', label: 'Integraciones', icon: '⇆' }
   ];
 
   let projects: Project[] = [];

@@ -11,6 +11,7 @@ use crate::state::SharedState;
 pub mod alerts;
 pub mod dashboard;
 pub mod errors;
+pub mod integrations;
 pub mod logs;
 pub mod metrics;
 pub mod monitors;
@@ -59,6 +60,7 @@ fn v1_router() -> Router<SharedState> {
         .merge(dashboard::router())
         .merge(projects::router())
         .merge(users::router())
+        .merge(integrations::router())
 }
 
 /// Parsea los parámetros comunes de rango de tiempo / paginación usados en los endpoints de consulta.

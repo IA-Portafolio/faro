@@ -4,6 +4,7 @@ use parking_lot::Mutex;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::config::Config;
+use crate::integrations::IntegrationsCache;
 use crate::projects::ProjectCache;
 use crate::storage::{Client, LogRow, MetricRow, MonitorResultRow, SpanRow};
 
@@ -58,6 +59,7 @@ pub struct AppState {
     pub ingest: IngestChannels,
     pub live_bus: LiveBus,
     pub projects: ProjectCache,
+    pub integrations: IntegrationsCache,
 }
 
 impl AppState {
@@ -68,6 +70,7 @@ impl AppState {
             ingest: IngestChannels::new(),
             live_bus: LiveBus::new(),
             projects: ProjectCache::new(),
+            integrations: IntegrationsCache::new(),
         }
     }
 }

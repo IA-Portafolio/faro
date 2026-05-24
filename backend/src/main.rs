@@ -14,6 +14,7 @@ mod config;
 mod error;
 mod fingerprint;
 mod ingest;
+mod integrations;
 mod notify;
 mod openapi;
 mod projects;
@@ -60,6 +61,12 @@ async fn main() -> Result<()> {
         tracing::warn!(error = %e, "falló la carga inicial de la caché de proyectos");
     }
     projects::spawn_refresh(state.clone());
+
+    // Carga inicial + refresh periódico de integraciones (Telegram, etc.).
+    if let Err(e) = state.integrations.reload(&state.ch).await {
+        tracing::warn!(error = %e, "falló la carga inicial de integraciones");
+    }
+    integrations::spawn_refresh(state.clone());
 
     // Bootstrap del admin del dashboard.
     if let Err(e) = auth::bootstrap_admin_if_empty(&state).await {

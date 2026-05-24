@@ -121,7 +121,7 @@ async fn evaluate_rule(
                 tracing::error!(error = %e, "falló el insert del incidente");
             }
             active.insert(rule.id, incident.clone());
-            let _ = crate::notify::dispatch(&state.cfg, &rule.notification_targets, &incident).await;
+            let _ = crate::notify::dispatch(&state, &rule.notification_targets, &incident).await;
             tracing::warn!(rule = %rule.name, value, threshold = rule.threshold, "alerta disparada");
         }
     } else if let Some(mut incident) = active.remove(&rule.id) {
@@ -131,7 +131,7 @@ async fn evaluate_rule(
         if let Err(e) = state.ch.insert("faro.alert_incidents", &[incident.clone()]).await {
             tracing::error!(error = %e, "falló el insert de resolución del incidente");
         }
-        let _ = crate::notify::dispatch(&state.cfg, &rule.notification_targets, &incident).await;
+        let _ = crate::notify::dispatch(&state, &rule.notification_targets, &incident).await;
         tracing::info!(rule = %rule.name, "alerta resuelta");
     }
 }

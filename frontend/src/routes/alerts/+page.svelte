@@ -215,7 +215,7 @@
       <textarea bind:value={targetsText} rows="4" class="mono" placeholder={'https://discord.com/api/webhooks/...\ntg://-1001234567890\ntg://@mi_canal\ntg://-1001234567890@123456:ABC-bot-token'}></textarea>
       <small class="muted">
         Acepta <code>https://</code> (webhook JSON tipo Slack/Discord) y <code>tg://&lt;chat_id&gt;</code> para Telegram nativo.
-        El bot global se configura con la variable <code>TELEGRAM_BOT_TOKEN</code>; también puedes incluir un token por destino con <code>tg://&lt;chat_id&gt;@&lt;token&gt;</code>.
+        El bot se configura en <a href="/settings/integrations">Integraciones</a>; también puedes incluir un token por destino con <code>tg://&lt;chat_id&gt;@&lt;token&gt;</code>.
       </small>
     </div>
     <div class="field"><label><input type="checkbox" checked={editing.enabled === 1} on:change={(e) => (editing.enabled = (e.currentTarget).checked ? 1 : 0)} /> Activa</label></div>

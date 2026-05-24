@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde_json::json;
 
-use crate::config::Config;
+use crate::state::SharedState;
 use crate::storage::AlertIncidentRow;
 
 /// Destino de notificación resuelto. Cada string crudo en `notification_targets`
@@ -54,8 +54,13 @@ fn parse_target(raw: &str) -> Option<Target> {
 
 /// Dispara una notificación a cada destino configurado. Soporta webhooks JSON
 /// (Slack/Discord/custom) y Telegram nativo vía Bot API.
+///
+/// Resolución del token Telegram, en orden:
+///   1. Token explícito en el target (`tg://<chat>@<token>`).
+///   2. Integración guardada en BD vía el panel de Settings.
+///   3. Variable de entorno `TELEGRAM_BOT_TOKEN` (compat para self-host).
 pub async fn dispatch(
-    cfg: &Config,
+    state: &SharedState,
     targets: &[String],
     incident: &AlertIncidentRow,
 ) -> Result<()> {
@@ -65,6 +70,9 @@ pub async fn dispatch(
     let client = reqwest::Client::new();
     let webhook_payload = webhook_payload(incident);
     let tg_text = telegram_text(incident);
+    let tg_integration = state.integrations.telegram();
+    let env_token = state.cfg.telegram_bot_token.as_deref();
+    let api_base = state.cfg.telegram_api_base.as_str();
 
     for raw in targets {
         match parse_target(raw) {
@@ -72,16 +80,24 @@ pub async fn dispatch(
                 send_webhook(&client, &url, &webhook_payload).await;
             }
             Some(Target::Telegram { chat_id, token }) => {
-                let token = token.as_deref().or(cfg.telegram_bot_token.as_deref());
-                match token {
+                let resolved = token
+                    .as_deref()
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        tg_integration
+                            .as_ref()
+                            .filter(|c| !c.bot_token.is_empty())
+                            .map(|c| c.bot_token.clone())
+                    })
+                    .or_else(|| env_token.map(|s| s.to_string()));
+                match resolved {
                     Some(token) => {
-                        send_telegram(&client, &cfg.telegram_api_base, token, &chat_id, &tg_text)
-                            .await;
+                        send_telegram(&client, api_base, &token, &chat_id, &tg_text).await;
                     }
                     None => {
                         tracing::warn!(
                             target = %raw,
-                            "target Telegram sin token: configura TELEGRAM_BOT_TOKEN o usa tg://<chat>@<token>"
+                            "target Telegram sin token: configura la integración en Settings o usa tg://<chat>@<token>"
                         );
                     }
                 }
