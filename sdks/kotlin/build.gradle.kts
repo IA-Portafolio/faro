@@ -3,6 +3,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.23"
     `maven-publish`
     signing
+    id("com.gradleup.nmcp") version "0.0.9"
 }
 
 group = "com.iaportafolio"
@@ -52,18 +53,6 @@ publishing {
             }
         }
     }
-    repositories {
-        maven {
-            name = "ossrh"
-            val releasesUrl = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/"
-            val snapshotsUrl = "https://s01.oss.sonatype.org/content/repositories/snapshots/"
-            url = uri(if (version.toString().endsWith("SNAPSHOT")) snapshotsUrl else releasesUrl)
-            credentials {
-                username = (project.findProperty("ossrhUsername") as String?) ?: System.getenv("OSSRH_USERNAME")
-                password = (project.findProperty("ossrhPassword") as String?) ?: System.getenv("OSSRH_PASSWORD")
-            }
-        }
-    }
 }
 
 signing {
@@ -73,6 +62,19 @@ signing {
         useInMemoryPgpKeys(signingKey, signingPassword)
         sign(publishing.publications["maven"])
     } else {
-        logger.warn("signingKey/signingPassword no configurados — publish a Maven Central fallará sin firma")
+        logger.warn("signingKey/signingPassword no configurados — publish fallará sin firma")
+    }
+}
+
+// Central Portal nuevo (central.sonatype.com) — el OSSRH legacy
+// (s01.oss.sonatype.org) ya no acepta uploads para namespaces nuevos.
+// Las credenciales son el "User Token" generado en central.sonatype.com/account.
+nmcp {
+    publishAllPublications {
+        username = providers.gradleProperty("ossrhUsername").orElse("")
+        password = providers.gradleProperty("ossrhPassword").orElse("")
+        // AUTOMATIC: tras validación, se publica solo. USER_MANAGED queda
+        // en staging para aprobación manual desde el portal.
+        publicationType = "AUTOMATIC"
     }
 }
