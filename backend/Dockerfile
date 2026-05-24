@@ -3,7 +3,7 @@ FROM rust:1-slim AS builder
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config ca-certificates && rm -rf /var/lib/apt/lists/*
+    pkg-config ca-certificates curl && rm -rf /var/lib/apt/lists/*
 
 # Cachea dependencias
 COPY Cargo.toml Cargo.lock* ./
