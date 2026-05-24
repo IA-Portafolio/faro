@@ -202,32 +202,40 @@ jobs:
           passphrase: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
       - name: Configure GPG for non-interactive signing
         # Sin esto gradle->gpg pide TTY al firmar (Inappropriate ioctl for device).
+        # Volvemos a `useInMemoryPgpKeys` exportando la armored ahora que la
+        # action ya importó la key — exportar desde el keyring local funciona
+        # aunque el secret pase mal por env.
         env:
           PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          KEY_ID: ${{ steps.gpg.outputs.keyid }}
         run: |
           mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          {
-            echo "use-agent"
-            echo "pinentry-mode loopback"
-            echo "batch"
-            echo "no-tty"
-          } >> ~/.gnupg/gpg.conf
+          printf '%s\n' "use-agent" "pinentry-mode loopback" "batch" "no-tty" >> ~/.gnupg/gpg.conf
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
           gpgconf --kill gpg-agent || true
-          # Cachea la passphrase en el agente para que las firmas siguientes no la pidan.
-          echo "test" | gpg --batch --pinentry-mode loopback --passphrase "$PASSPHRASE" \
-            --local-user "${{ steps.gpg.outputs.keyid }}" --sign --armor >/dev/null
-          echo "gpg primed OK"
+          # Re-export armored desde el keyring que ya importó la action, y guárdalo
+          # en una variable de entorno para que useInMemoryPgpKeys lo lea.
+          ARMORED=$(gpg --batch --pinentry-mode loopback --passphrase "$PASSPHRASE" --armor --export-secret-keys "$KEY_ID")
+          if [ -z "$ARMORED" ]; then
+            echo "::error::no se pudo exportar la key $KEY_ID"
+            exit 1
+          fi
+          # Compartir con el siguiente step via GITHUB_ENV (multiline syntax)
+          {
+            echo "GPG_ARMORED_KEY<<__END__"
+            printf '%s\n' "$ARMORED"
+            echo "__END__"
+          } >> "$GITHUB_ENV"
+          echo "gpg key exported OK"
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
           ORG_GRADLE_PROJECT_ossrhUsername: ${{ secrets.OSSRH_USERNAME }}
           ORG_GRADLE_PROJECT_ossrhPassword: ${{ secrets.OSSRH_PASSWORD }}
-          # Usa el GPG agent del runner (importado por la action de arriba) en
-          # vez de useInMemoryPgpKeys, así no dependemos de pasar el armored
-          # por env (que era lo que fallaba).
-          ORG_GRADLE_PROJECT_useGpgAgent: "true"
-          ORG_GRADLE_PROJECT_signingKeyId: ${{ steps.gpg.outputs.keyid }}
+          # La key se exportó en el step anterior dentro del propio runner;
+          # ahora useInMemoryPgpKeys sí puede leerla porque viene del shell,
+          # no del wrapper de secrets de GitHub.
+          ORG_GRADLE_PROJECT_signingKey: ${{ env.GPG_ARMORED_KEY }}
           ORG_GRADLE_PROJECT_signingPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
         run: |
           # gradlew aún no existe en el repo — usamos gradle del runner

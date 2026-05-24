@@ -67,18 +67,12 @@ publishing {
 }
 
 signing {
-    val useAgent = (project.findProperty("useGpgAgent") as String?).toBoolean()
     val signingKey: String? = project.findProperty("signingKey") as String?
     val signingPassword: String? = project.findProperty("signingPassword") as String?
-
-    if (useAgent) {
-        // CI: GPG ya importado en el agente del runner por crazy-max/ghaction-import-gpg.
-        useGpgCmd()
-        sign(publishing.publications["maven"])
-    } else if (signingKey != null && signingPassword != null) {
+    if (signingKey != null && signingPassword != null) {
         useInMemoryPgpKeys(signingKey, signingPassword)
         sign(publishing.publications["maven"])
     } else {
-        logger.warn("ni signingKey ni useGpgAgent — publish a Maven Central fallará sin firma")
+        logger.warn("signingKey/signingPassword no configurados — publish a Maven Central fallará sin firma")
     }
 }
