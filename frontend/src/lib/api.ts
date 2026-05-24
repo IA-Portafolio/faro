@@ -417,6 +417,33 @@ export type RetentionFilters = RangeArgs & {
 export const fetchRetention = (params: RetentionFilters = {}) =>
   api<RetentionResult>(`/api/v1/retention${qs(params)}`);
 
+// ---------- Product sessions ----------
+export type ProductSessionSummary = {
+  project_id: string;
+  session_id: string;
+  distinct_id: string;
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  pageview_count: number;
+  event_count: number;
+  error_count: number;
+  has_error: number;
+  has_replay: number;
+  replay_event_count: number;
+  replay_chunk_count: number;
+  source: string;
+};
+
+export type ProductSessionFilters = RangeArgs & {
+  distinct_id?: string;
+  has_replay?: boolean | number | string;
+  has_error?: boolean | number | string;
+};
+
+export const fetchProductSessions = (params: ProductSessionFilters = {}) =>
+  api<ProductSessionSummary[]>(`/api/v1/sessions${qs(params)}`);
+
 // ---------- Product users ----------
 export type ProductUserSummary = {
   project_id: string;
