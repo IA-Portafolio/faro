@@ -16,6 +16,7 @@
     { href: '/errors', label: 'Errores', icon: '⚠' },
     { href: '/events', label: 'Eventos', icon: '◆' },
     { href: '/users', label: 'Usuarios', icon: '◌' },
+    { href: '/sessions', label: 'Sesiones', icon: '▤' },
     { href: '/funnels', label: 'Funnels', icon: '▽' },
     { href: '/retention', label: 'Retention', icon: '▦' },
     { href: '/cohorts', label: 'Cohorts', icon: '◇' },
