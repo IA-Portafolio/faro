@@ -1,15 +1,18 @@
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use axum_extra::extract::Query;
 use serde::{Deserialize, Serialize};
 
 use crate::api::params::{ch_dt, Range};
+use crate::api::traces::TraceSummary;
 use crate::error::{ApiError, ApiResult};
 use crate::state::SharedState;
 
 pub fn router() -> Router<SharedState> {
-    Router::new().route("/sessions", get(list_sessions))
+    Router::new()
+        .route("/sessions", get(list_sessions))
+        .route("/sessions/:session_id/traces", get(session_traces))
 }
 
 #[derive(Debug, Deserialize)]
@@ -38,6 +41,17 @@ pub struct ProductSessionSummary {
     pub replay_event_count: u64,
     pub replay_chunk_count: u32,
     pub source: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SessionTraceQuery {
+    pub project: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct SessionTraceIds {
+    #[serde(default)]
+    trace_ids: Vec<String>,
 }
 
 fn truthy(raw: Option<&str>) -> bool {
@@ -164,6 +178,82 @@ async fn list_sessions(
     }
 
     let rows: Vec<ProductSessionSummary> = state.ch.select_with_params(&sql, &params).await?;
+    Ok(Json(rows))
+}
+
+async fn session_traces(
+    State(state): State<SharedState>,
+    Path(session_id): Path<String>,
+    Query(q): Query<SessionTraceQuery>,
+) -> ApiResult<Json<Vec<TraceSummary>>> {
+    let session_id = session_id.trim().to_string();
+    let project = q.project.trim().to_string();
+    if session_id.is_empty() {
+        return Err(ApiError::BadRequest("session_id requerido".into()));
+    }
+    if project.is_empty() {
+        return Err(ApiError::BadRequest("project requerido".into()));
+    }
+
+    let session_sql = "SELECT trace_ids \
+         FROM faro.product_sessions FINAL \
+         WHERE project_id = {project:String} \
+           AND session_id = {session_id:String} \
+         ORDER BY ended_at DESC \
+         LIMIT 1";
+    let session: Option<SessionTraceIds> = state
+        .ch
+        .select_one_with_params(
+            session_sql,
+            &[
+                ("project", project.as_str()),
+                ("session_id", session_id.as_str()),
+            ],
+        )
+        .await?;
+    let Some(session) = session else {
+        return Err(ApiError::NotFound);
+    };
+
+    let mut trace_ids = session.trace_ids;
+    trace_ids.retain(|id| !id.is_empty());
+    trace_ids.sort();
+    trace_ids.dedup();
+    if trace_ids.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
+
+    let mut params_owned = vec![("project".to_string(), project)];
+    let mut placeholders = Vec::with_capacity(trace_ids.len());
+    for (i, trace_id) in trace_ids.into_iter().enumerate() {
+        let name = format!("trace_{i}");
+        placeholders.push(format!("{{{name}:String}}"));
+        params_owned.push((name, trace_id));
+    }
+    let params: Vec<(&str, &str)> = params_owned
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
+
+    let traces_sql = format!(
+        "SELECT trace_id, toString(ts) AS timestamp, svc AS service_name, root AS root_name, \
+                dur AS duration_ns, status AS status_code, span_count \
+         FROM ( \
+            SELECT trace_id, \
+                   min(timestamp) AS ts, \
+                   any(service_name) AS svc, \
+                   argMin(name, timestamp) AS root, \
+                   toUInt64(max(toUnixTimestamp64Nano(timestamp) + duration_ns) - min(toUnixTimestamp64Nano(timestamp))) AS dur, \
+                   argMax(status_code, duration_ns) AS status, \
+                   toUInt32(count()) AS span_count \
+            FROM faro.spans \
+            WHERE project_id = {{project:String}} \
+              AND trace_id IN ({}) \
+            GROUP BY trace_id \
+         ) ORDER BY ts DESC LIMIT 1000",
+        placeholders.join(", ")
+    );
+    let rows: Vec<TraceSummary> = state.ch.select_with_params(&traces_sql, &params).await?;
     Ok(Json(rows))
 }
 
