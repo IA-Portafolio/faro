@@ -14,7 +14,9 @@ conversion, errores y latencia en el mismo contexto.
 | `/users` | Lista de end-users del producto por `distinct_id`; al abrir uno muestra timeline cronologico de events, sessions y traces linkeados. |
 | `/retention` | Heatmap de cohortes D1/D7/D30. El filtro `event_name` define que evento cuenta como retorno; vacio significa cualquier evento. |
 | `/sessions` | Lista de sesiones recientes con duracion, pageviews, events, replay, errores, traces linkeados y metricas de calidad de sesion. |
+| `/sessions/:session_id/traces?project=<project>` | Traces backend materializados para una sesion concreta; abre cada trace en `/traces/:trace_id`. |
 | `/insights` | Dashboard combinado que cruza conversion de eventos, errores linkeados a sesiones fallidas y p95 de spans backend. |
+| `/metrics` | Metric explorer unificado. Incluye metricas tecnicas de `faro.metrics` y metricas virtuales derivadas de `faro.product_events`. |
 
 ## Endpoints principales
 
@@ -61,6 +63,10 @@ Resuelve `product_sessions.trace_ids` contra `faro.spans` y devuelve summaries
 equivalentes a la lista de traces. `project` es obligatorio para evitar mezclar
 sesiones con ids iguales en proyectos distintos.
 
+La UI de `/sessions` muestra `trace_count` por fila. Cuando el conteo es mayor
+que cero, el link abre `/sessions/:session_id/traces?project=<project>` para
+navegar los traces backend que sirvieron esa sesion.
+
 ### Insights combinados
 
 `GET /api/v1/insights/service-dashboard`
@@ -79,14 +85,70 @@ errores que explican fallas del funnel.
 Endpoints complementarios del mismo modulo:
 
 - `GET /api/v1/insights/revenue-impact`: estima revenue perdido por errores
-  linkeados a sesiones sin checkout posterior. Parametros clave:
-  `checkout_event`, `average_order_value`, `service`.
+  linkeados a sesiones sin checkout posterior. Usa `faro.error_events` y
+  `faro.product_events` unidos por `(project_id, session_id)`. Parametros
+  clave: `checkout_event`, `average_order_value`, `service`.
 - `GET /api/v1/insights/latency-funnel-impact`: compara buckets lentos de un
-  span contra conversion de un funnel. Parametros clave: `span_name`, `service`,
-  `funnel_from`, `funnel_to`, `latency_threshold_ms`, `bucket_minutes`.
+  span contra conversion de un funnel. Usa p95 de `faro.spans` y conteos de
+  `faro.product_events` en el mismo bucket temporal. Parametros clave:
+  `span_name`, `service`, `funnel_from`, `funnel_to`,
+  `latency_threshold_ms`, `bucket_minutes`.
 - `GET /api/v1/insights/web-vitals-conversion-impact`: cruza web vitals
-  reportadas como logs contra conversion. Parametros clave: `metric`,
-  `threshold_ms`, `conversion_event`, `pageview_event`, `service`.
+  reportadas como logs contra conversion. Usa `attributes['metric.name']`,
+  `attributes['metric.value']` y `session.id` en `faro.logs`, unidos con
+  `$pageview` y el evento de conversion en `faro.product_events`. Parametros
+  clave: `metric`, `threshold_ms`, `conversion_event`, `pageview_event`,
+  `service`.
+
+Ejemplos de preguntas cubiertas:
+
+- "Que errores tocaron sesiones donde despues no hubo `checkout_completed`?"
+- "Cuando `/api/checkout` p95 supera 2s, cuanto cae el funnel?"
+- "Los usuarios con `LCP > 4s` convierten menos?"
+
+### Metricas derivadas de eventos
+
+Faro expone eventos de negocio como metricas virtuales en los endpoints
+existentes de metricas. Esto permite graficar `checkout_completed` por hora
+junto a p95 de latencia, error rate y cualquier metrica OTel sin exportar datos
+a otro producto.
+
+`GET /api/v1/metrics/names`
+
+Ademas de filas reales de `faro.metrics`, devuelve eventos de producto con esta
+convencion:
+
+```text
+events.<event_name>.count
+```
+
+Ejemplos:
+
+- `events.checkout_completed.count`
+- `events.$pageview.count`
+- `events.$feature_exposure.count`
+
+Para estas metricas virtuales:
+
+- `metric_type` es `counter`.
+- `metric_unit` es `events`.
+- `service_name` viene de `product_events.source`, por ejemplo `web`, `mobile`
+  o `backend`.
+
+`GET /api/v1/metrics/series?name=events.checkout_completed.count&bucket_seconds=3600`
+
+Devuelve la misma shape que una serie tecnica:
+
+```json
+[
+  { "ts": "2026-05-24 10:00:00", "value": 42.0 },
+  { "ts": "2026-05-24 11:00:00", "value": 37.0 }
+]
+```
+
+El parametro `service` filtra `product_events.source` para metricas virtuales
+de eventos. El parametro `agg` se ignora en estas metricas porque la agregacion
+siempre es `count()` por bucket.
 
 ## Modelo de datos esperado
 
@@ -107,6 +169,8 @@ Endpoints complementarios del mismo modulo:
 - El endpoint de web vitals espera logs con `attributes['metric.name']`,
   `attributes['metric.value']` y `attributes['session.id']` o
   `attributes['session_id']`.
+- Las metricas virtuales `events.<event_name>.count` se calculan al vuelo desde
+  `faro.product_events`; no crean filas nuevas en `faro.metrics`.
 
 ## Flujo recomendado para instrumentar un producto
 
@@ -126,6 +190,12 @@ Endpoints complementarios del mismo modulo:
 - La retencion soporta intervalos diarios y columnas fijas D1/D7/D30.
 - `/sessions` muestra disponibilidad y conteos de replay; la reproduccion rrweb
   queda condicionada a completar la pieza de replay.
+- El link session -> traces depende de que los eventos de producto traigan
+  `trace_id`; si el SDK no propaga ese valor, `trace_count` queda en cero aunque
+  existan spans backend en ClickHouse.
 - Los endpoints combinados dependen de que clientes y SDKs propaguen
   consistentemente `session_id`, `trace_id` y atributos de error. Sin esos ids,
   Faro puede contar eventos aislados, pero no explicar causalidad entre pilares.
+- Las metricas virtuales de eventos hoy soportan conteo por bucket. Sumas de
+  revenue, percentiles de propiedades JSON o rates derivados quedan para una
+  capa posterior de metricas declarativas.

@@ -202,3 +202,18 @@ git commit -m "feat: add session-level properties"
 ```
 
 If files are untracked pre-existing workspace files, do not commit; report that clearly.
+
+### Review Notes
+
+- `product_sessions` now has additive columns for event/pageview counts,
+  bounce/engaged flags, conversion, and bounded `quality_score`.
+- `session_aggregator` writes `page_count = pageview_count` for compatibility
+  while exposing the explicit `event_count` and `pageview_count` fields.
+- `GET /api/v1/sessions` returns the session-level properties so callers do not
+  need to scan raw `product_events`.
+- `/sessions` renders aggregate engaged/bounce/quality cards plus per-session
+  quality score and type labels.
+- `backend/tests/workers_session_aggregator.rs` asserts counts,
+  bounce/engaged behavior, conversion detection, and quality score bounds. The
+  test fixture adds missing additive columns before running so older local
+  ClickHouse schemas still exercise the new behavior.

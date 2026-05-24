@@ -74,7 +74,7 @@
     {/each}
   {:else}
     {#each traces as trace (trace.trace_id)}
-      <a class="trace-row" class:error={trace.status_code === 'ERROR'} href={`/traces/${trace.trace_id}`}>
+      <a class="trace-row" class:error={trace.status_code === 'ERROR'} href={`/traces/${encodeURIComponent(trace.trace_id)}`}>
         <div class="mono muted">{formatTimestamp(trace.timestamp)}</div>
         <div class="mono trace-id" title={trace.trace_id}>{shortId(trace.trace_id)}</div>
         <div>{trace.service_name || '-'}</div>

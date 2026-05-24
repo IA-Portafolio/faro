@@ -17,6 +17,12 @@
   let error = '';
   let loadingNames = false;
   let loadingSeries = false;
+  let selectedIsEventMetric = false;
+  let chartLabel = '';
+
+  function isEventMetricName(name: string): boolean {
+    return name.startsWith('events.') && name.endsWith('.count');
+  }
 
   if (browser) {
     const f = readFilters(['metric', 'service', 'agg']);
@@ -53,14 +59,13 @@
     loadingSeries = true;
     error = '';
     try {
-      const isEventMetric = selectedName.startsWith('events.') && selectedName.endsWith('.count');
       series = await fetchMetricSeries({
         name: selectedName,
         service: selectedSvc || undefined,
         project: $selectedProject || undefined,
         agg,
         last_minutes: rangeMinutes($timeRange),
-        bucket_seconds: isEventMetric ? 3600 : 60
+        bucket_seconds: selectedIsEventMetric ? 3600 : 60
       });
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e);
@@ -79,7 +84,8 @@
 
   $: distinctServices = Array.from(new Set(metrics.filter((m) => m.metric_name === selectedName).map((m) => m.service_name)));
   $: selectedMeta = metrics.find((m) => m.metric_name === selectedName);
-  $: selectedIsEventMetric = selectedName.startsWith('events.') && selectedName.endsWith('.count');
+  $: selectedIsEventMetric = isEventMetricName(selectedName);
+  $: if (selectedIsEventMetric && agg !== 'avg') agg = 'avg';
   $: chartLabel = selectedName ? `${selectedIsEventMetric ? 'count' : agg}(${selectedName})` : '';
 </script>
 
@@ -101,7 +107,7 @@
       <option value={s}>{s}</option>
     {/each}
   </select>
-  <select bind:value={agg}>
+  <select bind:value={agg} disabled={selectedIsEventMetric}>
     <option value="avg">avg</option>
     <option value="sum">sum</option>
     <option value="max">max</option>

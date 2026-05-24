@@ -204,5 +204,10 @@ files are untracked pre-existing workspace files, do not commit and report that.
 - `GET /api/v1/sessions/:session_id/traces?project=<project>` returns 404 when
   the session row is absent, `[]` when `trace_ids` is empty, and `TraceSummary[]`
   grouped from `faro.spans` when traces exist.
+- `GET /api/v1/sessions` also exposes `trace_count`, allowing the session list
+  to show whether a session has backend traces without fetching the trace list.
+- The frontend adds `sessionTracesHref`, `fetchProductSessionTraces`, links from
+  `/sessions`, and `/sessions/:session_id/traces?project=<project>` as the
+  navigable trace summary view.
 - Worker coverage now asserts `trace_ids` and `trace_count`; endpoint coverage
   asserts resolved summaries, empty sessions, and unknown sessions.

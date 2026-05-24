@@ -43,6 +43,10 @@ async fn query_series(
     }
 
     let (from, to) = q.range.resolve();
+    if from >= to {
+        return Err(ApiError::BadRequest("rango temporal inválido".into()));
+    }
+
     let bucket = q.bucket_seconds.unwrap_or(60).max(1);
     let agg = q.agg.as_deref().unwrap_or("avg");
     // Whitelist explícita — `agg_expr` se concatena al SQL como fragmento, así que
@@ -63,6 +67,9 @@ async fn query_series(
         vec![("name", q.name.as_str()), ("from", &from_s), ("to", &to_s)];
     let mut svc_clause = String::new();
     if let Some(s) = &q.service {
+        if s.is_empty() {
+            return Err(ApiError::BadRequest("service no puede ser vacío".into()));
+        }
         svc_clause.push_str(" AND service_name = {service:String}");
         params.push(("service", s));
     }

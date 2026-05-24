@@ -36,6 +36,13 @@ Ver [adr/README.md](adr/README.md) para el índice. Las ADRs se numeran
 secuencialmente (`NNNN-slug.md`) y capturan **por qué** se eligió algo,
 **qué alternativas** se descartaron y **qué consecuencias** trae.
 
+## Reviews
+
+| Doc | Para qué |
+| --- | -------- |
+| [superpowers/reviews/2026-05-24-10-b-session-review.md](superpowers/reviews/2026-05-24-10-b-session-review.md) | Revision de SDK tracking/events, ingesta de product events e identidad. |
+| [superpowers/reviews/2026-05-24-10-j-observability-integration-review.md](superpowers/reviews/2026-05-24-10-j-observability-integration-review.md) | Revision de insights 10.J y metricas virtuales derivadas de product events. |
+
 ## Invariantes
 
 - **Cada archivo bajo `docs/` debe estar enlazado** desde algún índice

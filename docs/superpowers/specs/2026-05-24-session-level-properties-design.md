@@ -74,6 +74,10 @@ definitions can come later without changing the stored session columns.
   for existing installations.
 - `backend/src/storage/models.rs`: `ProductSessionRow` struct fields.
 - `backend/src/workers/session_aggregator.rs`: aggregation query and row mapping.
+- `backend/src/api/sessions.rs`: exposes session-level properties in
+  `GET /api/v1/sessions`.
+- `frontend/src/routes/sessions/+page.svelte`: shows engaged/bounce rates,
+  average quality score, per-row quality score, and the derived session type.
 - `backend/tests/workers_session_aggregator.rs`: integration coverage for the
   new session properties.
 
@@ -85,7 +89,10 @@ definitions can come later without changing the stored session columns.
 3. For each session group, the query computes total events, pageview events,
    bounce/engaged booleans, conversion flag, duration, and score.
 4. The worker inserts the enriched row into `product_sessions`.
-5. `ReplacingMergeTree(ended_at)` keeps the latest version as in-flight sessions
+5. `GET /api/v1/sessions` returns the properties with replay/error enrichment.
+6. `/sessions` renders session quality, bounce/engaged state, counts, and
+   navigation links.
+7. `ReplacingMergeTree(ended_at)` keeps the latest version as in-flight sessions
    gain more events.
 
 ## Compatibility

@@ -75,6 +75,12 @@ ingested; deriving error state at read time avoids stale denormalized flags.
 - `backend/src/workers/session_aggregator.rs`: aggregate trace ids/count.
 - `backend/src/api/sessions.rs`: new session traces endpoint.
 - `backend/src/api/mod.rs`: mount the sessions API.
+- `frontend/src/lib/api.ts`: `fetchProductSessionTraces` helper.
+- `frontend/src/lib/sessions.ts`: `sessionTracesHref` helper.
+- `frontend/src/routes/sessions/+page.svelte`: shows `trace_count` links in
+  session rows.
+- `frontend/src/routes/sessions/[session_id]/traces/+page.svelte`: navigable
+  trace summaries for one product session.
 - `backend/tests/workers_session_aggregator.rs`: aggregation coverage.
 - `backend/tests/api_session_traces.rs`: endpoint coverage.
 
@@ -85,7 +91,10 @@ ingested; deriving error state at read time avoids stale denormalized flags.
 3. For each session group, it stores unique non-empty trace ids and their count.
 4. UI/API requests session traces.
 5. Backend reads trace ids from `product_sessions` and summarizes matching spans.
-6. UI can show "N traces" and highlight sessions whose traces include backend
+6. `/sessions` shows "N traces" when `trace_count > 0`.
+7. `/sessions/:session_id/traces?project=<project>` lists the backend trace
+   summaries and lets the user open each trace detail.
+8. UI can highlight sessions/traces whose returned summaries include backend
    errors.
 
 ## Compatibility
