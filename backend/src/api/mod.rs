@@ -51,6 +51,7 @@ pub mod replays;
 pub mod retention;
 pub mod security;
 pub mod services;
+pub mod sessions;
 pub mod traces;
 pub mod users;
 
@@ -143,6 +144,7 @@ fn v1_router() -> Router<SharedState> {
         .merge(preferences::router())
         .merge(product_users::router())
         .merge(retention::router())
+        .merge(sessions::router())
         .merge(replays::router())
         .merge(account::router())
 }
