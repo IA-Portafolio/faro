@@ -16,6 +16,7 @@ pub fn router() -> Router<SharedState> {
 pub struct SessionListQuery {
     #[serde(flatten)]
     pub range: Range,
+    pub session_id: Option<String>,
     pub distinct_id: Option<String>,
     pub has_replay: Option<String>,
     pub has_error: Option<String>,
@@ -64,6 +65,10 @@ async fn list_sessions(
     let project_clause_plain = project_clause_ps;
     let distinct_clause = match &q.distinct_id {
         Some(d) if !d.is_empty() => " AND distinct_id = {distinct_id:String}",
+        _ => "",
+    };
+    let session_clause = match &q.session_id {
+        Some(s) if !s.is_empty() => " AND session_id = {session_id:String}",
         _ => "",
     };
 
@@ -134,7 +139,7 @@ async fn list_sessions(
              ON es.project_id = ps.project_id AND es.session_id = ps.session_id \
            WHERE ps.ended_at >= toDateTime64({{from:DateTime64(9)}}, 9) \
              AND ps.started_at <= toDateTime64({{to:DateTime64(9)}}, 9) \
-             AND ps.session_id != ''{project_clause_ps}{distinct_clause} \
+             AND ps.session_id != ''{project_clause_ps}{distinct_clause}{session_clause} \
          ){outer_where} \
          ORDER BY ended_at DESC \
          LIMIT {limit}",
@@ -150,6 +155,11 @@ async fn list_sessions(
     if let Some(distinct_id) = &q.distinct_id {
         if !distinct_id.is_empty() {
             params.push(("distinct_id", distinct_id.as_str()));
+        }
+    }
+    if let Some(session_id) = &q.session_id {
+        if !session_id.is_empty() {
+            params.push(("session_id", session_id.as_str()));
         }
     }
 

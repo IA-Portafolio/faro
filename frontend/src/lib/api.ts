@@ -436,6 +436,7 @@ export type ProductSessionSummary = {
 };
 
 export type ProductSessionFilters = RangeArgs & {
+  session_id?: string;
   distinct_id?: string;
   has_replay?: boolean | number | string;
   has_error?: boolean | number | string;
