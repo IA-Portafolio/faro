@@ -1,21 +1,12 @@
 /**
- * @iaportafolio/browser
+ * Core RUM para navegador (interno de @iaportafolio/nextjs).
  *
- * SDK browser para Faro. Captura errores no manejados, Web Vitals, navegaciones
- * y clicks como breadcrumbs, y envía todo en lotes a la API de ingesta usando
+ * Captura errores no manejados, Web Vitals, navegaciones y clicks como
+ * breadcrumbs, y envía todo en lotes a la API de ingesta usando
  * sendBeacon cuando el tab se cierra (sin perder eventos).
  *
- * Uso mínimo:
- *
- *   import { init } from '@iaportafolio/browser';
- *
- *   init({
- *     endpoint: 'https://faro.iaportafolio.com',
- *     token:    'tu-token-de-proyecto',
- *     service:  'mi-app-web',
- *   });
- *
- *   // a partir de aquí, errores no atrapados se reportan solos
+ * Este archivo no se exporta directamente al usuario; el entrypoint
+ * público es `@iaportafolio/nextjs/client`.
  */
 
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
@@ -125,8 +116,6 @@ class FaroBrowser {
     this.installLifecycleHooks();
   }
 
-  // ---------- API pública ----------
-
   setUser(user: UserContext | null): void {
     this.user = user;
   }
@@ -176,10 +165,7 @@ class FaroBrowser {
     const body = JSON.stringify({ service: this.opts.service, logs: batch });
     const url = `${this.opts.endpoint}/api/v1/ingest/logs`;
 
-    // Si la página se está cerrando, sendBeacon es la única vía fiable
-    // (fetch con keepalive también, pero sendBeacon es la apuesta segura).
     if (useBeacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      // sendBeacon no soporta headers personalizados; pasamos el token como query param
       const beaconUrl = `${url}?_token=${encodeURIComponent(this.opts.token)}`;
       const ok = navigator.sendBeacon(beaconUrl, new Blob([body], { type: 'application/json' }));
       if (ok) return;
@@ -196,7 +182,6 @@ class FaroBrowser {
         body,
       });
       if (!res.ok && res.status >= 500) {
-        // Re-encola si el servidor está caído (no 4xx — esos son irrecuperables)
         this.queue.unshift(...batch);
       }
     } catch {
@@ -213,8 +198,6 @@ class FaroBrowser {
     this.cleanup = [];
     void this.flush(true);
   }
-
-  // ---------- Internals ----------
 
   private enqueue(evt: WireEvent): void {
     const processed = this.opts.beforeSend ? this.opts.beforeSend(evt) : evt;
@@ -240,8 +223,6 @@ class FaroBrowser {
       if (this.user.username) attrs['user.name'] = this.user.username;
     }
     if (this.breadcrumbs.length > 0) {
-      // Sólo serializamos breadcrumbs en eventos ERROR/WARN para no inflar logs INFO normales
-      // (los caller pueden pasar `.breadcrumbs` manual si quieren forzar).
       attrs['breadcrumbs'] = JSON.stringify(this.breadcrumbs.slice(-this.opts.maxBreadcrumbs));
     }
     if (extra) {
@@ -282,7 +263,6 @@ class FaroBrowser {
   }
 
   private installWebVitals(): void {
-    // Importación dinámica para no inflar el bundle cuando captureWebVitals=false
     void import('web-vitals')
       .then(({ onLCP, onCLS, onINP, onFCP, onTTFB }) => {
         const report = (name: string) => (m: { value: number; rating: string; id: string }) => {
@@ -385,8 +365,6 @@ function stringifyArgs(args: unknown[]): string {
 function safeJson(v: unknown): string {
   try { return JSON.stringify(v); } catch { return String(v); }
 }
-
-// ---------- Singleton helpers ----------
 
 let singleton: FaroBrowser | null = null;
 

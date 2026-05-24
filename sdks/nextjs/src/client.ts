@@ -1,11 +1,13 @@
 /**
  * Faro para Next.js — lado cliente (corre en el navegador).
  *
- * Es un wrapper fino sobre @iaportafolio/browser. El core (captura de
- * window.error, Web Vitals, breadcrumbs, batching, sendBeacon en pagehide,
- * ErrorBoundary React) vive en el paquete browser. Aquí sólo añadimos:
- *  - auto-detección de la release desde env vars típicas de Vercel/Next
- *  - re-exports para que sea ergonómico (`import {...} from '@iaportafolio/nextjs/client'`)
+ * Punto de entrada público para el RUM en Next.js:
+ *  - captura de window.error / unhandledrejection
+ *  - Web Vitals (LCP/CLS/INP/FCP/TTFB)
+ *  - breadcrumbs de clicks y navegaciones (history.pushState/popstate)
+ *  - sendBeacon en pagehide / visibilitychange=hidden (no se pierden eventos)
+ *  - ErrorBoundary React (`<FaroErrorBoundary>`)
+ *  - auto-detección de release desde env vars típicas de Vercel/Next
  *
  * Uso típico (App Router):
  *
@@ -27,8 +29,6 @@
  *       });
  *     }, []);
  *
- *     // (opcional) breadcrumb explícito en cada route change con el pathname limpio.
- *     // El SDK ya captura pushState, esto sólo es más legible en el dashboard.
  *     useEffect(() => {
  *       addBreadcrumb({ category: 'navigation', message: pathname, data: { pathname } });
  *     }, [pathname, search]);
@@ -39,18 +39,13 @@
  *   // app/layout.tsx
  *   import { FaroClient } from './faro-client';
  *   <body><FaroClient />{children}</body>
- *
- * Y opcionalmente envuelve secciones críticas con ErrorBoundary:
- *
- *   import { FaroErrorBoundary } from '@iaportafolio/nextjs/client';
- *   <FaroErrorBoundary fallback={...}><Checkout /></FaroErrorBoundary>
  */
 
 import {
   init as initBrowser,
   type FaroBrowser,
   type FaroBrowserOptions,
-} from '@iaportafolio/browser';
+} from './browser-core';
 
 export type {
   FaroBrowserOptions,
@@ -59,7 +54,8 @@ export type {
   LogEntry,
   Severity,
   WireEvent,
-} from '@iaportafolio/browser';
+  FaroBrowser,
+} from './browser-core';
 
 export {
   log,
@@ -72,17 +68,16 @@ export {
   flush,
   close,
   getClient,
-} from '@iaportafolio/browser';
+} from './browser-core';
 
-export { FaroErrorBoundary } from '@iaportafolio/browser/react';
-export type { FaroErrorBoundaryProps } from '@iaportafolio/browser/react';
+export { FaroErrorBoundary } from './browser-react';
+export type { FaroErrorBoundaryProps } from './browser-react';
 
 /**
- * Inicializa el SDK browser. Seguro de llamar en SSR — si `typeof window === 'undefined'`
- * el SDK subyacente no hace nada. Llámalo desde `useEffect` en un componente 'use client'.
+ * Inicializa el RUM en el navegador. Seguro de llamar en SSR — si `typeof window === 'undefined'`
+ * el core no hace nada. Llámalo desde `useEffect` en un componente 'use client'.
  */
 export function initFaroClient(opts: FaroBrowserOptions): FaroBrowser {
-  // Auto-detect release desde env vars típicas de Vercel/Next si no se pasó explícita.
   let release = opts.release;
   if (!release && typeof process !== 'undefined' && process.env) {
     release =

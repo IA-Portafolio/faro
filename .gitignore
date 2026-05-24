@@ -31,7 +31,6 @@ sdks/nextjs/dist/
 sdks/nextjs/.next/
 sdks/expo/dist/
 sdks/expo/.expo/
-sdks/browser/dist/
 sdks/*/package-lock.json
 
 # Python SDK

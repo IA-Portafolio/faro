@@ -1,12 +1,12 @@
 # @iaportafolio/nextjs
 
-SDK para Next.js — App Router y Pages Router. Cubre ambos lados:
+SDK para Next.js — App Router y Pages Router. Cubre ambos lados en un único paquete:
 
-- **Server**: captura errores de Route Handlers, Server Actions y SSR. Vive sobre [`@iaportafolio/node`](../node/).
-- **Client (browser)**: RUM completo — Web Vitals (LCP/CLS/INP/FCP/TTFB), `window.error`, `unhandledrejection`, clicks/navegaciones como breadcrumbs, React `<ErrorBoundary>` y flush garantizado al cerrar el tab. Vive sobre [`@iaportafolio/browser`](../browser/).
+- **Server**: captura errores de Route Handlers, Server Actions y SSR. Usa [`@iaportafolio/node`](../node/) como dependencia peer.
+- **Client (browser)**: RUM completo — Web Vitals (LCP/CLS/INP/FCP/TTFB), `window.error`, `unhandledrejection`, clicks/navegaciones como breadcrumbs, React `<FaroErrorBoundary>` y flush garantizado al cerrar el tab. Todo el código vive dentro de este mismo paquete.
 
 ```bash
-npm install @iaportafolio/nextjs @iaportafolio/node @iaportafolio/browser
+npm install @iaportafolio/nextjs @iaportafolio/node
 ```
 
 ## Server-side
@@ -142,7 +142,16 @@ export default function CheckoutPage() {
 
 ### Apagar comportamientos
 
-`initFaroClient({ captureWebVitals: false, captureClicks: false, ... })` — todos los flags están en [`@iaportafolio/browser`](../browser/).
+```ts
+initFaroClient({
+  endpoint, token, service,
+  captureWebVitals: false,
+  captureClicks: false,
+  captureNavigation: false,
+  captureUnhandled: false, // si quieres reportar a mano
+  captureConsole: true,    // por defecto false (puede meter ruido)
+});
+```
 
 ## Variables de entorno
 
@@ -155,5 +164,6 @@ export default function CheckoutPage() {
 
 ## Changelog
 
-- **v0.2.0**: RUM completo (Web Vitals, breadcrumbs, ErrorBoundary, setUser, navigation tracking). El cliente ahora se apoya en `@iaportafolio/browser`.
+- **v0.3.0**: el RUM del cliente se vuelve a fusionar dentro de `@iaportafolio/nextjs`. Ya no hay que instalar `@iaportafolio/browser` por separado (ese paquete queda deprecado). API pública sin cambios — sigue funcionando lo que estaba en v0.2.x.
+- **v0.2.x**: RUM completo en un paquete aparte `@iaportafolio/browser` (retirado, no usar).
 - **v0.1.x**: captura básica de errores en el cliente.

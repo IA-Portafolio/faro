@@ -1,9 +1,9 @@
 /**
- * React bindings — ErrorBoundary que reporta automáticamente a Faro.
- * Import path: `@iaportafolio/browser/react`
+ * React ErrorBoundary que reporta automáticamente a Faro.
+ * Importar desde `@iaportafolio/nextjs/client`.
  */
 import * as React from 'react';
-import { captureException } from './index';
+import { captureException } from './browser-core';
 
 export interface FaroErrorBoundaryProps {
   children: React.ReactNode;
