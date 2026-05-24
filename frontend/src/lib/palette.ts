@@ -66,6 +66,7 @@ export function staticCommands(): Command[] {
     { id: 'nav.alerts',   group: 'Navegar', icon: '⏰', label: 'Ir a Alertas',       shortcut: 'g a', run: () => goto('/settings/alerts') },
     { id: 'nav.projects', group: 'Navegar', icon: '⚙', label: 'Ir a Proyectos',     shortcut: 'g p', run: () => goto('/settings/projects') },
     { id: 'nav.product-users', group: 'Navegar', icon: '◌', label: 'Ir a Usuarios de producto', shortcut: 'g u', run: () => goto('/users') },
+    { id: 'nav.retention', group: 'Navegar', icon: '▦', label: 'Ir a Retention', shortcut: 'g n', run: () => goto('/retention') },
     { id: 'nav.settings-users', group: 'Navegar', icon: '◍', label: 'Ir a Usuarios del dashboard', run: () => goto('/settings/users') },
     { id: 'nav.integ',    group: 'Navegar', icon: '⇆', label: 'Ir a Integraciones', shortcut: 'g i', run: () => goto('/settings/integrations') },
     { id: 'nav.appearance', group: 'Navegar', icon: '◐', label: 'Ir a Apariencia',  run: () => goto('/settings/appearance') },

@@ -17,7 +17,9 @@
     { href: '/events', label: 'Eventos', icon: '◆' },
     { href: '/users', label: 'Usuarios', icon: '◌' },
     { href: '/funnels', label: 'Funnels', icon: '▽' },
+    { href: '/retention', label: 'Retention', icon: '▦' },
     { href: '/cohorts', label: 'Cohorts', icon: '◇' },
+    { href: '/experiments', label: 'Experimentos', icon: '◫' },
     { href: '/monitors', label: 'Monitores', icon: '◉' },
     { href: '/settings', label: 'Configuración', icon: '⚙' }
   ];

@@ -346,6 +346,7 @@ describe('staticCommands', () => {
     expect(ids).toContain('nav.logs');
     expect(ids).toContain('nav.traces');
     expect(ids).toContain('nav.product-users');
+    expect(ids).toContain('nav.retention');
     expect(ids).toContain('nav.settings-users');
     expect(ids).toContain('theme.dark');
   });
