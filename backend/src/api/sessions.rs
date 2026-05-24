@@ -35,11 +35,16 @@ pub struct ProductSessionSummary {
     pub duration_seconds: u32,
     pub pageview_count: u32,
     pub event_count: u32,
+    pub is_bounce: u8,
+    pub is_engaged: u8,
+    pub converted: u8,
+    pub quality_score: f32,
     pub error_count: u64,
     pub has_error: u8,
     pub has_replay: u8,
     pub replay_event_count: u64,
     pub replay_chunk_count: u32,
+    pub trace_count: u32,
     pub source: String,
 }
 
@@ -140,11 +145,16 @@ async fn list_sessions(
                   ps.duration_seconds AS duration_seconds, \
                   ps.pageview_count AS pageview_count, \
                   ps.event_count AS event_count, \
+                  ps.is_bounce AS is_bounce, \
+                  ps.is_engaged AS is_engaged, \
+                  ps.converted AS converted, \
+                  ps.quality_score AS quality_score, \
                   ifNull(es.error_count, 0) AS error_count, \
                   toUInt8(ifNull(es.error_count, 0) > 0) AS has_error, \
                   ifNull(rs.has_replay, 0) AS has_replay, \
                   ifNull(rs.replay_event_count, 0) AS replay_event_count, \
                   ifNull(rs.replay_chunk_count, 0) AS replay_chunk_count, \
+                  ps.trace_count AS trace_count, \
                   ps.source AS source \
            FROM faro.product_sessions FINAL AS ps \
            LEFT JOIN replay_sessions AS rs \

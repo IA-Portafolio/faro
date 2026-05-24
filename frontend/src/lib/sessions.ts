@@ -11,11 +11,16 @@ export type SessionLikeRow = {
   duration_seconds: number;
   pageview_count: number;
   event_count: number;
+  is_bounce?: number;
+  is_engaged?: number;
+  converted?: number;
+  quality_score?: number;
   error_count: number;
   has_error: number;
   has_replay: number;
   replay_event_count: number;
   replay_chunk_count: number;
+  trace_count?: number;
   source: string;
 };
 
@@ -44,6 +49,15 @@ export function sessionEventsHref(
   if (project) params.set('project', project);
   if (range) params.set('range', range);
   return `/events?${params.toString()}`;
+}
+
+export function sessionTracesHref(
+  row: Pick<SessionLikeRow, 'session_id' | 'project_id' | 'trace_count'>
+): string {
+  if (!row.session_id || !row.project_id || (row.trace_count ?? 0) <= 0) return '';
+  const params = new URLSearchParams();
+  params.set('project', row.project_id);
+  return `/sessions/${encodeURIComponent(row.session_id)}/traces?${params.toString()}`;
 }
 
 export function sessionUserHref(

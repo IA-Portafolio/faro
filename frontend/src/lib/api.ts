@@ -436,6 +436,7 @@ export type ProductSessionSummary = {
   has_replay: number;
   replay_event_count: number;
   replay_chunk_count: number;
+  trace_count: number;
   source: string;
 };
 
@@ -448,6 +449,11 @@ export type ProductSessionFilters = RangeArgs & {
 
 export const fetchProductSessions = (params: ProductSessionFilters = {}) =>
   api<ProductSessionSummary[]>(`/api/v1/sessions${qs(params)}`);
+
+export const fetchProductSessionTraces = (sessionId: string, project: string) =>
+  api<TraceSummary[]>(
+    `/api/v1/sessions/${encodeURIComponent(sessionId)}/traces${qs({ project })}`
+  );
 
 // ---------- Product users ----------
 export type ProductUserSummary = {

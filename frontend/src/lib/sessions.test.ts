@@ -5,6 +5,7 @@ import {
   sessionEventsHref,
   sessionHealth,
   sessionReplayHref,
+  sessionTracesHref,
   sessionUserHref,
   type SessionLikeRow
 } from './sessions';
@@ -23,6 +24,7 @@ const row: SessionLikeRow = {
   has_replay: 1,
   replay_event_count: 500,
   replay_chunk_count: 2,
+  trace_count: 3,
   source: 'web'
 };
 
@@ -41,6 +43,11 @@ describe('session helpers', () => {
 
   it('builds events href with session query and global context', () => {
     expect(sessionEventsHref(row, 'app', '7d')).toBe('/events?query=session_id%3Asess_123&project=app&range=7d');
+  });
+
+  it('builds traces href only when trace links exist', () => {
+    expect(sessionTracesHref(row)).toBe('/sessions/sess_123/traces?project=app');
+    expect(sessionTracesHref({ ...row, trace_count: 0 })).toBe('');
   });
 
   it('builds user href preserving project and range', () => {

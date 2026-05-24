@@ -7,6 +7,7 @@
     sessionEventsHref,
     sessionHealth,
     sessionReplayHref,
+    sessionTracesHref,
     sessionUserHref
   } from '$lib/sessions';
   import { formatTimestamp, rangeMinutes, selectedProject, timeRange } from '$lib/stores';
@@ -58,10 +59,13 @@
     );
   })();
 
-  $: replayCount = filtered.filter((s) => s.has_replay === 1).length;
-  $: errorCount = filtered.filter((s) => s.has_error === 1 || s.error_count > 0).length;
+  $: engagedCount = filtered.filter((s) => s.is_engaged === 1).length;
+  $: bounceCount = filtered.filter((s) => s.is_bounce === 1).length;
   $: pageviewCount = filtered.reduce((sum, s) => sum + s.pageview_count, 0);
   $: totalDuration = filtered.reduce((sum, s) => sum + s.duration_seconds, 0);
+  $: avgQuality = filtered.length
+    ? filtered.reduce((sum, s) => sum + (s.quality_score || 0), 0) / filtered.length
+    : 0;
 
   onMount(load);
 
@@ -74,6 +78,11 @@
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
     if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
     return n.toLocaleString();
+  }
+
+  function fmtPct(n: number, total: number): string {
+    if (total <= 0) return '0%';
+    return `${Math.round((n / total) * 100)}%`;
   }
 </script>
 
@@ -94,12 +103,19 @@
     <div class="value mono">{fmtCount(filtered.length)}</div>
   </div>
   <div class="card">
-    <div class="label">Con replay</div>
-    <div class="value mono">{fmtCount(replayCount)}</div>
+    <div class="label">Engaged</div>
+    <div class="value mono">{fmtPct(engagedCount, filtered.length)}</div>
+    <div class="muted card-sub mono">{fmtCount(engagedCount)} sesiones</div>
   </div>
   <div class="card">
-    <div class="label">Con error</div>
-    <div class="value mono" class:danger={errorCount > 0}>{fmtCount(errorCount)}</div>
+    <div class="label">Bounce</div>
+    <div class="value mono">{fmtPct(bounceCount, filtered.length)}</div>
+    <div class="muted card-sub mono">1 event</div>
+  </div>
+  <div class="card">
+    <div class="label">Calidad</div>
+    <div class="value mono">{avgQuality.toFixed(0)}</div>
+    <div class="muted card-sub mono">score promedio</div>
   </div>
   <div class="card">
     <div class="label">Pageviews</div>
@@ -135,10 +151,12 @@
     <div>Usuario</div>
     <div>Inicio</div>
     <div>Duración</div>
+    <div>Calidad</div>
+    <div>Tipo</div>
     <div>Pageviews</div>
     <div>Eventos</div>
     <div>Errores</div>
-    <div>Replay</div>
+    <div>Links</div>
   </div>
 
   {#if loading && sessions.length === 0}
@@ -149,8 +167,9 @@
       {@const health = sessionHealth(row)}
       {@const userHref = sessionUserHref(row, $selectedProject || undefined, $timeRange)}
       {@const eventsHref = sessionEventsHref(row, $selectedProject || undefined, $timeRange)}
+      {@const tracesHref = sessionTracesHref(row)}
       {#if replayHref}
-        <a class="session-row" class:error={health === 'error'} href={replayHref} data-sveltekit-preload-data="hover">
+        <div class="session-row" class:error={health === 'error'}>
           <div class="session-cell">
             <span class="status-dot" class:error={health === 'error'} class:replay={health === 'replay'}></span>
             <span class="mono sid" title={row.session_id}>{shortId(row.session_id)}</span>
@@ -159,14 +178,29 @@
           <div class="mono muted" title={row.distinct_id}>{shortId(row.distinct_id)}</div>
           <div class="mono muted">{formatTimestamp(row.started_at)}</div>
           <div class="mono">{formatSessionDuration(row.duration_seconds)}</div>
+          <div class="mono tabular">{Math.round(row.quality_score)}</div>
+          <div>
+            {#if row.converted === 1}
+              <span class="quality-pill converted">conv</span>
+            {:else if row.is_bounce === 1}
+              <span class="quality-pill bounce">bounce</span>
+            {:else}
+              <span class="quality-pill engaged">engaged</span>
+            {/if}
+          </div>
           <div class="mono tabular">{row.pageview_count.toLocaleString()}</div>
           <div class="mono tabular">{row.event_count.toLocaleString()}</div>
           <div class="mono tabular" class:danger={row.error_count > 0}>{row.error_count.toLocaleString()}</div>
           <div class="replay-cell">
-            <span class="play">▶ Reproducir</span>
+            <a class="inline-link play" href={replayHref} data-sveltekit-preload-data="hover">Reproducir</a>
+            {#if tracesHref}
+              <a class="inline-link mono" href={tracesHref}>{row.trace_count.toLocaleString()} traces</a>
+            {:else}
+              <span class="muted mono">0 traces</span>
+            {/if}
             <span class="muted mono">{row.replay_chunk_count} chunks</span>
           </div>
-        </a>
+        </div>
       {:else}
         <div class="session-row muted-row" class:error={health === 'error'}>
           <div class="session-cell">
@@ -183,11 +217,26 @@
           </div>
           <div class="mono muted">{formatTimestamp(row.started_at)}</div>
           <div class="mono">{formatSessionDuration(row.duration_seconds)}</div>
+          <div class="mono tabular">{Math.round(row.quality_score)}</div>
+          <div>
+            {#if row.converted === 1}
+              <span class="quality-pill converted">conv</span>
+            {:else if row.is_bounce === 1}
+              <span class="quality-pill bounce">bounce</span>
+            {:else}
+              <span class="quality-pill engaged">engaged</span>
+            {/if}
+          </div>
           <div class="mono tabular">{row.pageview_count.toLocaleString()}</div>
           <div class="mono tabular">{row.event_count.toLocaleString()}</div>
           <div class="mono tabular" class:danger={row.error_count > 0}>{row.error_count.toLocaleString()}</div>
           <div class="replay-cell">
             <span class="muted">Sin replay</span>
+            {#if tracesHref}
+              <a class="inline-link mono" href={tracesHref}>{row.trace_count.toLocaleString()} traces</a>
+            {:else}
+              <span class="muted mono">0 traces</span>
+            {/if}
             <a class="inline-link mono" href={eventsHref}>eventos</a>
           </div>
         </div>
@@ -222,7 +271,7 @@
   .sessions-head,
   .session-row {
     display: grid;
-    grid-template-columns: minmax(190px, 1.25fr) minmax(150px, 1fr) 190px 90px 90px 80px 80px minmax(150px, 0.9fr);
+    grid-template-columns: minmax(190px, 1.25fr) minmax(150px, 1fr) 190px 90px 70px 82px 90px 80px 80px minmax(150px, 0.9fr);
     gap: 12px;
     align-items: center;
   }
@@ -282,6 +331,25 @@
     color: var(--text-muted);
     flex: 0 0 auto;
   }
+  .quality-pill {
+    display: inline-flex;
+    align-items: center;
+    min-width: 64px;
+    height: 22px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-muted);
+    background: var(--bg);
+  }
+  .quality-pill.engaged { color: var(--success); }
+  .quality-pill.converted {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  }
+  .quality-pill.bounce { color: var(--text-muted); }
   .replay-cell {
     display: flex;
     flex-direction: column;
@@ -309,7 +377,7 @@
     .sessions-table { overflow-x: auto; }
     .sessions-head,
     .session-row {
-      min-width: 1020px;
+      min-width: 1260px;
     }
   }
 </style>
