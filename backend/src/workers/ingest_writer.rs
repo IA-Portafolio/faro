@@ -1,9 +1,10 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tokio::sync::mpsc::Receiver;
 use tokio::time::{interval, MissedTickBehavior};
 
+use crate::observability::names;
 use crate::state::SharedState;
 use crate::storage::Client;
 
@@ -12,10 +13,36 @@ use crate::storage::Client;
 /// loguear — el buffering durable corresponde a una capa de cola (Redis/Kafka) que podemos
 /// cablear más adelante.
 pub fn start_ingest_writers(state: SharedState) {
-    let logs_rx = state.ingest.logs_rx.lock().take().expect("rx de logs ya tomado");
-    let spans_rx = state.ingest.spans_rx.lock().take().expect("rx de spans ya tomado");
-    let metrics_rx = state.ingest.metrics_rx.lock().take().expect("rx de metrics ya tomado");
-    let monitor_rx = state.ingest.monitor_results_rx.lock().take().expect("rx de monitor ya tomado");
+    let logs_rx = state
+        .ingest
+        .logs_rx
+        .lock()
+        .take()
+        .expect("rx de logs ya tomado");
+    let spans_rx = state
+        .ingest
+        .spans_rx
+        .lock()
+        .take()
+        .expect("rx de spans ya tomado");
+    let metrics_rx = state
+        .ingest
+        .metrics_rx
+        .lock()
+        .take()
+        .expect("rx de metrics ya tomado");
+    let monitor_rx = state
+        .ingest
+        .monitor_results_rx
+        .lock()
+        .take()
+        .expect("rx de monitor ya tomado");
+    let events_rx = state
+        .ingest
+        .events_rx
+        .lock()
+        .take()
+        .expect("rx de events ya tomado");
 
     let max = state.cfg.batch_max_rows;
     let flush_ms = state.cfg.batch_flush_ms;
@@ -23,7 +50,20 @@ pub fn start_ingest_writers(state: SharedState) {
     spawn_writer("faro.logs", state.ch.clone(), logs_rx, max, flush_ms);
     spawn_writer("faro.spans", state.ch.clone(), spans_rx, max, flush_ms);
     spawn_writer("faro.metrics", state.ch.clone(), metrics_rx, max, flush_ms);
-    spawn_writer("faro.monitor_results", state.ch.clone(), monitor_rx, max, flush_ms);
+    spawn_writer(
+        "faro.monitor_results",
+        state.ch.clone(),
+        monitor_rx,
+        max,
+        flush_ms,
+    );
+    spawn_writer(
+        "faro.product_events",
+        state.ch.clone(),
+        events_rx,
+        max,
+        flush_ms,
+    );
 }
 
 fn spawn_writer<T>(
@@ -67,14 +107,31 @@ fn spawn_writer<T>(
     });
 }
 
-async fn flush<T: Serialize>(table: &str, ch: &Client, buf: &mut Vec<T>) {
+async fn flush<T: Serialize>(table: &'static str, ch: &Client, buf: &mut Vec<T>) {
     if buf.is_empty() {
         return;
     }
     let n = buf.len();
+    let start = Instant::now();
     match ch.insert(table, buf).await {
-        Ok(()) => tracing::debug!(%table, rows = n, "lote volcado"),
-        Err(e) => tracing::error!(%table, rows = n, error = %e, "flush failed, dropping batch"),
+        Ok(()) => {
+            let elapsed = start.elapsed().as_secs_f64();
+            // Histogram en segundos — buckets de axum-prometheus por defecto son
+            // SECONDS_DURATION_BUCKETS, que cubre el rango interesante para inserts
+            // a ClickHouse (1ms a varios segundos).
+            metrics::histogram!(names::CH_INSERT_SECONDS, "table" => table).record(elapsed);
+            metrics::counter!(names::CH_ROWS_INSERTED, "table" => table).increment(n as u64);
+            tracing::debug!(%table, rows = n, "lote volcado");
+        }
+        Err(e) => {
+            metrics::counter!(
+                names::CH_ERRORS,
+                "table" => table,
+                "operation" => "insert",
+            )
+            .increment(1);
+            tracing::error!(%table, rows = n, error = %e, "flush failed, dropping batch");
+        }
     }
     buf.clear();
 }

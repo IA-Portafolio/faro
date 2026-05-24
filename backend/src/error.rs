@@ -7,6 +7,10 @@ use serde_json::json;
 pub enum ApiError {
     #[error("no autorizado")]
     Unauthorized,
+    /// 403. Las credenciales fueron aceptadas pero la acción está bloqueada por
+    /// política (e.g. origen del browser fuera de la whitelist del proyecto).
+    #[error("prohibido: {0}")]
+    Forbidden(String),
     #[error("petición inválida: {0}")]
     BadRequest(String),
     #[error("no encontrado")]
@@ -15,6 +19,11 @@ pub enum ApiError {
     Clickhouse(String),
     #[error("interno: {0}")]
     Internal(String),
+    /// Rate limit por proyecto en la ingesta. `retry_after_secs` se devuelve
+    /// como header `Retry-After` además de en el body, para clientes que sólo
+    /// miran headers HTTP estándar.
+    #[error("rate limit por proyecto excedido (reintenta en {retry_after_secs}s)")]
+    TooManyRequests { retry_after_secs: u64 },
 }
 
 impl From<reqwest::Error> for ApiError {
@@ -37,14 +46,38 @@ impl From<anyhow::Error> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let ApiError::TooManyRequests { retry_after_secs } = self {
+            let body = Json(json!({
+                "error": "rate_limited",
+                "message": format!(
+                    "rate limit por proyecto excedido (reintenta en {retry_after_secs}s)"
+                ),
+                "retry_after_secs": retry_after_secs,
+            }));
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                [(
+                    axum::http::header::RETRY_AFTER,
+                    retry_after_secs.to_string(),
+                )],
+                body,
+            )
+                .into_response();
+        }
         let (status, code) = match &self {
             ApiError::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             ApiError::BadRequest(_) => (StatusCode::BAD_REQUEST, "bad_request"),
             ApiError::NotFound => (StatusCode::NOT_FOUND, "not_found"),
             ApiError::Clickhouse(_) => (StatusCode::BAD_GATEWAY, "clickhouse_error"),
             ApiError::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
+            ApiError::TooManyRequests { .. } => unreachable!("manejado arriba"),
         };
-        (status, Json(json!({ "error": code, "message": self.to_string() }))).into_response()
+        (
+            status,
+            Json(json!({ "error": code, "message": self.to_string() })),
+        )
+            .into_response()
     }
 }
 

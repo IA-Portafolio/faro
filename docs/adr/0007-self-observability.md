@@ -1,8 +1,16 @@
 # ADR-0007: Self-observability via OTLP a sí mismo
 
-- **Estado**: Accepted
+- **Estado**: Superseded by [ADR-0011](0011-prometheus-self-monitoring.md) (2026-05-24)
 - **Fecha**: 2026-05-23
 - **Autores**: @victalejo
+
+> **Nota**: la práctica de auto-monitoreo en **producción** se movió a
+> Prometheus exposition + Grafana externo (ADR-0011). El razonamiento de
+> "Faro contra Faro" rompía cuando la propia pipeline se caía — el sistema
+> que debe alertar no puede depender del sistema vigilado. La capa OTLP
+> de este ADR (`FARO_SELF_OBSERVE=true`, módulo `crate::telemetry`) **sigue
+> existiendo** como opt-in para correlación dev de logs + spans + métricas
+> en la misma UI; lo que cambió es cuál es el camino esperado en prod.
 
 ## Contexto
 

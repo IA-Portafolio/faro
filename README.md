@@ -8,7 +8,7 @@ Inspirada en Monoscope y proyectos similares, pero construida sobre un stack má
 | ------------ | ------------------------------------- |
 | Almacenamiento | ClickHouse 24.x                     |
 | Backend      | Rust (axum, tokio, reqwest)           |
-| Ingesta      | OTLP/HTTP+JSON + HTTP/JSON nativo     |
+| Ingesta      | OTLP/HTTP+JSON, OTLP/gRPC + HTTP/JSON nativo |
 | Frontend     | SvelteKit (Svelte 4) + CSS plano      |
 | Cola/caché   | Redis (reservado para uso futuro)     |
 | Despliegue   | Docker Compose                        |
@@ -21,7 +21,11 @@ Inspirada en Monoscope y proyectos similares, pero construida sobre un stack má
 - **Agrupación de errores** — huella digital automática de logs WARN+/ERROR en issues estilo Sentry con flujo de resolver/ignorar.
 - **Monitores de API** — chequeos HTTP sintéticos en intervalos configurables con estadísticas de uptime% y latencia.
 - **Reglas de alerta** — queries declarativas de ClickHouse con umbral + ventana, disparo/resolución automática de incidentes, notificaciones por webhook (Slack/Discord/genérico).
+- **Product analytics** — eventos de producto, funnels, cohorts, sesiones y usuarios multi-device sobre `faro.product_events`.
+- **Feature flags y experimentos** — evaluación local en SDKs, exposures `$feature_exposure`, A/B testing con p-value/CI y rollback recomendado cuando treatment sube errores.
 - **Dashboard** — totales, sparkline del volumen de logs, vista general de servicios.
+
+> Documentación completa en [`docs/`](docs/README.md): guías, ADR y la referencia generada de variables de entorno.
 
 ## Arranque rápido
 
@@ -37,6 +41,7 @@ Cuando todo esté saludable:
 | Dashboard      | http://localhost:3000     |
 | API REST       | http://localhost:8080     |
 | OTLP/HTTP      | http://localhost:4318     |
+| OTLP/gRPC      | localhost:4317            |
 | ClickHouse     | http://localhost:8123     |
 
 ClickHouse inicializa la base de datos `faro` y todas las tablas en el primer arranque desde `clickhouse/init/*.sql`.
@@ -72,7 +77,9 @@ curl -X POST http://localhost:8080/api/v1/ingest/logs \
 
 ### SDK de OpenTelemetry (cualquier lenguaje)
 
-Apunta tu exportador OTLP a `http://faro-backend:4318` con el protocolo `http/json`:
+Faro acepta los dos transportes estándar de OpenTelemetry. Elige uno:
+
+**HTTP/JSON** (`:4318`) — fácil de inspeccionar con `curl`, recomendado para nuestros SDKs `@iaportafolio/*`:
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
@@ -80,7 +87,15 @@ export OTEL_EXPORTER_OTLP_PROTOCOL=http/json
 export OTEL_SERVICE_NAME=billing
 ```
 
-Los logs van a `/v1/logs`, las trazas a `/v1/traces`, las métricas a `/v1/metrics` — las rutas estándar de OTLP/HTTP.
+**gRPC/protobuf** (`:4317`) — el default de los SDKs oficiales (Java, .NET, Python, Go, Ruby) y de OpenTelemetry Collector:
+
+```bash
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_SERVICE_NAME=billing
+```
+
+Los logs van a `/v1/logs`, las trazas a `/v1/traces`, las métricas a `/v1/metrics` — las rutas estándar de OTLP. Ver [ADR-0010](docs/adr/0010-otlp-grpc-ingest.md) para el porqué de soportar ambos.
 
 ### OpenTelemetry Collector
 
@@ -100,7 +115,7 @@ service:
 
 ![Diagrama de arquitectura de Faro](docs/architecture.png)
 
-- **Dos listeners HTTP**: `:4318` solo sirve receptores OTLP; `:8080` sirve la API REST/SSE y el endpoint opcional de ingesta nativa. Mantenerlos separados permite exponer OTLP detrás de una regla de firewall distinta a la del dashboard.
+- **Tres listeners**: `:4318` sirve receptores OTLP/HTTP+JSON; `:4317` sirve OTLP/gRPC+protobuf (tonic); `:8080` sirve la API REST/SSE y el endpoint opcional de ingesta nativa. Mantenerlos separados permite exponer cada uno con su propia regla de firewall.
 - **Batching**: los handlers de ingesta empujan filas a canales mpsc acotados; las tareas de escritura por tabla hacen flush cada 750 ms (configurable) o 5 000 filas, lo que ocurra primero.
 - **Indexador de errores**: una tarea en segundo plano se suscribe al bus de broadcast de logs en memoria, toma los registros WARN+/ERROR (o cualquier cosa con atributos `exception.*`) y los escribe en `error_events` con una huella SHA-256 normalizada sobre `exception_type + mensaje normalizado + primeros 8 frames del stack`.
 - **Runner de monitores**: lee `api_monitors` cada 10 s y agenda cada monitor en su propio intervalo; los resultados se envían por la misma pipeline de batching.
@@ -112,6 +127,8 @@ service:
 | ------ | ------------------------------------------ | ----- |
 | GET    | `/healthz`                                 |       |
 | POST   | `/api/v1/ingest/logs`                      | Token Bearer desde `FARO_INGEST_TOKEN` |
+| POST   | `/api/v1/ingest/events`                    | Product events desde SDKs |
+| GET    | `/api/v1/ingest/feature-flags`             | Flags activos para evaluación local en SDKs |
 | GET    | `/api/v1/logs`                             | filtros: `service`, `min_severity`, `query`, `trace_id`, `last_minutes`, `limit` |
 | GET    | `/api/v1/logs/live`                        | Stream de Server-Sent Events de nuevos logs |
 | GET    | `/api/v1/logs/stats`                       | conteos agregados por minuto/servicio/severidad |
@@ -133,6 +150,10 @@ service:
 | PUT    | `/api/v1/alerts/rules/:id`                 |       |
 | DELETE | `/api/v1/alerts/rules/:id`                 |       |
 | GET    | `/api/v1/alerts/incidents`                 |       |
+| GET    | `/api/v1/events`                           | eventos de producto |
+| POST   | `/api/v1/experiments/analyze`              | A/B stats por flag + evento de conversión |
+| GET    | `/api/v1/funnels/events`                   | catálogo de eventos para builders |
+| POST   | `/api/v1/funnels/preview`                  | funnel exploratorio |
 | GET    | `/api/v1/services`                         |       |
 | GET    | `/api/v1/dashboard`                        |       |
 
@@ -216,27 +237,25 @@ faro/
 
 ## Referencia de configuración
 
-| Variable de entorno           | Valor por defecto             | Propósito |
-| ----------------------------- | ----------------------------- | --------- |
-| `FARO_API_ADDR`               | `0.0.0.0:8080`                | Listener REST / SSE |
-| `FARO_BIND_ADDR`              | `0.0.0.0:4318`                | Listener OTLP |
-| `CLICKHOUSE_URL`              | `http://clickhouse:8123`      | Endpoint HTTP de ClickHouse |
-| `CLICKHOUSE_DATABASE`         | `faro`                        |  |
-| `CLICKHOUSE_USER`             | `faro`                        |  |
-| `CLICKHOUSE_PASSWORD`         | `faro`                        |  |
-| `FARO_INGEST_TOKEN`           | *(requerido)*                 | Token Bearer para `/api/v1/ingest/logs` |
-| `FARO_BATCH_MAX_ROWS`         | `5000`                        | Umbral de flush por tabla |
-| `FARO_BATCH_FLUSH_MS`         | `750`                         | Tiempo máximo de espera por tabla |
-| `RUST_LOG`                    | `info,faro=debug`             |  |
-| `PUBLIC_API_BASE`             | `http://localhost:8080`       | URL base frontend → backend (en tiempo de build) |
+La lista completa de variables de entorno (backend, compose, frontend, workers de fondo, notificaciones, self-observability, smoke test) vive en una sola página: **[`docs/reference/environment.md`](docs/reference/environment.md)**. Se autogenera a partir de [`.env.example`](.env.example), que es la fuente única de verdad — un cambio en una y el otro queda desincronizado bloquea el CI.
+
+Mínimo que conviene revisar antes de un arranque útil:
+
+| Variable                | Para qué                                              |
+| ----------------------- | ----------------------------------------------------- |
+| `CLICKHOUSE_PASSWORD`   | Password del usuario `faro` en ClickHouse             |
+| `FARO_INGEST_TOKEN`     | Bearer aceptado por OTLP y `/api/v1/ingest/logs`      |
+| `PUBLIC_API_BASE`       | URL del backend que el frontend inlinea en build      |
+| `FRONTEND_ORIGIN`       | Origin permitido por SvelteKit (CSRF)                 |
+| `RUST_LOG`              | Filtro `tracing-subscriber` para los logs del backend |
 
 ## Limitaciones / trabajo futuro
 
-- **Sin aislamiento multi-tenant** (intencional por diseño) — cualquiera con el token de ingesta puede escribir, cualquiera con acceso a la API puede leer todo.
-- **OTLP/gRPC y OTLP/HTTP+protobuf** no están implementados; solo OTLP/HTTP+JSON. La mayoría de los SDKs soportan JSON vía `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`.
+- **Sin aislamiento multi-tenant** (intencional por diseño) — los proyectos comparten una sola instancia con un único pool de usuarios; cualquiera con el token de un proyecto puede escribir contra ese proyecto, y cualquier usuario autenticado del dashboard ve todos los proyectos.
+- **OTLP/HTTP+protobuf** no está implementado; sí están **OTLP/HTTP+JSON** (`:4318`) y **OTLP/gRPC+protobuf** (`:4317`). Ver [ADR-0010](docs/adr/0010-otlp-grpc-ingest.md).
 - **DSL de queries de alertas** es SQL crudo de ClickHouse — flexible pero inseguro; trátalo como solo-admin.
 - **Sin buffer de ingesta durable** — si el backend cae entre el envío al canal y el flush a ClickHouse, las filas en vuelo se pierden. Redis (ya presente en el compose) está cableado para un futuro buffer respaldado por Streams.
-- **Sin autenticación en la API del dashboard.** Ponlo detrás de un proxy OAuth / proxy inverso si lo expones públicamente.
+- **Auth nativa con bootstrap manual** — el dashboard tiene login con email/password + 2FA TOTP opcional ([ADR-0009](docs/adr/0009-security-hardening.md)), pero la primera cuenta admin requiere setear `FARO_BOOTSTRAP_ADMIN_*` en el `.env`. Sigue siendo recomendable poner un proxy de red delante como defense-in-depth.
 
 ## Licencia
 

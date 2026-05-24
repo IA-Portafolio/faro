@@ -60,10 +60,55 @@ Checks antes de commitear:
 ```bash
 cargo fmt
 cargo clippy --all-targets -- -D warnings
-cargo test
+cargo nextest run     # o `cargo test` si no tienes nextest instalado
 ```
 
-CI corre exactamente estos tres comandos.
+CI corre fmt + clippy + `cargo nextest run --profile ci`.
+
+### Tests en paralelo (`cargo nextest`)
+
+`cargo test` corre los binarios de tests **uno a uno**: con 11 archivos en
+`backend/tests/*.rs`, eso es ~5–10× más lento de lo necesario porque cada
+binario libera sus cores antes que arranque el siguiente. `cargo-nextest`
+mete todos los tests en un único pool y los reparte entre los cores
+disponibles cross-binary.
+
+La fixture `tests/common/mod.rs` ya genera un `project_id` UUID y un
+`project_token` UUID por test, y bindea los listeners HTTP a `127.0.0.1:0`
+(puerto efímero). Eso significa que **N tests pueden correr concurrentes
+contra el mismo ClickHouse compartido** sin contaminarse: cada uno escribe
+y consulta solo filas de su propio `project_id`.
+
+Instalar (una sola vez):
+
+```bash
+cargo install cargo-nextest --locked
+```
+
+Correr toda la suite:
+
+```bash
+cd backend
+cargo nextest run               # perfil default
+cargo nextest run --profile ci  # 2 retries por test, output compacto + junit.xml
+```
+
+Subsets concretos:
+
+```bash
+cargo nextest run --test workers_alert_evaluator
+cargo nextest run -E 'test(/^stream_sse/)'      # filtro por expresión
+cargo nextest run -E 'binary(workers_monitor_runner)'
+```
+
+Configuración en `backend/.config/nextest.toml` (test-threads, retries,
+slow-timeout). Si en el futuro un test necesita serialización (estado
+realmente global), márcalo con `test-groups` en ese archivo en vez de
+caer a `--test-threads=1` global (penaliza a todo el resto).
+
+> nextest no corre doctests (limitación conocida del runner). Hoy el
+> backend no tiene doctests, así que no perdemos nada; si se agregan,
+> añade un step extra `cargo test --doc` en CI.
 
 ### Frontend (SvelteKit)
 
@@ -114,6 +159,52 @@ for m in clickhouse/migrations/*.sql; do
   docker exec -i faro-clickhouse clickhouse-client --user=faro --password=faro --database=faro --multiquery < "$m"
 done
 ```
+
+Verificar que `init/` + `migrations/` se aplican limpios y son idempotentes
+(corre `init/*.sql`, luego `migrations/*.sql` dos veces, luego `SHOW TABLES`
+contra un catálogo cerrado):
+
+```bash
+bash clickhouse/test-migrations.sh        # requiere CH local o el container faro-clickhouse arriba
+```
+
+El mismo script corre en CI bajo el job `migrations` de `.github/workflows/ci.yml`
+contra una instancia fresca de ClickHouse. Si agregás una tabla nueva en
+`init/` o `migrations/`, sumala al array `EXPECTED` del script — sino el test
+falla con "missing tables".
+
+## Variables de entorno y dónde viven
+
+[`.env.example`](../.env.example) es la **fuente única de verdad** para
+todas las variables que entienden el backend, el compose, el frontend y
+los scripts (~45 vars en 15 secciones). La página
+[`docs/reference/environment.md`](reference/environment.md) — única
+tabla de env-vars en todo el repo — se autogenera desde ahí. README,
+[`deployment.md`](deployment.md), [`infra/README.md`](../infra/README.md)
+y [`.env.prod.template`](../.env.prod.template) linkean a la página
+generada en vez de mantener tablas paralelas.
+
+Cuando agregás, renombrás o cambiás el default de una variable:
+
+```bash
+# 1. Edita .env.example (formato: header `# ---- Sección ----`,
+#    comentario descriptivo encima del var, línea en blanco entre vars).
+# 2. Regenera la página de reference.
+bash scripts/gen-env-reference.sh
+git add .env.example docs/reference/environment.md
+```
+
+El job `env-reference` en [`docs.yml`](../.github/workflows/docs.yml)
+(via [`scripts/check-env-reference.sh`](../scripts/check-env-reference.sh))
+falla el PR con el diff completo si los dos archivos se desincronizan.
+
+**Por qué este diseño**: antes había tablas paralelas en README,
+deployment.md, .env.example, .env.prod.template e infra/README.md. Cada
+variable nueva quedaba en una sola y se desincronizaba; los devs
+encontraban defaults distintos según qué documento leyeran. La solución
+es tener una autoridad (`.env.example`, formato planchable por humanos),
+una salida generada (`reference/environment.md`, formato lindo para
+leer), y un check de CI que garantiza que las dos son la misma cosa.
 
 ## Enviar tráfico de prueba
 

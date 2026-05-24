@@ -1,9 +1,10 @@
-use axum::extract::{Path, State}; use axum_extra::extract::Query;
+use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
+use axum_extra::extract::Query;
 use serde::{Deserialize, Serialize};
 
-use crate::api::params::{de_opt_num, escape_sql, Range};
+use crate::api::params::{de_opt_num, Range};
 use crate::error::{ApiError, ApiResult};
 use crate::state::SharedState;
 use crate::storage::SpanRow;
@@ -40,23 +41,34 @@ async fn list_traces(
     Query(q): Query<TracesQuery>,
 ) -> ApiResult<Json<Vec<TraceSummary>>> {
     let (from, to) = q.range.resolve();
-    let mut filters = vec![
-        format!("timestamp >= toDateTime64('{}', 3)", crate::api::params::ch_dt(from)),
-        format!("timestamp <= toDateTime64('{}', 3)", crate::api::params::ch_dt(to)),
-    ];
+    let from_s = crate::api::params::ch_dt(from);
+    let to_s = crate::api::params::ch_dt(to);
+
+    let mut inner_where = String::from(
+        "timestamp >= toDateTime64({from:DateTime64(3)}, 3) \
+         AND timestamp <= toDateTime64({to:DateTime64(3)}, 3)",
+    );
+    let mut params: Vec<(&str, &str)> = vec![("from", &from_s), ("to", &to_s)];
+
     if let Some(p) = &q.range.project {
         if !p.is_empty() {
-            filters.push(format!("project_id = '{}'", escape_sql(p)));
+            inner_where.push_str(" AND project_id = {project:String}");
+            params.push(("project", p));
         }
     }
     if let Some(svc) = &q.service {
-        filters.push(format!("service_name = '{}'", escape_sql(svc)));
+        inner_where.push_str(" AND service_name = {service:String}");
+        params.push(("service", svc));
     }
     if let Some(st) = &q.status {
-        filters.push(format!("status_code = '{}'", escape_sql(st)));
+        inner_where.push_str(" AND status_code = {status:String}");
+        params.push(("status", st));
     }
+    let min_ns_s;
     if let Some(min_ms) = q.min_duration_ms {
-        filters.push(format!("duration_ns >= {}", min_ms * 1_000_000));
+        min_ns_s = (min_ms * 1_000_000).to_string();
+        inner_where.push_str(" AND duration_ns >= {min_dur_ns:UInt64}");
+        params.push(("min_dur_ns", &min_ns_s));
     }
 
     // Re-agrega desde spans en cada lectura para reflejar siempre los datos más recientes.
@@ -76,12 +88,12 @@ async fn list_traces(
                    toUInt64(max(toUnixTimestamp64Nano(timestamp) + duration_ns) - min(toUnixTimestamp64Nano(timestamp))) AS dur, \
                    argMax(status_code, duration_ns) AS status, \
                    toUInt32(count()) AS span_count \
-            FROM faro.spans WHERE {} GROUP BY trace_id \
-         ) ORDER BY ts DESC LIMIT {}",
-        filters.join(" AND "),
-        q.range.limit()
+            FROM faro.spans WHERE {inner_where} GROUP BY trace_id \
+         ) ORDER BY ts DESC LIMIT {limit}",
+        inner_where = inner_where,
+        limit = q.range.limit()
     );
-    let rows: Vec<TraceSummary> = state.ch.select(&sql).await?;
+    let rows: Vec<TraceSummary> = state.ch.select_with_params(&sql, &params).await?;
     Ok(Json(rows))
 }
 
@@ -89,16 +101,16 @@ async fn get_trace(
     State(state): State<SharedState>,
     Path(trace_id): Path<String>,
 ) -> ApiResult<Json<Vec<SpanRow>>> {
-    let id = escape_sql(&trace_id);
-    let sql = format!(
-        "SELECT timestamp, trace_id, span_id, parent_span_id, trace_state, \
+    let sql = "SELECT timestamp, trace_id, span_id, parent_span_id, trace_state, \
                 name, kind, service_name, duration_ns, status_code, status_message, \
                 resource_attributes, span_attributes, \
                 events_timestamps, \
                 events_names, events_attributes, links_trace_ids, links_span_ids \
-         FROM faro.spans WHERE trace_id = '{id}' ORDER BY timestamp ASC LIMIT 5000"
-    );
-    let rows: Vec<SpanRow> = state.ch.select(&sql).await?;
+         FROM faro.spans WHERE trace_id = {trace_id:String} ORDER BY timestamp ASC LIMIT 5000";
+    let rows: Vec<SpanRow> = state
+        .ch
+        .select_with_params(sql, &[("trace_id", &trace_id)])
+        .await?;
     if rows.is_empty() {
         return Err(ApiError::NotFound);
     }

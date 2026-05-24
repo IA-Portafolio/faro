@@ -1,6 +1,6 @@
 # ADR-NNNN: <título corto en imperativo>
 
-- **Estado**: Proposed | Accepted | Rejected | Superseded by ADR-XXXX
+- **Estado**: Proposed | Accepted | Rejected | Deprecated | Superseded by ADR-XXXX
 - **Fecha**: YYYY-MM-DD
 - **Autores**: @usuario1, @usuario2
 

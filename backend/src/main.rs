@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use axum::response::IntoResponse;
 use axum::Router;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -8,30 +9,20 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
-mod api;
-mod auth;
-mod config;
-mod error;
-mod fingerprint;
-mod ingest;
-mod integrations;
-mod notify;
-mod openapi;
-mod projects;
-mod state;
-mod storage;
-mod stream;
-mod telemetry;
-mod versions;
-mod workers;
+use faro::{
+    api, auth, config, feature_flags, ingest, integrations, notification_channels, observability,
+    projects, state, storage, telemetry, workers,
+};
 
-use crate::config::Config;
-use crate::state::AppState;
+use config::Config;
+use state::AppState;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,faro=debug")))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,faro=debug")),
+        )
         .with_target(true)
         .init();
 
@@ -47,6 +38,10 @@ async fn main() -> Result<()> {
 
     let cfg = Config::from_env()?;
     tracing::info!(api = %cfg.api_addr, otlp = %cfg.otlp_addr, "arrancando faro");
+
+    // Recorder Prometheus global. Tiene que instalarse antes de que cualquier
+    // `metrics::counter!` se ejecute, o esas llamadas son no-ops.
+    let (prom_layer, prom_handle) = observability::install();
 
     let storage = storage::Client::new(&cfg).await?;
     storage.wait_until_ready().await?;
@@ -68,6 +63,18 @@ async fn main() -> Result<()> {
     }
     integrations::spawn_refresh(state.clone());
 
+    // Canales de notificación configurables (webhook/PagerDuty/OpsGenie/...).
+    if let Err(e) = state.notification_channels.reload(&state.ch).await {
+        tracing::warn!(error = %e, "falló la carga inicial de notification_channels");
+    }
+    notification_channels::spawn_refresh(state.clone());
+
+    // Feature flags activas por proyecto para que los SDKs hagan evaluación local.
+    if let Err(e) = state.feature_flags.reload(&state.ch).await {
+        tracing::warn!(error = %e, "falló la carga inicial de feature flags");
+    }
+    feature_flags::spawn_refresh(state.clone());
+
     // Bootstrap del admin del dashboard.
     if let Err(e) = auth::bootstrap_admin_if_empty(&state).await {
         tracing::warn!(error = %e, "falló el bootstrap de admin");
@@ -78,38 +85,98 @@ async fn main() -> Result<()> {
     workers::start_ingest_writers(state.clone());
     workers::start_monitor_runner(state.clone());
     workers::start_alert_evaluator(state.clone());
+    workers::start_anomaly_detector(state.clone());
+    workers::start_feature_rollback_detector(state.clone());
     workers::start_error_indexer(state.clone(), bus);
+    workers::start_fingerprint_compactor(state.clone());
+    workers::start_stale_detector(state.clone());
+    workers::start_user_unifier(state.clone());
+    workers::start_session_aggregator(state.clone());
 
-    // Dos listeners para poder exponer OTLP y la API del dashboard de forma independiente.
-    let api_router = api::router(state.clone());
+    // Tres listeners independientes: API del dashboard, OTLP/HTTP (4318) y OTLP/gRPC (4317).
+    // El listener gRPC es necesario porque los SDKs oficiales de OpenTelemetry usan
+    // gRPC+protobuf por defecto y no caen por sí solos al endpoint HTTP/JSON.
+    //
+    // `/metrics` se sirve sólo desde el listener de API — Prometheus scrapea allí.
+    // El layer Prometheus mide ambos routers HTTP (API y OTLP/HTTP) para tener
+    // `faro_http_request_duration_seconds` por endpoint y status.
+    //
+    // El handler valida `Authorization: Bearer <FARO_METRICS_TOKEN>` cuando el
+    // token está configurado (production); si no, queda abierto (dev). El path
+    // ya está exento de `require_session_mw` en `auth::is_public_path`.
+    let metrics_token = cfg.metrics_token.clone();
+    let api_router = api::router(state.clone()).route(
+        "/metrics",
+        axum::routing::get(move |headers: axum::http::HeaderMap| {
+            let handle = prom_handle.clone();
+            let token = metrics_token.clone();
+            async move {
+                if let Some(expected) = token.as_deref() {
+                    let got = headers
+                        .get(axum::http::header::AUTHORIZATION)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|v| v.strip_prefix("Bearer "))
+                        .map(str::trim);
+                    if got != Some(expected) {
+                        return (axum::http::StatusCode::UNAUTHORIZED, "unauthorized\n")
+                            .into_response();
+                    }
+                }
+                (
+                    axum::http::StatusCode::OK,
+                    [(
+                        axum::http::header::CONTENT_TYPE,
+                        "text/plain; version=0.0.4",
+                    )],
+                    handle.render(),
+                )
+                    .into_response()
+            }
+        }),
+    );
     let otlp_router = ingest::otlp_router(state.clone());
 
     let api_addr = cfg.api_addr.clone();
     let otlp_addr = cfg.otlp_addr.clone();
+    let otlp_grpc_addr: std::net::SocketAddr = cfg.otlp_grpc_addr.parse().map_err(|e| {
+        anyhow::anyhow!("FARO_OTLP_GRPC_ADDR inválido ({}): {e}", cfg.otlp_grpc_addr)
+    })?;
 
-    let api_task = tokio::spawn(serve("api", api_addr, api_router));
-    let otlp_task = tokio::spawn(serve("otlp", otlp_addr, otlp_router));
+    let api_task = tokio::spawn(serve("api", api_addr, api_router, Some(prom_layer.clone())));
+    let otlp_task = tokio::spawn(serve("otlp", otlp_addr, otlp_router, Some(prom_layer)));
+    let otlp_grpc_state = state.clone();
+    let otlp_grpc_task =
+        tokio::spawn(
+            async move { ingest::otlp_grpc::serve(otlp_grpc_state, otlp_grpc_addr).await },
+        );
 
     tokio::select! {
         _ = signal::ctrl_c() => tracing::info!("ctrl-c received, shutting down"),
         r = api_task => { tracing::error!(?r, "el servidor api terminó"); }
         r = otlp_task => { tracing::error!(?r, "el servidor otlp terminó"); }
+        r = otlp_grpc_task => { tracing::error!(?r, "el servidor otlp/grpc terminó"); }
     }
 
     Ok(())
 }
 
-async fn serve(name: &'static str, addr: String, router: Router) -> Result<()> {
+async fn serve(
+    name: &'static str,
+    addr: String,
+    router: Router,
+    prom: Option<axum_prometheus::PrometheusMetricLayer<'static>>,
+) -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!(%name, %addr, "escuchando");
-    let app = router
-        .layer(TraceLayer::new_for_http())
-        .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any),
-        );
+    let mut app = router.layer(TraceLayer::new_for_http()).layer(
+        CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any),
+    );
+    if let Some(prom) = prom {
+        app = app.layer(prom);
+    }
     axum::serve(listener, app).await?;
     Ok(())
 }

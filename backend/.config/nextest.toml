@@ -1,0 +1,47 @@
+# Configuración de cargo-nextest para los tests del backend.
+#
+# El gran beneficio sobre `cargo test` puro es que nextest paraleliza tests
+# **cross-binary** — `cargo test` corre los 11 archivos de `tests/*.rs` uno a
+# uno, mientras que nextest los pone todos en un único pool. Con la fixture
+# actual (`tests/common/mod.rs` genera `project_id` UUID por test y bind a
+# puerto efímero), todos los tests son seguros de correr concurrentemente
+# contra el mismo ClickHouse compartido — el aislamiento es por `project_id`,
+# no por base de datos.
+#
+# Ver: docs/development.md → "Tests en paralelo (nextest)"
+
+[profile.default]
+# `num-cpus` es el default explícito; lo declaramos para que el comportamiento
+# quede documentado. En máquinas con muchos cores (CI cloud, dev laptop) esto
+# significa decenas de tests concurrentes pegándole al mismo CH — y sigue
+# siendo seguro gracias al aislamiento por `project_id`.
+test-threads = "num-cpus"
+
+# Un test que tarde más de 60 s probablemente está colgado (timeout esperando
+# a CH, deadlock en SSE, etc.). Lo marcamos como "slow" para verlo en el
+# output; tras 2 ciclos de "slow" nextest lo mata para no bloquear la suite.
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+# En verde, no inundar el output con stdout/stderr de cada test. Si falla,
+# imprime inmediatamente y otra vez al final (resumen).
+success-output = "never"
+failure-output = "immediate-final"
+
+# Imprimir solo los nombres de tests que se saltan/fallan al final.
+final-status-level = "fail"
+
+# Por default nextest sigue corriendo aunque un test falle (igual que
+# `cargo test --no-fail-fast` que usamos hoy en CI).
+fail-fast = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil que usa CI (.github/workflows/ci.yml → `cargo nextest run --profile ci`).
+# Difiere del default en que retries=2: ante un flake puntual de ClickHouse
+# bajo carga (CH service en GitHub Actions con 4 GB de RAM) el test re-intenta
+# antes de marcar la suite roja. Si el test falla en los 3 intentos, es un
+# bug real, no un flake.
+# ─────────────────────────────────────────────────────────────────────────────
+[profile.ci]
+retries = 2
+# Genera un reporte JUnit XML que GitHub puede mostrar inline en el PR.
+junit = { path = "junit.xml" }

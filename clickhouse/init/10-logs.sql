@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS faro.logs
     log_id              UUID                                DEFAULT generateUUIDv4(),
     INDEX idx_body body TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4,
     INDEX idx_trace trace_id TYPE bloom_filter(0.01) GRANULARITY 4,
+    INDEX idx_span span_id TYPE bloom_filter(0.01) GRANULARITY 4,
     INDEX idx_project project_id TYPE bloom_filter(0.01) GRANULARITY 4,
     INDEX idx_attrs_keys mapKeys(attributes) TYPE bloom_filter(0.01) GRANULARITY 4,
     INDEX idx_attrs_values mapValues(attributes) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 4

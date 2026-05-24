@@ -14,7 +14,9 @@ CREATE TABLE IF NOT EXISTS faro.error_events
     span_id           String                              CODEC(ZSTD(1)),
     log_id            UUID                                DEFAULT generateUUIDv4(),
     attributes        Map(LowCardinality(String), String) CODEC(ZSTD(1)),
-    INDEX idx_fingerprint fingerprint TYPE bloom_filter(0.01) GRANULARITY 4
+    INDEX idx_fingerprint fingerprint TYPE bloom_filter(0.01) GRANULARITY 4,
+    INDEX idx_trace trace_id TYPE bloom_filter(0.01) GRANULARITY 4,
+    INDEX idx_span span_id TYPE bloom_filter(0.01) GRANULARITY 4
 )
 ENGINE = MergeTree
 PARTITION BY toDate(timestamp)

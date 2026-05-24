@@ -13,7 +13,7 @@ faro.iaportafolio.com
    ↓
 docker compose (docker-compose.prod.yml)
    ├── faro-frontend     (SvelteKit Node adapter, :3000 interno)
-   ├── faro-backend      (Rust, :8080 API + :4318 OTLP)
+   ├── faro-backend      (Rust, :8080 API + /metrics, :4318 OTLP/HTTP, :4317 OTLP/gRPC)
    ├── faro-clickhouse   (volumen persistente)
    └── faro-redis        (reservado, sin uso productivo aún)
 ```
@@ -60,17 +60,19 @@ Pasos del deploy automático:
 ## Variables de entorno productivas
 
 `.env.prod` (no se commitea, vive solo en el host). Ver
-[`.env.prod.template`](../.env.prod.template) para el formato.
+[`.env.prod.template`](../.env.prod.template) para el formato y la
+[referencia completa de variables](reference/environment.md) — la lista
+completa con defaults y descripción, autogenerada desde `.env.example`.
 
-Valores mínimos a setear manualmente:
+Valores que **deben** setearse manualmente en `.env.prod` antes del
+primer deploy (el resto tiene un default razonable):
 
-| Variable                  | Cómo generarlo |
-| ------------------------- | -------------- |
+| Variable                  | Cómo generarlo            |
+| ------------------------- | ------------------------- |
 | `CLICKHOUSE_PASSWORD`     | `openssl rand -base64 32` |
-| `FARO_INGEST_TOKEN`       | `openssl rand -hex 32` |
-
-Variables públicas (URL del dashboard, etc.) ya tienen valores razonables
-en el template.
+| `FARO_INGEST_TOKEN`       | `openssl rand -hex 32`    |
+| `FRONTEND_ORIGIN`         | URL pública del dashboard |
+| `PUBLIC_API_BASE`         | URL pública del backend   |
 
 ### Notificaciones de Telegram
 
@@ -132,21 +134,35 @@ sudo /opt/actions-runner/svc.sh stop
 
 ## Observabilidad del propio Faro
 
-El backend tiene scaffolding de **self-observability** vía OTLP
-(ver [ADR-0007](adr/0007-self-observability.md)). Está **opt-in** —
-apagado por defecto para evitar back-pressure si el listener `:4318` no
-responde en frío.
+Para la operación en producción usamos **Prometheus exposition + Grafana
+externos** (ver [ADR-0011](adr/0011-prometheus-self-monitoring.md)). El backend
+expone `/metrics` en el listener de API (`:8080`); un Prometheus
+externo lo scrapea y un Grafana externo lo grafica y alerta. La instancia
+operada usa el Prometheus+Grafana que corre en el host `iaportafolio` para
+monitorear el host `infra-iaportafolio` donde vive Faro — el monitor no
+depende del sistema vigilado.
 
-| Variable                       | Default                 | Para qué |
-| ------------------------------ | ----------------------- | -------- |
-| `FARO_SELF_OBSERVE`            | `false`                 | Activa la emisión OTel del propio backend |
-| `FARO_SELF_OBSERVE_ENDPOINT`   | `http://localhost:4318` | Dónde mandar la telemetría (default: nosotros mismos) |
-| `OTEL_SERVICE_NAME`            | `faro-backend`          | Nombre del servicio en la telemetría |
+Configuración relevante: `FARO_METRICS_TOKEN` (proteger `/metrics` con
+Bearer token) y la sección **Self-observability** de la
+[referencia de variables](reference/environment.md) (`FARO_SELF_OBSERVE*`,
+`OTEL_SERVICE_NAME`). Las series están documentadas en
+`crate::observability::names` (`faro_ingest_records_total`,
+`faro_clickhouse_insert_duration_seconds`, etc.) y las labels permitidas
+están acotadas a cardinalidad baja por diseño.
 
-Activarlo apunta el exporter al propio listener OTLP local: los logs y
-trazas del backend aparecen en el mismo dashboard. Para enviar a un
-colector externo (otro Faro, Tempo, etc.) bastará con cambiar
-`FARO_SELF_OBSERVE_ENDPOINT`.
+### Self-observe vía OTLP (opcional, dev)
+
+El backend tiene scaffolding de self-observability vía OTLP
+(ver [ADR-0007](adr/0007-self-observability.md), superseded by
+[ADR-0011](adr/0011-prometheus-self-monitoring.md) para producción). Sigue
+disponible como **opt-in** cuando quieres ver trazas+logs+métricas
+correlacionadas en la misma UI de Faro durante desarrollo: activá
+`FARO_SELF_OBSERVE=true` (ver la sección Self-observability de la
+[referencia de variables](reference/environment.md) para endpoint y
+service name).
+
+En producción se deja apagado: si la pipeline OTLP se cae, perdemos la
+señal de que se cayó. Esa es justamente la razón de monitorear desde afuera.
 
 Mientras no esté activado — o como diagnóstico paralelo — los logs de
 contenedor siguen siendo la fuente de verdad:
@@ -161,14 +177,27 @@ docker compose -f docker-compose.prod.yml logs -f --tail=200 clickhouse
 
 ## Endurecimiento mínimo recomendado
 
-- **Proxy de autenticación** delante del puerto 3000 si el dashboard se
-  expone públicamente (Faro no implementa login propio — ver README →
-  Limitaciones).
-- **Firewall**: bloquear `:4318` desde internet salvo para clientes
-  autorizados; mantener `:8080` accesible solo si un cliente externo
-  consume la API.
-- **Rotar `FARO_INGEST_TOKEN`** cuando un cliente se desautoriza (requiere
-  redespliegue + reconfiguración de todos los emisores).
-- **No mezclar** datos sensibles con baja cardinalidad — Faro no tiene
-  redacción de PII; lo que envías queda almacenado tal cual durante el
-  período de retención.
+- **Auth nativa con bootstrap**: setear `FARO_BOOTSTRAP_ADMIN_EMAIL` y
+  `FARO_BOOTSTRAP_ADMIN_PASSWORD` (o copiar el password random generado al
+  primer boot) en `.env.prod`. Después exigir 2FA TOTP a los admins desde
+  `/settings/security`. Ver [ADR-0009](adr/0009-security-hardening.md).
+- **Proxy de red delante del puerto 3000** como defense-in-depth aun con
+  auth nativa: TLS termination, WAF, IP allowlist. Cloudflare Access /
+  Authelia / Tailscale serve siguen siendo opciones válidas; con auth
+  nativa ya no son obligatorias.
+- **Firewall**: bloquear `:4318` y `:4317` desde internet salvo para
+  clientes autorizados; mantener `:8080` accesible solo si un cliente
+  externo consume la API.
+- **`/metrics`**: si el endpoint es alcanzable desde fuera de la red
+  privada, definir `FARO_METRICS_TOKEN=<bearer>` y configurarlo en el
+  scrape de Prometheus.
+- **`FARO_ENABLE_HSTS=true`** en producción una vez que el dominio sirve
+  HTTPS estable (ADR-0009).
+- **Redaction + origin allowlist por proyecto**: activar desde
+  `/settings/projects/:slug/redaction` y `.../origins` para reducir PII en
+  disco y limitar el blast radius de un token RUM filtrado.
+- **Rotar tokens de ingesta por proyecto** desde `/settings/projects/:slug`
+  cuando un cliente se desautoriza (no requiere redespliegue).
+- **No mezclar** datos sensibles con baja cardinalidad — incluso con
+  redaction activa, lo que no matchee las reglas queda almacenado tal cual
+  durante el período de retención.

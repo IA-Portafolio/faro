@@ -55,12 +55,16 @@ export type {
   Severity,
   WireEvent,
   FaroBrowser,
+  AutoCaptureOptions,
+  FeatureFlagContext,
+  FeatureFlagWire,
 } from './browser-core';
 
 export {
   log,
   info,
   warn,
+  warning,
   error,
   captureException,
   setUser,
@@ -68,6 +72,13 @@ export {
   flush,
   close,
   getClient,
+  getSessionId,
+  track,
+  identify,
+  page,
+  alias,
+  refreshFeatureFlags,
+  isFeatureEnabled,
 } from './browser-core';
 
 export { FaroErrorBoundary } from './browser-react';

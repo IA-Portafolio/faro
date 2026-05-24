@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS faro.spans
     links_trace_ids     Array(String)                       CODEC(ZSTD(1)),
     links_span_ids      Array(String)                       CODEC(ZSTD(1)),
     INDEX idx_trace_id trace_id TYPE bloom_filter(0.01) GRANULARITY 4,
+    INDEX idx_span_id span_id TYPE bloom_filter(0.01) GRANULARITY 4,
     INDEX idx_name name TYPE bloom_filter(0.01) GRANULARITY 4,
     INDEX idx_status status_code TYPE set(8) GRANULARITY 4
 )

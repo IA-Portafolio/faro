@@ -1,0 +1,61 @@
+# Config de lychee — link-checker para nuestra documentación markdown.
+# El objetivo es pillar refs a archivos renombrados/borrados y URLs externas
+# muertas (e.g. blogposts movidos), sin marcar como rotas a URLs flaky de
+# dominios que rate-limitean a scrapers (Twitter, LinkedIn, etc).
+
+# Códigos HTTP aceptados como "el link existe". 403/429 se aceptan porque
+# muchos dominios devuelven 403 a UAs no-browser y 429 cuando un mismo CI
+# corre múltiples PRs en paralelo. 503 lo aceptamos como "transient" en vez
+# de fallar el build por un downtime ajeno.
+accept = [
+  "200",
+  "204",
+  "206",
+  "301",
+  "302",
+  "304",
+  "307",
+  "308",
+  "403",
+  "429",
+  "503",
+]
+
+# Reintenta antes de marcar broken. Suficiente para flaky CDNs sin alargar
+# demasiado el job.
+max_retries = 2
+retry_wait_time = 2
+
+# Cache de URLs ya verificadas en runs anteriores (1 día). Persistimos el
+# directorio `.lycheecache` vía actions/cache en docs.yml.
+cache = true
+max_cache_age = "1d"
+
+# Excluir paths que NO son documentación nuestra. node_modules / target / build
+# arrastran READMEs de terceros que no controlamos; falsos positivos seguros.
+exclude_path = [
+  "node_modules",
+  "target",
+  "frontend/build",
+  "frontend/.svelte-kit",
+  "sdks/node/dist",
+  "sdks/expo/build",
+]
+
+# Excluir URLs por patrón regex. Los hostnames locales aparecen en ejemplos
+# de docs de desarrollo (curl http://localhost:8080/...) y no son scrapeables
+# desde CI. `faro.iaportafolio.com` es nuestra prod pública pero le pedimos
+# auth de sesión — un GET sin cookie devuelve 401 que NO está en `accept`,
+# y meterlo ahí enmascararía 401s reales en otros dominios.
+exclude = [
+  "^https?://(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|host\\.docker\\.internal)",
+  "^https?://faro\\.iaportafolio\\.com",
+]
+
+# Timeout por request (segundos). Default es 20s; lo bajamos un poco para
+# que un dominio caído no nos coma minutos del CI.
+timeout = 15
+
+# Solicitudes en paralelo. Default 64 — bajamos a 16 para ser amigables con
+# dominios pequeños que aparecen en blogposts referenciados.
+max_concurrency = 16

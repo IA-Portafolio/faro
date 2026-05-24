@@ -3,6 +3,13 @@ name: ci
 # Validación rápida del core (backend Rust + frontend SvelteKit) en cada PR
 # y en push a `main`. Bloquea merges rotos antes de que deploy.yml los suba
 # a producción. Los SDKs tienen su propio workflow (sdk-tests.yml).
+#
+# Los jobs se condicionan con `dorny/paths-filter@v3` para que un PR que sólo
+# toca `frontend/` no levante CH ni recompile Rust, y un PR que sólo toca
+# README/docs no corra nada. Cambios a `.github/workflows/ci.yml` SIEMPRE
+# disparan todos los jobs (porque cualquier ajuste al workflow puede romper
+# un job que pase localmente). Un job final `ci` agrega los resultados para
+# branch protection (marca SOLO `ci` como required y los individuales no).
 
 on:
   pull_request:
@@ -14,7 +21,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      compose: ${{ steps.filter.outputs.compose }}
+      migrations: ${{ steps.filter.outputs.migrations }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'clickhouse/**'
+              - 'scripts/**'
+              - '.github/workflows/ci.yml'
+            frontend:
+              - 'frontend/**'
+              - '.nvmrc'
+              - '.github/workflows/ci.yml'
+            compose:
+              - 'docker-compose.yml'
+              - 'docker-compose.prod.yml'
+              - '.env.example'
+              - '.env.prod.template'
+              - '.github/workflows/ci.yml'
+            migrations:
+              - 'clickhouse/**'
+              - '.github/workflows/ci.yml'
+
   backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     services:
@@ -42,6 +84,17 @@ jobs:
         with:
           workspaces: backend
 
+      # cargo-nextest paraleliza tests CROSS-BINARY (los 11 archivos en
+      # backend/tests/*.rs comparten un único pool), mientras que `cargo test`
+      # corre cada binario uno a uno. Con el aislamiento por project_id de la
+      # fixture en backend/tests/common/mod.rs, todos los tests son seguros de
+      # correr concurrentemente sobre el mismo ClickHouse compartido.
+      # Configuración en backend/.config/nextest.toml.
+      - name: install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: cargo fmt --check
         working-directory: backend
         run: cargo fmt --all -- --check
@@ -63,7 +116,7 @@ jobs:
             echo "::endgroup::"
           done
 
-      - name: cargo test
+      - name: cargo nextest run
         working-directory: backend
         env:
           CLICKHOUSE_URL: http://localhost:8123
@@ -71,24 +124,60 @@ jobs:
           CLICKHOUSE_PASSWORD: faro
           CLICKHOUSE_DATABASE: faro
           FARO_INGEST_TOKEN: ci-test-token
-        run: cargo test --all-features --no-fail-fast
+        # --profile ci aplica retries=2 (amortigua flakes puntuales de CH) y
+        # emite junit.xml. --no-fail-fast también está en el profile pero lo
+        # repetimos en CLI por claridad. No corremos `cargo test --doc` porque
+        # hoy el código no tiene doctests; si en el futuro se agregan, añadir
+        # ese step (nextest no los soporta).
+        run: cargo nextest run --profile ci --all-features --no-fail-fast
 
   backend-audit:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: cargo-audit
-        # Falla el build si una dep tiene un CVE conocido. Si necesitas
-        # ignorar un advisory temporalmente, añádelo a `backend/audit.toml`
-        # con justificación.
-        uses: rustsec/audit-check@v1.4.1
+
+      - name: install cargo-audit
+        # Binario precompilado (~5 s) vs `cargo install` (~2 min) cada corrida.
+        uses: taiki-e/install-action@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: backend
+          tool: cargo-audit
+
+      - name: cargo audit --deny warnings
+        working-directory: backend
+        # `--deny warnings` arma el gate ESTRICTO contra el advisory DB de RustSec:
+        #
+        #   * `vulnerability`  — CVE clásico (ya bloqueaba antes con la action de
+        #                        rustsec/audit-check; sigue cubierto acá).
+        #   * `unmaintained`   — crate sin commits hace ~12 meses, sin parches
+        #                        para próximos CVEs.
+        #   * `yanked`         — release retirada de crates.io tras publicación
+        #                        (suele significar bug grave que llegó a prod).
+        #   * `unsound`        — warning de soundness (UB potencial en el crate).
+        #   * `notice`         — aviso público del autor del crate.
+        #
+        # Sin este flag los cuatro últimos los imprime y termina con exit 0:
+        # CI verde mientras la dep ya está rota.
+        #
+        # Si una transitiva queda unmaintained y NO hay parche upstream, agregar
+        # el advisory a la lista `--ignore` de abajo con un comment que justifique
+        # POR QUÉ se ignora y CUÁNDO se revisará. El ignore queda en el diff de
+        # CI para que cada PR review lo vea — no se esconde en un dotfile.
+        #
+        # IGNORES ACTUALES:
+        #   * RUSTSEC-2024-0436 — `paste 1.0.15` unmaintained desde 2024-10-07.
+        #     Llega vía `utoipa-axum 0.1.3 → paste`. utoipa-axum 0.2.0 ya quitó
+        #     la dep, pero es bump major y rompe los routers actuales. `paste`
+        #     es proc-macro de soporte sin superficie accesible desde input
+        #     externo. Subir a 0.2.x en el próximo barrido de deps.
+        run: cargo audit --deny warnings --ignore RUSTSEC-2024-0436
 
   frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -114,14 +203,9 @@ jobs:
           PUBLIC_API_BASE: http://localhost:8080
         run: npm run build
 
-      - name: test (si está configurado)
+      - name: test
         working-directory: frontend
-        run: |
-          if grep -q '"test"' package.json; then
-            npm test -- --run
-          else
-            echo "No 'test' script en frontend/package.json — saltando"
-          fi
+        run: npm test
 
       - name: npm audit (high+ only)
         working-directory: frontend
@@ -130,6 +214,8 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
   compose:
+    needs: changes
+    if: needs.changes.outputs.compose == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -139,3 +225,61 @@ jobs:
           cp .env.example .env
           docker compose -f docker-compose.yml config >/dev/null
           docker compose -f docker-compose.prod.yml --env-file .env.prod.template config >/dev/null
+
+  migrations:
+    needs: changes
+    if: needs.changes.outputs.migrations == 'true'
+    # Garantiza que init/ + migrations/ son aplicables limpios sobre DB vacía
+    # y que correr migrations/ DOS veces no rompe (bug clásico de "una migración
+    # rompe en el segundo deploy"). El job `backend` también aplica el schema,
+    # pero usa `|| true` y enmascara errores; este job es el gate estricto.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      clickhouse:
+        image: clickhouse/clickhouse-server:24-alpine
+        ports: ['8123:8123', '9000:9000']
+        env:
+          CLICKHOUSE_DB: faro
+          CLICKHOUSE_USER: faro
+          CLICKHOUSE_PASSWORD: faro
+          CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+        options: >-
+          --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - name: test-migrations.sh (forward + idempotency + SHOW TABLES)
+        env:
+          CLICKHOUSE_HOST: localhost
+          CLICKHOUSE_PORT: '9000'
+          CLICKHOUSE_USER: faro
+          CLICKHOUSE_PASSWORD: faro
+          CLICKHOUSE_DATABASE: faro
+        run: bash clickhouse/test-migrations.sh
+
+  # Umbrella job para branch protection. Pasa si todos los jobs requeridos
+  # terminaron en `success` o fueron `skipped` (porque sus paths no cambiaron);
+  # falla si CUALQUIERA terminó en `failure` o `cancelled`. Esto permite tener
+  # un único required check en main protection (`ci`) en lugar de exigir cada
+  # job individual — que se rompería el momento que un PR no toca su path.
+  ci:
+    if: always()
+    needs: [changes, backend, backend-audit, frontend, compose, migrations]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all jobs succeeded or were skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          echo "needs results: $RESULTS"
+          # `contains` con substring porque join devuelve "success,skipped,success".
+          case ",$RESULTS," in
+            *,failure,*|*,cancelled,*)
+              echo "::error::Al menos un job requerido terminó en failure/cancelled"
+              exit 1
+              ;;
+          esac
+          echo "Todos los jobs requeridos pasaron o fueron skipped sin error."

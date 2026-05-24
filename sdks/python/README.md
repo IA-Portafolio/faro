@@ -1,5 +1,7 @@
 # faro-sdk (Python)
 
+> **Perfil de defaults:** `server` — flush 750ms · batch 200 · queue 10 000. Ver [perfiles](../README.md#perfiles-de-defaults).
+
 ```bash
 pip install faro-sdk
 ```
@@ -56,3 +58,22 @@ faro.close()
 ```
 
 `atexit` ya registra un cierre limpio al terminar el proceso, pero para scripts cortos llama explícitamente para no perder eventos.
+
+## Auto-correlación con traces
+
+`track()` adjunta `trace_id`/`span_id` si OpenTelemetry está instalado y hay un span activo, o si pasas un provider explícito. El provider puede devolver un header W3C `traceparent` o un dict con `trace_id`/`span_id`:
+
+```python
+faro.init(
+    endpoint="https://faro.iaportafolio.com",
+    token="...",
+    service="checkout",
+    trace_context=lambda: "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+)
+
+faro.track("checkout_completed")  # incluye trace_id + span_id
+```
+
+## Opciones cross-SDK
+
+`warning()` (alias de `warn()`), `scrub_fields`/`scrub_headers`/`scrub_patterns` y el hook `before_send` están disponibles aquí con la misma semántica que en el resto de SDKs. Ver [API uniforme entre SDKs](../README.md#api-uniforme-entre-sdks).

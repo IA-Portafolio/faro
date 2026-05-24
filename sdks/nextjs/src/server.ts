@@ -60,3 +60,11 @@ export function captureRequestError(
 }
 
 export { faro };
+
+// Helpers de tracking accesibles a través del namespace `faro`:
+//   import { faro } from '@iaportafolio/nextjs/server';
+//   faro.track('checkout_completed', { amount: 99.5 });
+// No los re-exportamos como `track`/`identify`/`alias` nombrados aquí porque
+// chocarían con los re-exports del cliente cuando alguien importe el barrel
+// principal (`from '@iaportafolio/nextjs'`). El cliente sí los expone flat
+// porque es el caso de uso más frecuente (RUM en componentes).

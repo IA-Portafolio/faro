@@ -11,7 +11,16 @@
   "bugs": "https://github.com/IA-Portafolio/faro/issues",
   "keywords": ["faro", "expo", "react-native", "observability", "logging"],
   "publishConfig": { "access": "public" },
-  "scripts": { "build": "tsup src/index.ts --format cjs,esm --dts --clean" },
-  "peerDependencies": { "react-native": ">=0.72" },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "test": "npm run build && node --test test/client.test.mjs test/expo.test.mjs"
+  },
+  "peerDependencies": {
+    "react-native": ">=0.72",
+    "@react-native-async-storage/async-storage": ">=1.18.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": { "optional": true }
+  },
   "devDependencies": { "tsup": "^8.0.0", "typescript": "^5.4.0" }
 }

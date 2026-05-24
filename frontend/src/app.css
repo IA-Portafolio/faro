@@ -1,3 +1,8 @@
+/* ---------- Theme tokens ---------- */
+/* Dark es el default — los tokens del :root son los del tema oscuro original.
+   El frontend aplica `data-theme="light|dark"` en <html>. Si no hay atributo
+   (p. ej. antes de que se ejecute el JS de bootstrap), `prefers-color-scheme`
+   decide. */
 :root {
   --bg: #0b1220;
   --bg-elev: #111a2e;
@@ -7,6 +12,7 @@
   --text-muted: #93a0bd;
   --accent: #facc15;
   --accent-dim: #b48a0a;
+  --accent-fg: #1a1a1a;
   --danger: #ef4444;
   --warn: #f59e0b;
   --info: #38bdf8;
@@ -14,9 +20,102 @@
   --debug: #94a3b8;
   --trace: #64748b;
   --code-bg: #0a1224;
+
+  --badge-trace-bg: #1e293b;
+  --badge-debug-bg: #1e293b;
+  --badge-info-bg: #082f49;
+  --badge-warn-bg: #422006;
+  --badge-error-bg: #450a0a;
+  --badge-fatal-bg: #7f1d1d;
+  --badge-fatal-fg: #fecaca;
+  --badge-ok-bg: #052e16;
+  --badge-firing-bg: #450a0a;
+  --badge-resolved-bg: #052e16;
+  --badge-unresolved-bg: #422006;
+  --badge-ignored-bg: #1e293b;
+
+  --shadow-drawer: -8px 0 32px rgba(0, 0, 0, 0.4);
+
   font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
   font-feature-settings: "ss01", "cv11";
   color-scheme: dark;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* Light explícito. */
+[data-theme="light"] {
+  --bg: #f6f8fc;
+  --bg-elev: #ffffff;
+  --bg-hover: #eef2f8;
+  --border: #d6deea;
+  --text: #1a2233;
+  --text-muted: #56627a;
+  --accent: #b45309;       /* amber-700 — buena lectura sobre fondos claros */
+  --accent-dim: #92400e;
+  --accent-fg: #ffffff;
+  --danger: #dc2626;
+  --warn: #b45309;
+  --info: #0369a1;
+  --success: #15803d;
+  --debug: #475569;
+  --trace: #64748b;
+  --code-bg: #f1f5f9;
+
+  --badge-trace-bg: #e2e8f0;
+  --badge-debug-bg: #e2e8f0;
+  --badge-info-bg: #dbeafe;
+  --badge-warn-bg: #fef3c7;
+  --badge-error-bg: #fee2e2;
+  --badge-fatal-bg: #fecaca;
+  --badge-fatal-fg: #7f1d1d;
+  --badge-ok-bg: #dcfce7;
+  --badge-firing-bg: #fee2e2;
+  --badge-resolved-bg: #dcfce7;
+  --badge-unresolved-bg: #fef3c7;
+  --badge-ignored-bg: #e2e8f0;
+
+  --shadow-drawer: -8px 0 32px rgba(15, 23, 42, 0.12);
+
+  color-scheme: light;
+}
+
+/* Sin data-theme (pre-bootstrap o entornos sin JS): respeta el SO. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f6f8fc;
+    --bg-elev: #ffffff;
+    --bg-hover: #eef2f8;
+    --border: #d6deea;
+    --text: #1a2233;
+    --text-muted: #56627a;
+    --accent: #b45309;
+    --accent-dim: #92400e;
+    --accent-fg: #ffffff;
+    --danger: #dc2626;
+    --warn: #b45309;
+    --info: #0369a1;
+    --success: #15803d;
+    --debug: #475569;
+    --trace: #64748b;
+    --code-bg: #f1f5f9;
+    --badge-trace-bg: #e2e8f0;
+    --badge-debug-bg: #e2e8f0;
+    --badge-info-bg: #dbeafe;
+    --badge-warn-bg: #fef3c7;
+    --badge-error-bg: #fee2e2;
+    --badge-fatal-bg: #fecaca;
+    --badge-fatal-fg: #7f1d1d;
+    --badge-ok-bg: #dcfce7;
+    --badge-firing-bg: #fee2e2;
+    --badge-resolved-bg: #dcfce7;
+    --badge-unresolved-bg: #fef3c7;
+    --badge-ignored-bg: #e2e8f0;
+    --shadow-drawer: -8px 0 32px rgba(15, 23, 42, 0.12);
+    color-scheme: light;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -58,11 +157,12 @@ button {
   padding: 6px 12px;
   cursor: pointer;
   transition: background 0.1s;
+  color: var(--text);
 }
 button:hover { background: var(--bg-hover); }
 button.primary {
   background: var(--accent);
-  color: #1a1a1a;
+  color: var(--accent-fg);
   border-color: var(--accent);
   font-weight: 600;
 }
@@ -121,6 +221,8 @@ table tr:hover { background: var(--bg-elev); }
   top: 0;
   height: 100vh;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar .brand {
@@ -214,17 +316,17 @@ table tr:hover { background: var(--bg-elev); }
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.badge.trace { background: #1e293b; color: var(--trace); }
-.badge.debug { background: #1e293b; color: var(--debug); }
-.badge.info { background: #082f49; color: var(--info); }
-.badge.warn { background: #422006; color: var(--warn); }
-.badge.error { background: #450a0a; color: var(--danger); }
-.badge.fatal { background: #7f1d1d; color: #fecaca; }
-.badge.ok { background: #052e16; color: var(--success); }
-.badge.firing { background: #450a0a; color: var(--danger); }
-.badge.resolved { background: #052e16; color: var(--success); }
-.badge.unresolved { background: #422006; color: var(--warn); }
-.badge.ignored { background: #1e293b; color: var(--debug); }
+.badge.trace { background: var(--badge-trace-bg); color: var(--trace); }
+.badge.debug { background: var(--badge-debug-bg); color: var(--debug); }
+.badge.info { background: var(--badge-info-bg); color: var(--info); }
+.badge.warn { background: var(--badge-warn-bg); color: var(--warn); }
+.badge.error { background: var(--badge-error-bg); color: var(--danger); }
+.badge.fatal { background: var(--badge-fatal-bg); color: var(--badge-fatal-fg); }
+.badge.ok { background: var(--badge-ok-bg); color: var(--success); }
+.badge.firing { background: var(--badge-firing-bg); color: var(--danger); }
+.badge.resolved { background: var(--badge-resolved-bg); color: var(--success); }
+.badge.unresolved { background: var(--badge-unresolved-bg); color: var(--warn); }
+.badge.ignored { background: var(--badge-ignored-bg); color: var(--debug); }
 
 .empty {
   text-align: center;
@@ -269,7 +371,7 @@ table tr:hover { background: var(--bg-elev); }
   z-index: 100;
   overflow-y: auto;
   padding: 20px;
-  box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+  box-shadow: var(--shadow-drawer);
 }
 .drawer .close {
   float: right;
@@ -284,6 +386,49 @@ table tr:hover { background: var(--bg-elev); }
   display: inline-block;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- Skeleton loaders ----------
+   Cualquier elemento con `.skeleton` recibe el shimmer. Sus dimensiones
+   las controla el caller (width/height inline o desde clases compositoras)
+   para que el placeholder coincida con el shape final y NO haya reflow
+   cuando los datos reales lo reemplazan. */
+.skeleton {
+  display: inline-block;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-hover);
+  border-radius: 4px;
+  /* Evita seleccionar texto vacío que no aporta nada. */
+  user-select: none;
+  color: transparent;
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.05) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: skeleton-shimmer 1.4s linear infinite;
+}
+[data-theme="light"] .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+}
+@keyframes skeleton-shimmer {
+  to { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+}
 
 .live-dot {
   width: 8px; height: 8px;
@@ -325,3 +470,83 @@ table tr:hover { background: var(--bg-elev); }
 .span-row .span-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .span-row .span-track { position: relative; height: 16px; background: var(--bg); border-radius: 2px; }
 .span-row .span-track .span-bar { position: absolute; top: 0; bottom: 0; }
+
+/* ---------- Settings layout ---------- */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  align-items: start;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  position: sticky;
+  top: 20px;
+}
+.settings-nav a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+}
+.settings-nav a:hover { background: var(--bg-hover); text-decoration: none; }
+.settings-nav a.active {
+  background: var(--bg-hover);
+  color: var(--accent);
+  font-weight: 600;
+}
+.settings-nav .group-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 10px 12px 4px;
+}
+
+@media (max-width: 720px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+  .settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+}
+
+/* ---------- Theme toggle ---------- */
+.theme-segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-elev);
+}
+.theme-segmented button {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.theme-segmented button:hover { background: var(--bg-hover); }
+.theme-segmented button.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}

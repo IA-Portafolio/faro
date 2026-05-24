@@ -49,8 +49,12 @@ backend: ## Corre el backend en host contra ClickHouse de docker
 	$(BACKEND) cargo run
 
 .PHONY: backend-test
-backend-test: ## cargo test (requiere ClickHouse arriba)
-	$(BACKEND) cargo test --all-features --no-fail-fast
+backend-test: ## cargo nextest (requiere ClickHouse arriba; install: cargo install cargo-nextest)
+	# nextest paraleliza tests cross-binary (los 11 archivos de tests/*.rs
+	# en un único pool) vs `cargo test` que los serializa. La fixture aísla
+	# por project_id → seguro contra CH compartido. Config:
+	# backend/.config/nextest.toml.
+	$(BACKEND) cargo nextest run --all-features --no-fail-fast
 
 .PHONY: backend-check
 backend-check: ## cargo fmt + clippy

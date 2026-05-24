@@ -1,0 +1,33 @@
+// Config de markdownlint-cli2. Activamos el set por defecto y desactivamos
+// las reglas de estilo puro que generarían ruido sin pillar bugs reales.
+// Las que sí pillan errores (sintaxis rota, headers duplicados a la par,
+// listas mal indentadas) quedan activas.
+{
+  "default": true,
+
+  // MD013 — line-length. Prosa en español encadena ideas largas; medir por
+  // caracteres pena más que ayuda. Si en algún momento adoptamos prettier
+  // o dprint para markdown, el wrap lo gestiona la herramienta de formato.
+  "MD013": false,
+
+  // MD041 — first-line-h1. Los ADRs empiezan con metadatos (Status, Date,
+  // Replaces) antes del título, así que exigir h1 en la línea 1 rompe el
+  // formato existente.
+  "MD041": false,
+
+  // MD033 — no-inline-html. Usamos `<details>`/`<summary>` en algunos
+  // READMEs de SDKs para colapsar bloques largos; markdown puro no tiene
+  // equivalente. Permitido.
+  "MD033": false,
+
+  // MD024 — no-duplicate-heading. Permitimos duplicados entre hermanos
+  // distintos (cada ADR tiene su propio bloque "Decisión"/"Consecuencias").
+  // Sigue prohibido duplicar dos hermanos directos.
+  "MD024": { "siblings_only": true },
+
+  // MD060 — table-column-style. Exige que los pipes `|` de cada fila se
+  // alineen al pixel con el header. En tablas anchas con celdas de longitud
+  // variable (muy común en READMEs comparativos de SDKs / infra) es ruido
+  // puro: el render markdown ignora el alineamiento del source. Desactivada.
+  "MD060": false
+}

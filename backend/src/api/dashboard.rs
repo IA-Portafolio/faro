@@ -1,6 +1,7 @@
-use axum::extract::State; use axum_extra::extract::Query;
+use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};
+use axum_extra::extract::Query;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -31,24 +32,37 @@ async fn dashboard(
     let (from, to) = range.resolve();
     let from_s = crate::api::params::ch_dt(from);
     let to_s = crate::api::params::ch_dt(to);
-    let proj = range.project_clause("");
+    let (proj_clause, proj_value) = range.project_clause("");
 
+    // Un mismo `{project:String}` puede referenciarse N veces en el SQL — ClickHouse hace
+    // el binding una sola vez del lado servidor.
     let sql = format!(
         "SELECT \
-            (SELECT toUInt64(count()) FROM faro.logs WHERE timestamp >= toDateTime64('{from_s}', 9) AND timestamp <= toDateTime64('{to_s}', 9){proj}) AS log_count, \
-            (SELECT toUInt64(countIf(severity_number >= 17)) FROM faro.logs WHERE timestamp >= toDateTime64('{from_s}', 9) AND timestamp <= toDateTime64('{to_s}', 9){proj}) AS error_count, \
-            (SELECT toUInt64(uniqExact(service_name)) FROM faro.logs WHERE timestamp >= toDateTime64('{from_s}', 9) AND timestamp <= toDateTime64('{to_s}', 9){proj}) AS service_count, \
-            (SELECT toUInt64(uniqExact(trace_id)) FROM faro.spans WHERE timestamp >= toDateTime64('{from_s}', 9) AND timestamp <= toDateTime64('{to_s}', 9){proj}) AS trace_count, \
-            (SELECT toUInt64(uniqExact(fingerprint)) FROM faro.error_events WHERE timestamp >= toDateTime64('{from_s}', 9) AND timestamp <= toDateTime64('{to_s}', 9){proj}) AS open_issue_count, \
-            (SELECT toUInt64(countIf(status = 'firing')) FROM faro.alert_incidents FINAL WHERE 1=1{proj}) AS firing_incident_count, \
-            (SELECT toUInt64(count()) FROM faro.api_monitors FINAL WHERE deleted = 0 AND enabled = 1{proj}) AS monitors_total, \
+            (SELECT toUInt64(count()) FROM faro.logs WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) AND timestamp <= toDateTime64({{to:DateTime64(9)}}, 9){proj_clause}) AS log_count, \
+            (SELECT toUInt64(countIf(severity_number >= 17)) FROM faro.logs WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) AND timestamp <= toDateTime64({{to:DateTime64(9)}}, 9){proj_clause}) AS error_count, \
+            (SELECT toUInt64(uniqExact(service_name)) FROM faro.logs WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) AND timestamp <= toDateTime64({{to:DateTime64(9)}}, 9){proj_clause}) AS service_count, \
+            (SELECT toUInt64(uniqExact(trace_id)) FROM faro.spans WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) AND timestamp <= toDateTime64({{to:DateTime64(9)}}, 9){proj_clause}) AS trace_count, \
+            (SELECT toUInt64(uniqExact(fingerprint)) FROM faro.error_events WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) AND timestamp <= toDateTime64({{to:DateTime64(9)}}, 9){proj_clause}) AS open_issue_count, \
+            (SELECT toUInt64(countIf(status = 'firing')) FROM faro.alert_incidents FINAL WHERE 1=1{proj_clause}) AS firing_incident_count, \
+            (SELECT toUInt64(count()) FROM faro.api_monitors FINAL WHERE deleted = 0 AND enabled = 1{proj_clause}) AS monitors_total, \
             (SELECT toUInt64(uniqExact(monitor_id)) FROM faro.monitor_results \
-                WHERE timestamp >= now() - INTERVAL 5 MINUTE AND success = 0{proj}) AS monitors_down"
+                WHERE timestamp >= now() - INTERVAL 5 MINUTE AND success = 0{proj_clause}) AS monitors_down"
     );
 
-    let row: Option<DashboardSummary> = state.ch.select_one(&sql).await?;
+    let mut params: Vec<(&str, &str)> = vec![("from", &from_s), ("to", &to_s)];
+    if let Some(p) = proj_value {
+        params.push(("project", p));
+    }
+
+    let row: Option<DashboardSummary> = state.ch.select_one_with_params(&sql, &params).await?;
     Ok(Json(row.unwrap_or(DashboardSummary {
-        log_count: 0, error_count: 0, service_count: 0, trace_count: 0,
-        open_issue_count: 0, firing_incident_count: 0, monitors_total: 0, monitors_down: 0,
+        log_count: 0,
+        error_count: 0,
+        service_count: 0,
+        trace_count: 0,
+        open_issue_count: 0,
+        firing_incident_count: 0,
+        monitors_total: 0,
+        monitors_down: 0,
     })))
 }

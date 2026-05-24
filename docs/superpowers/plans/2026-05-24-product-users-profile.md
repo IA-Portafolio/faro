@@ -394,7 +394,7 @@ Replace `frontend/src/routes/users/+page.svelte` with:
   import { buildProductUserHref, propertiesPreview, shortProductId } from '$lib/product-users';
   import { formatTimestamp, rangeMinutes, selectedProject, timeRange } from '$lib/stores';
   import TimeRangePicker from '$lib/components/TimeRangePicker.svelte';
-  import SkeletonTable from '$lib/components/SkeletonTable.svelte';
+  import SkeletonLogRows from '$lib/components/SkeletonLogRows.svelte';
   import OnboardingEmpty from '$lib/components/OnboardingEmpty.svelte';
 
   let users: ProductUserSummary[] = [];
@@ -485,7 +485,7 @@ Replace `frontend/src/routes/users/+page.svelte` with:
   </div>
 
   {#if loading && users.length === 0}
-    <SkeletonTable rows={10} cols={7} />
+    <SkeletonLogRows rows={10} />
   {:else}
     {#each users as user (user.project_id + ':' + user.distinct_id)}
       <a class="user-row" href={userHref(user.distinct_id)} data-sveltekit-preload-data="hover">
@@ -796,7 +796,6 @@ Create `frontend/src/routes/users/[distinct_id]/+page.svelte`:
                   · {row.trace_count} traces
                   {#if row.sources.length > 0} · {row.sources.join(', ')}{/if}
                 </div>
-                <a href={`/replays/${encodeURIComponent(row.session_id)}`} class="session-link">Abrir replay</a>
               </div>
             </div>
           {:else}
@@ -971,7 +970,6 @@ Create `frontend/src/routes/users/[distinct_id]/+page.svelte`:
     flex-wrap: wrap;
   }
   .session-title { font-size: 12.5px; }
-  .session-link { font-size: 12px; }
 
   .event-row {
     width: 100%;

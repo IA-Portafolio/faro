@@ -65,18 +65,74 @@ jobs:
         working-directory: ${{ env.FARO_DIR }}
         run: $COMPOSE up -d --remove-orphans
 
-      - name: Healthcheck via public domain
+      - name: Readiness check via public domain
+        id: readyz
+        # /readyz (no /healthz) — queremos que el deploy falle si CH no está
+        # accesible tras el arranque, no que pase verde sólo porque el proceso bindea.
         run: |
           for i in $(seq 1 40); do
-            if curl -fsS https://faro.iaportafolio.com/healthz >/dev/null; then
-              echo "Faro responding ✓"
+            if curl -fsS https://faro.iaportafolio.com/readyz >/dev/null; then
+              echo "Faro ready ✓"
               exit 0
             fi
             sleep 3
           done
-          echo "::error::healthz never responded after 120s"
+          echo "::error::readyz never returned 200 after 120s"
+          curl -sS -o /dev/null -w "last readyz status: %{http_code}\n" https://faro.iaportafolio.com/readyz || true
+          curl -sS https://faro.iaportafolio.com/readyz || true
           docker compose -f "$FARO_DIR/docker-compose.prod.yml" --env-file "$FARO_DIR/.env.prod" logs --tail=80 backend
           exit 1
+
+      - name: Smoke test post-deploy
+        id: smoke
+        # Round-trip real contra el dominio público: login + ingest + query + healthz/protocol.
+        # Cubre el caso "readyz verde pero la auth/ingesta/CH están rotas": readyz solo pinguea
+        # ClickHouse, no valida que el camino completo de un log de cliente hasta su lectura
+        # en el dashboard funciona. Si esto falla, el job queda rojo (notificación) y el step
+        # `Smoke diagnostics` de abajo vuelca logs para debug. Rollback queda manual a
+        # propósito: las imágenes no están tageadas por SHA, así que el rollback automático
+        # supondría re-buildear el commit anterior — más invasivo que el propio fix.
+        #
+        # Las creds del smoke user + token de proyecto viven en /opt/faro/.env.prod junto al
+        # resto del state secreto. Si no existen todavía, el script imprime ::warning:: y
+        # se salta los pasos que dependen de ellas (sólo corre healthz). Esto evita romper
+        # el primer deploy que introduce el smoke; el segundo deploy ya debería tener
+        # esas vars configuradas (ver .env.prod.template para los nombres exactos).
+        working-directory: ${{ env.FARO_DIR }}
+        env:
+          FARO_BASE_URL: https://faro.iaportafolio.com
+          FARO_EXPECTED_PROTOCOL: '1'
+        run: |
+          set -a
+          # `|| true` para que la línea no se rompa si la var no está en el file.
+          FARO_SMOKE_EMAIL=$(grep '^FARO_SMOKE_EMAIL=' .env.prod | cut -d= -f2- || true)
+          FARO_SMOKE_PASSWORD=$(grep '^FARO_SMOKE_PASSWORD=' .env.prod | cut -d= -f2- || true)
+          FARO_SMOKE_INGEST_TOKEN=$(grep '^FARO_SMOKE_INGEST_TOKEN=' .env.prod | cut -d= -f2- || true)
+          set +a
+          bash scripts/smoke-post-deploy.sh
+
+      - name: Smoke diagnostics on failure
+        if: failure() && steps.smoke.conclusion == 'failure'
+        # Vuelca últimos logs del backend y CH para que el rollback manual tenga
+        # contexto. No corre si el fallo fue antes del smoke (build/readyz) — esos
+        # ya hicieron su propio dump.
+        working-directory: ${{ env.FARO_DIR }}
+        run: |
+          echo "::group::backend logs (tail 200)"
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail=200 backend || true
+          echo "::endgroup::"
+          echo "::group::clickhouse logs (tail 100)"
+          docker compose -f docker-compose.prod.yml --env-file .env.prod logs --tail=100 clickhouse || true
+          echo "::endgroup::"
+          echo "::group::healthz (raw)"
+          curl -sS https://faro.iaportafolio.com/healthz || true
+          echo
+          echo "::endgroup::"
+          echo "::group::readyz (raw)"
+          curl -sS https://faro.iaportafolio.com/readyz || true
+          echo
+          echo "::endgroup::"
+          echo "::error::smoke FAIL — revisar logs arriba y, si la regresión es del binario, hacer rollback con 'git revert <sha> && git push' (las imágenes no están tageadas por SHA, no hay re-tag local instantáneo)."
 
       - name: Prune dangling images (best-effort)
         if: always()

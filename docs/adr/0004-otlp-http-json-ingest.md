@@ -1,8 +1,16 @@
 # ADR-0004: OTLP/HTTP+JSON como contrato de ingesta
 
-- **Estado**: Accepted
+- **Estado**: Superseded by [ADR-0010](0010-otlp-grpc-ingest.md) (2026-05-24)
 - **Fecha**: 2026-05-23
 - **Autores**: @victalejo
+
+> **Nota**: la decisión de implementar **únicamente** OTLP/HTTP+JSON fue
+> revisada en ADR-0010. Hoy el backend acepta **ambos** transportes: JSON en
+> `:4318` (este ADR, sigue válido para SDKs `@iaportafolio/*` y debug con
+> `curl`) y gRPC+protobuf en `:4317` (ADR-0010, para SDKs oficiales de OTel
+> y Collectors intermedios). El argumento original de "JSON es inspeccionable
+> y suficiente para tráfico moderado" sigue siendo el porqué de no romper el
+> path HTTP/JSON.
 
 ## Contexto
 

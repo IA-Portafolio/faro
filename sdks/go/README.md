@@ -1,5 +1,7 @@
 # faro-go
 
+> **Perfil de defaults:** `server` — flush 750ms · batch 200 · queue 10 000. Ver [perfiles](../README.md#perfiles-de-defaults).
+
 ```bash
 go get github.com/IA-Portafolio/faro/sdks/go
 ```
@@ -64,6 +66,33 @@ go func() {
 
 `Recover` reporta el panic y luego lo re-lanza para que el comportamiento de Go no cambie.
 
+## Auto-correlación con traces
+
+Go pasa el trace activo por `context.Context`. Usa `TrackContext(ctx, ...)` para que Faro adjunte `trace_id`/`span_id`. El middleware de Faro copia el header W3C `traceparent` al contexto del request:
+
+```go
+mux.HandleFunc("/checkout", func(w http.ResponseWriter, r *http.Request) {
+    faro.TrackContext(r.Context(), "checkout_completed", map[string]any{"amount": 99.50})
+    w.WriteHeader(http.StatusNoContent)
+})
+
+http.ListenAndServe(":8080", faro.Default().HTTPMiddleware(mux))
+```
+
+Si ya usas OpenTelemetry, puedes conectar tu extractor sin añadir una dependencia al SDK:
+
+```go
+faro.Init(faro.Options{
+    Endpoint: "...",
+    Token: "...",
+    Service: "checkout",
+    TraceContext: func(ctx context.Context) faro.TraceContext {
+        sc := trace.SpanContextFromContext(ctx)
+        return faro.TraceContext{TraceID: sc.TraceID().String(), SpanID: sc.SpanID().String()}
+    },
+})
+```
+
 ## Cierre
 
 ```go
@@ -71,3 +100,7 @@ ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 defer cancel()
 faro.Close(ctx)
 ```
+
+## Opciones cross-SDK
+
+`Warning()` (alias de `Warn()`), `ScrubFields`/`DisableHeaderScrub`/`ScrubPatterns` y el hook `BeforeSend` están disponibles con la misma semántica que en el resto de SDKs. Ver [API uniforme entre SDKs](../README.md#api-uniforme-entre-sdks).
