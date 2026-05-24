@@ -98,7 +98,15 @@
     }
   }
 
-  type Snippet = { id: string; label: string; install: string; code: string };
+  type SnippetGroup = 'backend' | 'frontend' | 'otros';
+  type Snippet = { id: string; label: string; group: SnippetGroup; install: string; code: string };
+
+  const groupLabels: Record<SnippetGroup, string> = {
+    backend: 'Backend',
+    frontend: 'Frontend',
+    otros: 'Otros',
+  };
+  const groupOrder: SnippetGroup[] = ['backend', 'frontend', 'otros'];
 
   function snippets(p: Project): Snippet[] {
     const base = apiBase();
@@ -107,6 +115,7 @@
       {
         id: 'node',
         label: 'Node.js',
+        group: 'backend',
         install: 'npm install @iaportafolio/node',
         code: `import * as faro from '@iaportafolio/node';
 
@@ -129,6 +138,7 @@ try {
       {
         id: 'nextjs',
         label: 'Next.js',
+        group: 'frontend',
         install: 'npm install @iaportafolio/nextjs @iaportafolio/node',
         code: `// instrumentation.ts
 export async function register() {
@@ -160,6 +170,7 @@ export function FaroClient() {
       {
         id: 'python',
         label: 'Python',
+        group: 'backend',
         install: 'pip install faro-sdk',
         code: `import faro_sdk as faro
 
@@ -181,6 +192,7 @@ except Exception as exc:
       {
         id: 'go',
         label: 'Go',
+        group: 'backend',
         install: 'go get github.com/IA-Portafolio/faro/sdks/go',
         code: `import faro "github.com/IA-Portafolio/faro/sdks/go"
 
@@ -201,6 +213,7 @@ if err := charge(order); err != nil {
       {
         id: 'flutter',
         label: 'Flutter',
+        group: 'frontend',
         install: 'flutter pub add faro_sdk',
         code: `import 'package:faro_sdk/faro_sdk.dart';
 
@@ -225,6 +238,7 @@ try { await pagar(); } catch (e, st) {
       {
         id: 'kotlin',
         label: 'Kotlin / Android',
+        group: 'frontend',
         install: 'implementation("com.iaportafolio:faro:0.1.0")',
         code: `import com.iaportafolio.faro.Faro
 import com.iaportafolio.faro.FaroOptions
@@ -247,6 +261,7 @@ try { pay() } catch (e: Throwable) {
       {
         id: 'expo',
         label: 'Expo / React Native',
+        group: 'frontend',
         install: 'npx expo install @iaportafolio/expo',
         code: `import * as faro from '@iaportafolio/expo';
 
@@ -268,6 +283,7 @@ try {
       {
         id: 'otlp',
         label: 'OpenTelemetry',
+        group: 'otros',
         install: '# usa el OTel SDK oficial de tu lenguaje',
         code: `# Configura tu OTel SDK con estas variables:
 export OTEL_EXPORTER_OTLP_ENDPOINT=${base}
@@ -280,6 +296,7 @@ export OTEL_SERVICE_NAME=mi-servicio
       {
         id: 'curl',
         label: 'curl',
+        group: 'otros',
         install: '# zero install',
         code: `curl -X POST ${base}/api/v1/ingest/logs \\
   -H "Authorization: Bearer ${t}" \\
@@ -404,13 +421,23 @@ export OTEL_SERVICE_NAME=mi-servicio
     </div>
 
     {#each [snippets(detail)] as snipList}
-      <div style="display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid var(--border); margin: 16px 0 12px; padding-bottom: 0;">
-        {#each snipList as s}
-          <button
-            on:click={() => (activeTab = s.id)}
-            class:primary={activeTab === s.id}
-            style="border-radius: 4px 4px 0 0; padding: 6px 12px; font-size: 12.5px;"
-          >{s.label}</button>
+      <div class="sdk-tabs">
+        {#each groupOrder as g}
+          {@const items = snipList.filter((s) => s.group === g)}
+          {#if items.length > 0}
+            <div class="sdk-tab-group">
+              <span class="sdk-tab-group-label">{groupLabels[g]}</span>
+              <div class="sdk-tab-row">
+                {#each items as s}
+                  <button
+                    on:click={() => (activeTab = s.id)}
+                    class:primary={activeTab === s.id}
+                    class="sdk-tab"
+                  >{s.label}</button>
+                {/each}
+              </div>
+            </div>
+          {/if}
         {/each}
       </div>
 
@@ -424,3 +451,37 @@ export OTEL_SERVICE_NAME=mi-servicio
     {/each}
   </div>
 {/if}
+
+<style>
+  .sdk-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    margin: 16px 0 12px;
+    padding-bottom: 8px;
+  }
+  .sdk-tab-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .sdk-tab-group-label {
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+    min-width: 64px;
+  }
+  .sdk-tab-row {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .sdk-tab {
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-size: 12.5px;
+  }
+</style>

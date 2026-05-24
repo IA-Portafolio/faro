@@ -10,7 +10,20 @@ y el proyecto usa [Semantic Versioning](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
-- SDK `@faro/nextjs` con instrumentación server y client.
+- SDK `@iaportafolio/nextjs` con instrumentación server y client.
+  El RUM del navegador (Web Vitals, breadcrumbs, `FaroErrorBoundary`)
+  vive dentro del propio paquete desde `0.3.0` — antes fue un paquete
+  aparte `@iaportafolio/browser` que se fusionó (ver
+  [sdks/nextjs/CHANGELOG](sdks/nextjs/CHANGELOG.md)).
+- Backend: scaffolding de **OpenAPI con `utoipa`** + Swagger UI montado en
+  el enrutador principal (#17).
+- Backend: scaffolding de **self-observability** — el backend exporta sus
+  propios logs/trazas/métricas vía OTLP a sí mismo (#18).
+- Backend: **contrato de versión SDK ↔ backend** vía header
+  `Faro-Protocol-Version`, para detectar drift entre cliente y servidor
+  antes de ingerir datos malformados (#19).
+- Deploy: tabla `faro.integrations` añadida y `curl` instalado en la
+  imagen del backend para healthchecks dentro del contenedor.
 - Workflow `ci.yml` con `cargo fmt/clippy/test`, `npm run check/build` y
   validación de `docker-compose`.
 - Configuración Dependabot para 9 ecosistemas (GitHub Actions, Cargo, npm
@@ -26,6 +39,15 @@ y el proyecto usa [Semantic Versioning](https://semver.org/lang/es/).
   empujes accidentales a crates.io.
 - `.gitignore` cubre ahora los artefactos de los 7 ecosistemas de SDKs y
   bloquea explícitamente `.env.prod` / `.env.*.local`.
+- Scope npm renombrado de `@faro/*` a `@iaportafolio/*` (el scope `@faro`
+  estaba tomado en el registry).
+- Deploy: el `rsync` del runner excluye `.gradle/` — los permisos del host
+  bloqueaban `--delete` sobre ese directorio.
+
+### Fixed
+- SDK Kotlin: publicación a Maven Central migrada al Central Portal nuevo
+  (`com.gradleup.nmcp`); el OSSRH legacy ya no acepta uploads para
+  namespaces nuevos.
 
 ## [0.1.0] — 2026-05-22
 

@@ -132,7 +132,24 @@ sudo /opt/actions-runner/svc.sh stop
 
 ## Observabilidad del propio Faro
 
-Faro no se observa a sí mismo (aún). Para diagnosticar:
+El backend tiene scaffolding de **self-observability** vía OTLP
+(ver [ADR-0007](adr/0007-self-observability.md)). Está **opt-in** —
+apagado por defecto para evitar back-pressure si el listener `:4318` no
+responde en frío.
+
+| Variable                       | Default                 | Para qué |
+| ------------------------------ | ----------------------- | -------- |
+| `FARO_SELF_OBSERVE`            | `false`                 | Activa la emisión OTel del propio backend |
+| `FARO_SELF_OBSERVE_ENDPOINT`   | `http://localhost:4318` | Dónde mandar la telemetría (default: nosotros mismos) |
+| `OTEL_SERVICE_NAME`            | `faro-backend`          | Nombre del servicio en la telemetría |
+
+Activarlo apunta el exporter al propio listener OTLP local: los logs y
+trazas del backend aparecen en el mismo dashboard. Para enviar a un
+colector externo (otro Faro, Tempo, etc.) bastará con cambiar
+`FARO_SELF_OBSERVE_ENDPOINT`.
+
+Mientras no esté activado — o como diagnóstico paralelo — los logs de
+contenedor siguen siendo la fuente de verdad:
 
 ```bash
 ssh infra-iaportafolio

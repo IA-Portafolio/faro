@@ -49,13 +49,17 @@ Tags con formato `sdk-<lenguaje>-v<semver>` disparan publicación en el registry
 
 | Tag                        | Registry        | Paquete                    |
 | -------------------------- | --------------- | -------------------------- |
-| `sdk-node-v0.1.0`          | npm             | `@faro/node`               |
-| `sdk-nextjs-v0.1.0`        | npm             | `@faro/nextjs`             |
-| `sdk-expo-v0.1.0`          | npm             | `@faro/expo`               |
+| `sdk-node-v0.1.0`          | npm             | `@iaportafolio/node`       |
+| `sdk-nextjs-v0.3.0`        | npm             | `@iaportafolio/nextjs` (incluye el RUM del navegador desde v0.3.0) |
+| `sdk-expo-v0.1.0`          | npm             | `@iaportafolio/expo`       |
 | `sdk-python-v0.1.0`        | PyPI            | `faro-sdk`                 |
 | `sdk-go-v0.1.0`            | Go modules (git)| `github.com/IA-Portafolio/faro/sdks/go` |
 | `sdk-flutter-v0.1.0`       | pub.dev         | `faro_sdk`                 |
 | `sdk-kotlin-v0.1.0`        | Maven Central   | `com.iaportafolio:faro`    |
+
+> `@iaportafolio/browser` existió entre v0.2.0 y v0.2.2 como paquete
+> separado y fue fusionado en `@iaportafolio/nextjs@0.3.0`. Ahora está
+> deprecado y unpublished en npm — no relanzar bajo ese nombre.
 
 Lanzar un tag:
 
@@ -72,7 +76,7 @@ En **Settings → Secrets and variables → Actions**:
 
 | Secret                      | Para qué                                  | Cómo obtenerlo |
 | --------------------------- | ----------------------------------------- | -------------- |
-| `NPM_TOKEN`                 | Publicar a npm                            | npmjs.com → Profile → Access Tokens → Generate **Granular** token con permiso `Read and write` sobre la organización `@faro`. **Antes** crea la org `@faro` o el scope. |
+| `NPM_TOKEN`                 | Publicar a npm                            | npmjs.com → Profile → Access Tokens → Generate **Granular** token con permiso `Read and write` sobre la organización `@iaportafolio`. La org ya existe — no recrearla. |
 | `PYPI_API_TOKEN` *(o configurar Trusted Publishing — recomendado)* | Publicar a PyPI | pypi.org → Account settings → API tokens. **Trusted publishing** (sin secret) es preferible: registra el proyecto en pypi.org/manage/account/publishing/ apuntando a este repo + workflow. |
 | `PUB_CREDENTIALS_JSON`      | Publicar a pub.dev                        | Localmente: `dart pub token add https://pub.dev` → autoriza con Google → copia el contenido de `~/.config/dart/pub-credentials.json` |
 | `OSSRH_USERNAME`            | Maven Central                             | Tu username en https://central.sonatype.com/ (o legacy s01.oss.sonatype.org) |
@@ -82,10 +86,10 @@ En **Settings → Secrets and variables → Actions**:
 
 ### Setup inicial de cada registry
 
-#### npm (@faro/node, @faro/nextjs, @faro/expo)
+#### npm (@iaportafolio/node, @iaportafolio/nextjs, @iaportafolio/expo)
 1. Crea cuenta en npmjs.com si no tienes.
-2. Crea la **organización** `faro` (o reclama el scope). Si el nombre ya existe puedes usar `@iaportafolio` y cambiar el nombre en cada `package.json`.
-3. **Profile → Access Tokens → Generate New Token** → tipo **Granular Access Token**. Scope: `Packages and scopes` con permiso `Read and write` para `@faro/*`. Expiración: 1 año (renovable).
+2. La **organización** `iaportafolio` ya está creada en npm. (El scope `@faro` se descartó en su momento porque estaba tomado.)
+3. **Profile → Access Tokens → Generate New Token** → tipo **Granular Access Token**. Scope: `Packages and scopes` con permiso `Read and write` para `@iaportafolio/*`. Expiración: 1 año (renovable).
 4. Pega el token en `NPM_TOKEN` del repo.
 
 #### PyPI (faro-sdk)
