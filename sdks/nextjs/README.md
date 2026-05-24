@@ -1,9 +1,12 @@
 # @iaportafolio/nextjs
 
-SDK para Next.js (App Router y Pages Router). Tiene dos mitades: **server** (Node runtime, captura errores de Route Handlers / Server Actions / SSR) y **client** (browser, captura `window.onerror` + `unhandledrejection` + Web Vitals manuales).
+SDK para Next.js — App Router y Pages Router. Cubre ambos lados:
+
+- **Server**: captura errores de Route Handlers, Server Actions y SSR. Vive sobre [`@iaportafolio/node`](../node/).
+- **Client (browser)**: RUM completo — Web Vitals (LCP/CLS/INP/FCP/TTFB), `window.error`, `unhandledrejection`, clicks/navegaciones como breadcrumbs, React `<ErrorBoundary>` y flush garantizado al cerrar el tab. Vive sobre [`@iaportafolio/browser`](../browser/).
 
 ```bash
-npm install @iaportafolio/nextjs @iaportafolio/node
+npm install @iaportafolio/nextjs @iaportafolio/node @iaportafolio/browser
 ```
 
 ## Server-side
@@ -43,22 +46,34 @@ export async function POST(req: Request) {
 }
 ```
 
-## Client-side (browser)
+## Client-side (RUM completo)
 
 ```tsx
 // app/faro-client.tsx
 'use client';
 import { useEffect } from 'react';
-import { initFaroClient } from '@iaportafolio/nextjs/client';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { initFaroClient, addBreadcrumb, setUser } from '@iaportafolio/nextjs/client';
 
 export function FaroClient() {
+  const pathname = usePathname();
+  const search = useSearchParams();
+
   useEffect(() => {
     initFaroClient({
       endpoint: process.env.NEXT_PUBLIC_FARO_ENDPOINT!,
       token:    process.env.NEXT_PUBLIC_FARO_TOKEN!,
       service:  'mi-next-app-web',
+      // release se autodetecta desde NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA si no la pasas
     });
   }, []);
+
+  // Breadcrumb explícito por ruta — el SDK ya rastrea pushState/popstate,
+  // pero esto da una entrada limpia con el pathname de Next.
+  useEffect(() => {
+    addBreadcrumb({ category: 'navigation', message: pathname, data: { pathname } });
+  }, [pathname, search]);
+
   return null;
 }
 
@@ -76,10 +91,58 @@ export default function RootLayout({ children }) {
 }
 ```
 
-El cliente:
-- Registra `window.onerror` y `unhandledrejection`.
-- Hace `flush` automático al `visibilitychange=hidden` y `pagehide` (usa `navigator.sendBeacon` cuando está disponible).
-- Adjunta `browser.url` y `browser.userAgent` a cada evento.
+### Identificar al usuario
+
+Tras hacer login:
+
+```ts
+import { setUser } from '@iaportafolio/nextjs/client';
+setUser({ id: user.id, email: user.email });
+```
+
+Todos los eventos siguientes incluyen `user.id`, `user.email`.
+
+### React Error Boundary
+
+Envuelve secciones críticas para capturar errores de render sin reventar la app entera:
+
+```tsx
+'use client';
+import { FaroErrorBoundary } from '@iaportafolio/nextjs/client';
+
+export default function CheckoutPage() {
+  return (
+    <FaroErrorBoundary
+      tags={{ module: 'checkout' }}
+      fallback={({ error, reset }) => (
+        <div>
+          <h1>Algo se rompió en el checkout</h1>
+          <pre>{error.message}</pre>
+          <button onClick={reset}>Reintentar</button>
+        </div>
+      )}
+    >
+      <Checkout />
+    </FaroErrorBoundary>
+  );
+}
+```
+
+### Qué captura automáticamente
+
+| Cosa | Cómo |
+| --- | --- |
+| Errores no atrapados | `window.onerror` y `unhandledrejection` |
+| Errores de React | `<FaroErrorBoundary>` (manual) |
+| **Web Vitals** | LCP, CLS, INP, FCP, TTFB enviados como logs con `metric.name`/`metric.value` |
+| Clicks | Breadcrumb con tag + id + texto del elemento |
+| Navegaciones | Breadcrumb en cada `history.pushState`/`popstate` |
+| Contexto | `browser.url`, `browser.userAgent`, `user.*` (si llamas `setUser`) |
+| Flush al cerrar tab | `navigator.sendBeacon` en `pagehide`/`visibilitychange=hidden` |
+
+### Apagar comportamientos
+
+`initFaroClient({ captureWebVitals: false, captureClicks: false, ... })` — todos los flags están en [`@iaportafolio/browser`](../browser/).
 
 ## Variables de entorno
 
@@ -88,4 +151,9 @@ El cliente:
 | `FARO_ENDPOINT`                   | solo servidor      | URL base                                  |
 | `FARO_TOKEN`                      | solo servidor      | Token de proyecto (privado)               |
 | `NEXT_PUBLIC_FARO_ENDPOINT`       | cliente + servidor | URL base para el navegador                |
-| `NEXT_PUBLIC_FARO_TOKEN`          | cliente + servidor | **Mismo token de proyecto.** Sí queda expuesto en el bundle — es deliberado, igual que en Sentry: el token solo permite ingerir, no leer datos del dashboard. |
+| `NEXT_PUBLIC_FARO_TOKEN`          | cliente + servidor | **Mismo token de proyecto.** Queda expuesto en el bundle — es deliberado, igual que en Sentry: el token solo permite ingerir, no leer datos del dashboard. |
+
+## Changelog
+
+- **v0.2.0**: RUM completo (Web Vitals, breadcrumbs, ErrorBoundary, setUser, navigation tracking). El cliente ahora se apoya en `@iaportafolio/browser`.
+- **v0.1.x**: captura básica de errores en el cliente.
