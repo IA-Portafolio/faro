@@ -1,6 +1,6 @@
 {
   "name": "@iaportafolio/nextjs",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "description": "Faro SDK for Next.js (App Router + Pages Router): RUM, Web Vitals, error capture, ErrorBoundary",
   "license": "MIT",
   "type": "module",
@@ -38,7 +38,7 @@
   "bugs": "https://github.com/IA-Portafolio/faro/issues",
   "keywords": ["faro", "nextjs", "observability", "logging", "telemetry"],
   "publishConfig": { "access": "public" },
-  "scripts": { "build": "tsup src/index.ts src/client.ts src/server.ts --format cjs,esm --dts --clean --external react --external next" },
+  "scripts": { "build": "tsup src/index.ts src/client.ts src/server.ts --format cjs,esm --dts --clean --external react --external next --external @iaportafolio/node --external @iaportafolio/browser" },
   "peerDependencies": {
     "@iaportafolio/node": "^0.1.0",
     "@iaportafolio/browser": "^0.1.0",
@@ -53,6 +53,8 @@
     "typescript": "^5.4.0",
     "@types/node": "^20.0.0",
     "@types/react": "^18.0.0",
-    "react": "^18.0.0"
+    "react": "^18.0.0",
+    "@iaportafolio/node": "^0.1.0",
+    "@iaportafolio/browser": "^0.1.0"
   }
 }

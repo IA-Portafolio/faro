@@ -83,12 +83,13 @@ export type { FaroErrorBoundaryProps } from '@iaportafolio/browser/react';
  */
 export function initFaroClient(opts: FaroBrowserOptions): FaroBrowser {
   // Auto-detect release desde env vars típicas de Vercel/Next si no se pasó explícita.
-  const release =
-    opts.release ??
-    (typeof process !== 'undefined' &&
-      (process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
-        process.env.NEXT_PUBLIC_GIT_COMMIT_SHA ||
-        process.env.NEXT_PUBLIC_VERSION)) ||
-    undefined;
+  let release = opts.release;
+  if (!release && typeof process !== 'undefined' && process.env) {
+    release =
+      process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ||
+      process.env.NEXT_PUBLIC_GIT_COMMIT_SHA ||
+      process.env.NEXT_PUBLIC_VERSION ||
+      undefined;
+  }
   return initBrowser({ ...opts, release });
 }
