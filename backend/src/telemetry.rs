@@ -18,9 +18,9 @@ use std::time::Duration;
 use anyhow::Result;
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry::KeyValue;
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::{Config as SdkTraceConfig, TracerProvider};
+use opentelemetry_sdk::trace::TracerProvider;
 use opentelemetry_sdk::Resource;
 
 /// Inicializa el exportador OTLP de tracing si `FARO_SELF_OBSERVE=true`.
@@ -54,16 +54,19 @@ pub fn init_otel() -> Result<Option<OtelGuard>> {
         ),
     ]);
 
-    // Exporter HTTP/JSON apuntando al listener OTLP del propio backend.
-    let exporter = opentelemetry_otlp::new_exporter()
-        .http()
+    // Exporter HTTP/proto apuntando al listener OTLP del propio backend.
+    // API migrada a opentelemetry-otlp 0.27: `new_exporter()` y
+    // `build_span_exporter()` fueron reemplazados por el patrón builder
+    // tipado.
+    let exporter = SpanExporter::builder()
+        .with_http()
         .with_endpoint(format!("{endpoint}/v1/traces"))
         .with_timeout(Duration::from_secs(5))
-        .build_span_exporter()?;
+        .build()?;
 
     let provider = TracerProvider::builder()
         .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
-        .with_config(SdkTraceConfig::default().with_resource(resource))
+        .with_resource(resource)
         .build();
 
     let tracer = provider.tracer(service_name);
