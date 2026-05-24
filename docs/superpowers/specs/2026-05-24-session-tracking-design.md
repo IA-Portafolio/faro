@@ -8,7 +8,7 @@ The current implementation includes a `session_aggregator` worker, config flags,
 and boot wiring. Goal 10.F.1 is to make the session layer reliable enough to be
 treated as product behavior infrastructure:
 
-- a session is a sequence of product events separated by less than 30 minutes;
+- a session uses a 30-minute inactivity timeout;
 - the worker runs every 5 minutes and computes sessions retroactively;
 - if an SDK sends `session_id`, the backend trusts it.
 
@@ -93,6 +93,8 @@ The worker remains best-effort:
 ## Acceptance Criteria
 
 - Events with the same actor and gaps under 30 minutes produce one session.
+- Events with the same actor and a gap exactly equal to 30 minutes remain in
+  the same session.
 - Events with the same actor and a gap over 30 minutes produce separate
   sessions.
 - Events with SDK-provided `session_id` keep that id and are not split by gap.
