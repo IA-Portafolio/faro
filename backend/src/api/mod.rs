@@ -25,19 +25,15 @@ pub fn router(state: SharedState) -> Router {
     // decide si una petición necesita sesión autenticada según la ruta.
     Router::new()
         .route("/healthz", get(healthz))
-        // OpenAPI: spec JSON cruda + Swagger UI. Ambas son públicas (no
-        // pasan por require_session_mw) porque están abajo del nest de
-        // /api/v1 y se montan en paths propios.
-        .route("/api/v1/openapi.json", get(serve_openapi))
+        // OpenAPI + Swagger UI. `SwaggerUi::new(...).url(...)` ya monta
+        // **tanto** el spec JSON en la URL pasada como el HTML en el path
+        // principal, así que NO registramos `/api/v1/openapi.json` por
+        // separado — duplicarlo hace panic en axum (Overlapping method route).
         .merge(SwaggerUi::new("/docs").url("/api/v1/openapi.json", ApiDoc::openapi()))
         .nest("/api/v1/ingest", crate::ingest::logs::router())
         .nest("/api/v1", auth::open_router().merge(auth::protected_router()).merge(v1_router()))
         .layer(from_fn_with_state(state.clone(), auth::require_session_mw))
         .with_state(state)
-}
-
-async fn serve_openapi() -> Json<utoipa::openapi::OpenApi> {
-    Json(ApiDoc::openapi())
 }
 
 /// Liveness + información del protocolo wire. Los SDKs pueden hacer GET
