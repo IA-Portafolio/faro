@@ -1,0 +1,79 @@
+name: validate-tag
+
+# Falla rápido y claro si alguien empuja un tag malformado al repo.
+# Política completa: CONTRIBUTING.md → "Esquema canónico de tags de SDK".
+#
+# Acepta:
+#   - sdk-<lang>-v<semver>[-<pre>][+<build>] con lang en el whitelist.
+#   - sdks/go/v<semver> (auto-generado por publish-sdks.yml; toleramos
+#     que aparezca tras push manual del canónico).
+#   - cualquier tag fuera de los namespaces sdk-* y sdks/go/* (deja pasar
+#     v1.0.0, backend-v..., docs-..., etc. — no hay workflow que dependa
+#     de ellos por ahora).
+#
+# Rechaza:
+#   - sdk-* o sdks/go/* que no encajen en los formatos de arriba.
+
+on:
+  push:
+    tags: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Validate tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -u
+          tag="$REF_NAME"
+          echo "Tag empujado: $tag"
+
+          # Whitelist de lenguajes con SDK publicable (alineado con publish-sdks.yml).
+          lang_re='node|nextjs|expo|python|go|flutter|kotlin'
+          # Semver estricto: MAJOR.MINOR.PATCH(-prerelease)?(+build)?
+          # Pre-release: ident (dot ident)* — `ident` = alfanum sin ceros a la izquierda en numéricos.
+          # Para no convertir la regex en algo ilegible aceptamos el subset común [0-9A-Za-z.-]+.
+          semver_re='[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?'
+
+          canonical_re="^sdk-(${lang_re})-v${semver_re}$"
+          go_modules_re="^sdks/go/v${semver_re}$"
+
+          case "$tag" in
+            sdk-*|sdks/go/*)
+              if [[ "$tag" =~ $canonical_re ]] || [[ "$tag" =~ $go_modules_re ]]; then
+                echo "OK: tag matchea el esquema canónico."
+                exit 0
+              fi
+              echo "::error title=Tag malformado::'$tag' no encaja en el esquema canónico de SDKs."
+              cat <<EOF >&2
+
+          Esperado: sdk-<lang>-v<major>.<minor>.<patch>[-<pre>][+<build>]
+              lang ∈ {node,nextjs,expo,python,go,flutter,kotlin}
+
+          Ejemplos válidos:
+              sdk-node-v0.1.0
+              sdk-nextjs-v1.2.3-rc.1
+              sdk-python-v0.4.0+build.42
+
+          Documentación completa: CONTRIBUTING.md → "Esquema canónico de tags de SDK".
+
+          Cómo arreglarlo (NO publica nada porque publish-sdks.yml también filtra el tag):
+              git tag -d "$tag"
+              git push --delete origin "$tag"
+              git tag sdk-<lang>-v<major>.<minor>.<patch>
+              git push origin sdk-<lang>-v<major>.<minor>.<patch>
+
+          EOF
+              exit 1
+              ;;
+            *)
+              echo "OK: tag fuera del namespace sdk-*/sdks/go/* — no se valida."
+              exit 0
+              ;;
+          esac

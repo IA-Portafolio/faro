@@ -21,7 +21,8 @@ Es la mitad del trabajo necesario para tener una spec OpenAPI viva.
 
 Generamos la spec OpenAPI **desde el código Rust** usando
 [`utoipa`](https://docs.rs/utoipa). El documento se sirve en
-`/api/v1/openapi.json` y una UI Swagger en `/docs`. El documento es la
+`/api/v1/openapi.json` y la referencia pública en `/docs` usando
+[Scalar](https://github.com/scalar/scalar). El documento es la
 **fuente de verdad** del contrato; la tabla del README pasa a ser
 un resumen narrativo.
 
@@ -32,7 +33,16 @@ Mecanismo:
   parámetros y respuestas posibles.
 - `crate::openapi::ApiDoc` es el `#[derive(OpenApi)]` raíz que lista
   paths y schemas.
-- `utoipa-swagger-ui` monta `/docs` con el spec embebido.
+- El backend pre-serializa el spec al boot y lo sirve como bytes en
+  `/api/v1/openapi.json`. `/docs` devuelve un HTML estático de ~15 líneas
+  que carga el bundle de Scalar desde `cdn.jsdelivr.net` y lee el spec
+  via fetch same-origin. Ver `backend/src/api/mod.rs::SCALAR_HTML`.
+
+**Nota sobre la UI**: la primera iteración (2026-05-23) usaba
+`utoipa-swagger-ui`. El 2026-05-24 se reemplazó por Scalar — misma data,
+UI moderna estilo Stripe/Vercel/Resend, y se eliminó un crate con `build.rs`
+que descargaba el bundle de Swagger via `curl` durante la compilación
+(simplificando también el Dockerfile del backend).
 
 ## Alternativas consideradas
 
@@ -55,8 +65,9 @@ Mecanismo:
 - **Pruebas de contrato**: el `openapi.json` puede pasarse a Spectral /
   Schemathesis en CI para detectar breaking changes y validar
   respuestas reales.
-- **Swagger UI en `/docs`** sirve como documentación viva para
-  cualquiera que toque la API (incluyendo nosotros mismos en 6 meses).
+- **Scalar en `/docs`** sirve como referencia pública moderna (sidebar
+  + try-it-out three-pane) para cualquiera que toque la API (incluyendo
+  nosotros mismos en 6 meses).
 - El derive empuja a documentar cada response con su shape exacto, no
   con "devuelve JSON".
 
@@ -66,8 +77,9 @@ Mecanismo:
 - El tipo `crate::api::params::Range` usa custom deserializers; hay que
   proveer `IntoParams` manualmente o aceptar que el schema sea menos
   preciso ahí (mejor que nada).
-- Tres crates nuevos en la árbol de dependencias (`utoipa`,
-  `utoipa-axum`, `utoipa-swagger-ui`), ~1.5 MB compilados.
+- Dos crates nuevos en el árbol de dependencias (`utoipa`,
+  `utoipa-axum`), ~1 MB compilados. Scalar es un bundle JS servido
+  desde CDN, no añade peso al binario.
 
 ### Trabajo de seguimiento
 

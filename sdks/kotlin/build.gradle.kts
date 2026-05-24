@@ -1,3 +1,5 @@
+import java.time.Duration
+
 plugins {
     kotlin("jvm") version "1.9.23"
     kotlin("plugin.serialization") version "1.9.23"
@@ -14,9 +16,18 @@ repositories { mavenCentral() }
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+
+    testImplementation(kotlin("test-junit5"))
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
 }
 
 kotlin { jvmToolchain(17) }
+
+tasks.test {
+    useJUnitPlatform()
+    // Limita a 4 min — los tests usan sockets y reintentos cortos.
+    timeout.set(Duration.ofMinutes(4))
+}
 
 java {
     withSourcesJar()

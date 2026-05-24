@@ -69,7 +69,13 @@ struct ScalarRow {
     value: Option<f64>,
 }
 
-async fn evaluate_rule(
+/// Evalúa una única regla contra el state actual. `active` mantiene los
+/// incidentes en estado `firing` por `rule_id`; el dedup se basa en su contenido
+/// (si ya hay una entrada para esta regla, no inserta un nuevo incidente).
+///
+/// Pub para que los integration tests de `tests/workers_alert_evaluator.rs`
+/// puedan invocarla directamente sin spawnear el loop completo.
+pub async fn evaluate_rule(
     state: SharedState,
     rule: AlertRuleRow,
     active: &mut HashMap<Uuid, AlertIncidentRow>,
@@ -117,7 +123,11 @@ async fn evaluate_rule(
                 note: String::new(),
                 version: 1,
             };
-            if let Err(e) = state.ch.insert("faro.alert_incidents", &[incident.clone()]).await {
+            if let Err(e) = state
+                .ch
+                .insert("faro.alert_incidents", &[incident.clone()])
+                .await
+            {
                 tracing::error!(error = %e, "falló el insert del incidente");
             }
             active.insert(rule.id, incident.clone());
@@ -128,7 +138,11 @@ async fn evaluate_rule(
         incident.resolved_at = Some(now);
         incident.status = "resolved".into();
         incident.version = incident.version.saturating_add(1);
-        if let Err(e) = state.ch.insert("faro.alert_incidents", &[incident.clone()]).await {
+        if let Err(e) = state
+            .ch
+            .insert("faro.alert_incidents", &[incident.clone()])
+            .await
+        {
             tracing::error!(error = %e, "falló el insert de resolución del incidente");
         }
         let _ = crate::notify::dispatch(&state, &rule.notification_targets, &incident).await;

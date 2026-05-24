@@ -2,6 +2,8 @@
 
 SDK para Expo / React Native. Sin módulos nativos — funciona en Expo Go sin development build.
 
+> **Perfil de defaults:** `mobile` — flush 2500ms · batch 80 · queue 2 000. Defaults un poco más conservadores que el baseline `mobile` (1500ms · 100 · 5 000) por el coste del bridge JS↔nativo y batería. Ver [perfiles](../README.md#perfiles-de-defaults).
+
 ```bash
 npx expo install @iaportafolio/expo
 ```
@@ -47,9 +49,45 @@ El token vive en el bundle. Es **deliberado**: el token de ingesta solo permite 
 
 ## Flush al fondo
 
+El SDK instala automáticamente un listener de `AppState` (vía `installGlobalHandlers: true`, por defecto): al pasar a `background` o `inactive` se hace flush y, si queda algo, se persiste a AsyncStorage. No tienes que hacer nada.
+
+Si prefieres flushear manualmente desde tu propio handler, basta con:
+
 ```tsx
 import { AppState } from 'react-native';
 AppState.addEventListener('change', (state) => {
   if (state === 'background') faro.flush();
 });
 ```
+
+## Persistencia entre sesiones (AsyncStorage)
+
+Mobile mata apps de forma agresiva (memory pressure, swipe del task switcher, OOM). Si la cola de Faro vive solo en memoria, se pierde todo lo que no haya salido. El SDK persiste **automáticamente** en AsyncStorage si tienes el peer dep:
+
+```bash
+npx expo install @react-native-async-storage/async-storage
+```
+
+Sin más configuración:
+- **Al pasar a background / inactive**: flush → si queda algo (red caída, server 5xx), persiste a `@faro/queue/{service}`.
+- **En el próximo `init()`**: carga lo persistido, lo prepende a la cola y dispara flush inmediato.
+- **Tras un fatal**: persiste antes de propagar al handler previo (best-effort — Android es más fiable que iOS aquí).
+- **TTL de 24h**: eventos más viejos se descartan en lugar de inundar el servidor con logs rancios cuando la app se reabre tras una semana.
+
+Personalización opcional:
+
+```tsx
+faro.init({
+  endpoint, token, service,
+  persistence: {
+    ttlMs: 6 * 60 * 60 * 1000,  // 6h — apps con sesiones cortas
+    maxBytes: 64 * 1024,         // 64 KB — apps con muchos atributos por evento
+    key: '@miapp/faro-queue',    // si necesitas convivir con otra instalación
+  },
+});
+
+// O desactivar por completo:
+faro.init({ endpoint, token, service, persistence: false });
+```
+
+Si `@react-native-async-storage/async-storage` no está instalado, el SDK **funciona igual** — solo pierde la cola al matar la app. No hay error, no hay warning ruidoso: simplemente la persistencia queda apagada.

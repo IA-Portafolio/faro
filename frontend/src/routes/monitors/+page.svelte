@@ -11,6 +11,8 @@
     type Project
   } from '$lib/api';
   import { selectedProject } from '$lib/stores';
+  import { toast } from '$lib/toasts';
+  import SkeletonTable from '$lib/components/SkeletonTable.svelte';
 
   let monitors: Monitor[] = [];
   let projects: Project[] = [];
@@ -18,8 +20,10 @@
   // El formulario de edición replica Monitor más un campo `project` (slug) para el flujo de creación.
   let editing: (Partial<Monitor> & { project?: string }) | null = null;
   let error = '';
+  let loading = true;
 
   async function load(): Promise<void> {
+    loading = true;
     try {
       [monitors, projects] = await Promise.all([
         fetchMonitors({ project: $selectedProject || undefined }),
@@ -36,6 +40,8 @@
       uptime = uptime;
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e);
+    } finally {
+      loading = false;
     }
   }
   onMount(load);
@@ -61,6 +67,8 @@
   async function save(): Promise<void> {
     if (!editing) return;
     error = '';
+    const wasEdit = !!editing.id;
+    const name = editing.name ?? '';
     try {
       if (editing.id) {
         await updateMonitor(editing.id, editing);
@@ -69,15 +77,23 @@
       }
       editing = null;
       await load();
+      toast.success(wasEdit ? `Monitor "${name}" actualizado` : `Monitor "${name}" creado`);
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e);
+      toast.fromError(wasEdit ? 'No se pudo actualizar el monitor' : 'No se pudo crear el monitor', e);
     }
   }
 
   async function remove(id: string): Promise<void> {
-    if (!confirm('¿Eliminar este monitor?')) return;
-    await deleteMonitor(id);
-    await load();
+    const m = monitors.find((x) => x.id === id);
+    if (!confirm(`¿Eliminar el monitor "${m?.name ?? id}"?`)) return;
+    try {
+      await deleteMonitor(id);
+      await load();
+      toast.success(`Monitor "${m?.name ?? id}" eliminado`);
+    } catch (e: unknown) {
+      toast.fromError('No se pudo eliminar el monitor', e);
+    }
   }
 </script>
 
@@ -94,6 +110,9 @@
       <tr><th>Nombre</th><th>Endpoint</th><th>Intervalo</th><th>Uptime 1h</th><th>Latencia media</th><th>Estado</th><th></th></tr>
     </thead>
     <tbody>
+      {#if loading && monitors.length === 0}
+        <SkeletonTable rows={4} cols={7} widths={['20%', '36%', '8%', '10%', '10%', '8%', '8%']} />
+      {/if}
       {#each monitors as m}
         <tr>
           <td><strong>{m.name}</strong></td>

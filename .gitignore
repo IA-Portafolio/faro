@@ -56,3 +56,7 @@ sdks/kotlin/local.properties
 
 # Go SDK
 sdks/go/vendor/
+
+# Docs CI — cache local de lychee (link-checker). En CI lo persiste
+# actions/cache; localmente es transitorio.
+.lycheecache

@@ -1,0 +1,57 @@
+# Test stack: levanta un ClickHouse efímero + corre `cargo nextest run` del
+# backend contra él (paraleliza cross-binary los 11 archivos de tests/*.rs
+# usando aislamiento por project_id de tests/common/mod.rs). Aplica
+# `clickhouse/init/*.sql` y `clickhouse/migrations/*.sql` (mismas SQL que usa
+# CI en `.github/workflows/ci.yml`) antes de los tests.
+#
+# Uso:
+#   docker compose -f docker-compose.test.yml up --build --abort-on-container-exit \
+#     --exit-code-from backend-test
+#
+# Los volúmenes `cargo-cache` / `target-cache` persisten las deps y artefactos
+# de compile entre corridas — la primera tarda ~10 min (cold), las siguientes
+# ~30-60 s.
+
+services:
+  clickhouse-test:
+    image: clickhouse/clickhouse-server:24-alpine
+    environment:
+      CLICKHOUSE_DB: faro
+      CLICKHOUSE_USER: faro
+      CLICKHOUSE_PASSWORD: faro
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend-test:
+    image: rust:1-bookworm
+    depends_on:
+      clickhouse-test:
+        condition: service_healthy
+    working_dir: /work
+    volumes:
+      - ./backend:/work
+      - ./clickhouse:/clickhouse:ro
+      - ./scripts:/scripts:ro
+      - cargo-registry:/usr/local/cargo/registry
+      - cargo-git:/usr/local/cargo/git
+      - target-cache:/work/target
+    environment:
+      CLICKHOUSE_URL: http://clickhouse-test:8123
+      CLICKHOUSE_DATABASE: faro
+      CLICKHOUSE_USER: faro
+      CLICKHOUSE_PASSWORD: faro
+      CARGO_TERM_COLOR: always
+      RUST_BACKTRACE: 1
+    # Script externo (en lugar de bash -c inline) porque YAML inline pierde
+    # newlines en algunos runtimes de Docker Compose (Desktop/WSL2) y bash
+    # interpreta todo como una sola línea, rompiendo apt-get / curl.
+    entrypoint: ["bash", "/scripts/run-integration-tests.sh"]
+
+volumes:
+  cargo-registry:
+  cargo-git:
+  target-cache:

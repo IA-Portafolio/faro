@@ -1,6 +1,7 @@
-use axum::extract::{Path, State}; use axum_extra::extract::Query;
+use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
+use axum_extra::extract::Query;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -13,7 +14,10 @@ use crate::storage::{AttrMap, MonitorResultRow, MonitorRow};
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/monitors", get(list_monitors).post(create_monitor))
-        .route("/monitors/:id", get(get_monitor).put(update_monitor).delete(delete_monitor))
+        .route(
+            "/monitors/:id",
+            get(get_monitor).put(update_monitor).delete(delete_monitor),
+        )
         .route("/monitors/:id/results", get(monitor_results))
         .route("/monitors/:id/uptime", get(monitor_uptime))
 }
@@ -22,16 +26,18 @@ async fn list_monitors(
     State(state): State<SharedState>,
     Query(range): Query<Range>,
 ) -> ApiResult<Json<Vec<MonitorRow>>> {
-    let proj = range.project_clause("");
-    let rows: Vec<MonitorRow> = state
-        .ch
-        .select(&format!(
-            "SELECT id, project_id, name, method, url, headers, body, interval_seconds, timeout_seconds, \
-             expected_status_min, expected_status_max, expected_body_regex, enabled, \
-             created_at, updated_at, deleted, version \
-             FROM faro.api_monitors FINAL WHERE deleted = 0{proj} ORDER BY name"
-        ))
-        .await?;
+    let (proj_clause, proj_value) = range.project_clause("");
+    let mut params: Vec<(&str, &str)> = Vec::new();
+    if let Some(p) = proj_value {
+        params.push(("project", p));
+    }
+    let sql = format!(
+        "SELECT id, project_id, name, method, url, headers, body, interval_seconds, timeout_seconds, \
+         expected_status_min, expected_status_max, expected_body_regex, enabled, \
+         created_at, updated_at, deleted, version \
+         FROM faro.api_monitors FINAL WHERE deleted = 0{proj_clause} ORDER BY name"
+    );
+    let rows: Vec<MonitorRow> = state.ch.select_with_params(&sql, &params).await?;
     Ok(Json(rows))
 }
 
@@ -60,12 +66,24 @@ pub struct MonitorInput {
     pub enabled: u8,
 }
 
-fn default_interval() -> u32 { 60 }
-fn default_timeout() -> u32 { 30 }
-fn default_status_min() -> u16 { 200 }
-fn default_status_max() -> u16 { 299 }
-fn default_true() -> u8 { 1 }
-fn default_project() -> String { "default".into() }
+fn default_interval() -> u32 {
+    60
+}
+fn default_timeout() -> u32 {
+    30
+}
+fn default_status_min() -> u16 {
+    200
+}
+fn default_status_max() -> u16 {
+    299
+}
+fn default_true() -> u8 {
+    1
+}
+fn default_project() -> String {
+    "default".into()
+}
 
 async fn create_monitor(
     State(state): State<SharedState>,
@@ -74,7 +92,11 @@ async fn create_monitor(
     let now = Utc::now();
     let row = MonitorRow {
         id: Uuid::new_v4(),
-        project_id: if input.project.is_empty() { "default".into() } else { input.project },
+        project_id: if input.project.is_empty() {
+            "default".into()
+        } else {
+            input.project
+        },
         name: input.name,
         method: input.method,
         url: input.url,
@@ -99,13 +121,15 @@ async fn get_monitor(
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<MonitorRow>> {
-    let sql = format!(
-        "SELECT id, project_id, name, method, url, headers, body, interval_seconds, timeout_seconds, \
+    let id_s = id.to_string();
+    let sql = "SELECT id, project_id, name, method, url, headers, body, interval_seconds, timeout_seconds, \
          expected_status_min, expected_status_max, expected_body_regex, enabled, \
          created_at, updated_at, deleted, version \
-         FROM faro.api_monitors FINAL WHERE id = '{id}' AND deleted = 0 LIMIT 1"
-    );
-    let row: Option<MonitorRow> = state.ch.select_one(&sql).await?;
+         FROM faro.api_monitors FINAL WHERE id = {id:UUID} AND deleted = 0 LIMIT 1";
+    let row: Option<MonitorRow> = state
+        .ch
+        .select_one_with_params(sql, &[("id", &id_s)])
+        .await?;
     row.map(Json).ok_or(crate::error::ApiError::NotFound)
 }
 
@@ -115,15 +139,15 @@ async fn update_monitor(
     Json(input): Json<MonitorInput>,
 ) -> ApiResult<Json<MonitorRow>> {
     let now = Utc::now();
-    let existing_sql = format!(
+    let id_s = id.to_string();
+    let existing_sql =
         "SELECT id, project_id, name, method, url, headers, body, interval_seconds, timeout_seconds, \
          expected_status_min, expected_status_max, expected_body_regex, enabled, \
          created_at, updated_at, deleted, version \
-         FROM faro.api_monitors FINAL WHERE id = '{id}' LIMIT 1"
-    );
+         FROM faro.api_monitors FINAL WHERE id = {id:UUID} LIMIT 1";
     let mut existing: MonitorRow = state
         .ch
-        .select_one(&existing_sql)
+        .select_one_with_params(existing_sql, &[("id", &id_s)])
         .await?
         .ok_or(crate::error::ApiError::NotFound)?;
     existing.name = input.name;
@@ -139,7 +163,10 @@ async fn update_monitor(
     existing.enabled = input.enabled;
     existing.updated_at = now;
     existing.version = now.timestamp_millis() as u64;
-    state.ch.insert("faro.api_monitors", &[existing.clone()]).await?;
+    state
+        .ch
+        .insert("faro.api_monitors", &[existing.clone()])
+        .await?;
     Ok(Json(existing))
 }
 
@@ -147,15 +174,15 @@ async fn delete_monitor(
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let sql = format!(
+    let id_s = id.to_string();
+    let sql =
         "SELECT id, project_id, name, method, url, headers, body, interval_seconds, timeout_seconds, \
          expected_status_min, expected_status_max, expected_body_regex, enabled, \
          created_at, updated_at, deleted, version \
-         FROM faro.api_monitors FINAL WHERE id = '{id}' LIMIT 1"
-    );
+         FROM faro.api_monitors FINAL WHERE id = {id:UUID} LIMIT 1";
     let mut row: MonitorRow = state
         .ch
-        .select_one(&sql)
+        .select_one_with_params(sql, &[("id", &id_s)])
         .await?
         .ok_or(crate::error::ApiError::NotFound)?;
     row.deleted = 1;
@@ -171,16 +198,22 @@ async fn monitor_results(
     Query(range): Query<Range>,
 ) -> ApiResult<Json<Vec<MonitorResultRow>>> {
     let (from, to) = range.resolve();
+    let id_s = id.to_string();
+    let from_s = crate::api::params::ch_dt(from);
+    let to_s = crate::api::params::ch_dt(to);
     let sql = format!(
         "SELECT monitor_id, timestamp, success, status_code, duration_ms, error_message, response_size \
          FROM faro.monitor_results \
-         WHERE monitor_id = '{id}' AND timestamp >= toDateTime64('{from}', 3) AND timestamp <= toDateTime64('{to}', 3) \
+         WHERE monitor_id = {{id:UUID}} \
+           AND timestamp >= toDateTime64({{from:DateTime64(3)}}, 3) \
+           AND timestamp <= toDateTime64({{to:DateTime64(3)}}, 3) \
          ORDER BY timestamp DESC LIMIT {limit}",
-        from = crate::api::params::ch_dt(from),
-        to = crate::api::params::ch_dt(to),
         limit = range.limit(),
     );
-    let rows: Vec<MonitorResultRow> = state.ch.select(&sql).await?;
+    let rows: Vec<MonitorResultRow> = state
+        .ch
+        .select_with_params(&sql, &[("id", &id_s), ("from", &from_s), ("to", &to_s)])
+        .await?;
     Ok(Json(rows))
 }
 
@@ -199,19 +232,27 @@ async fn monitor_uptime(
     Query(range): Query<Range>,
 ) -> ApiResult<Json<UptimeStats>> {
     let (from, to) = range.resolve();
-    let sql = format!(
-        "SELECT toUInt64(count()) AS total, \
+    let id_s = id.to_string();
+    let from_s = crate::api::params::ch_dt(from);
+    let to_s = crate::api::params::ch_dt(to);
+    let sql = "SELECT toUInt64(count()) AS total, \
                 toUInt64(sum(success)) AS success, \
                 if(count() > 0, sum(success)/count()*100, 100) AS uptime_pct, \
                 toFloat64(avg(duration_ms)) AS avg_duration_ms, \
                 toFloat64(quantile(0.95)(duration_ms)) AS p95_duration_ms \
          FROM faro.monitor_results \
-         WHERE monitor_id = '{id}' AND timestamp >= toDateTime64('{from}', 3) AND timestamp <= toDateTime64('{to}', 3)",
-        from = crate::api::params::ch_dt(from),
-        to = crate::api::params::ch_dt(to),
-    );
-    let row: Option<UptimeStats> = state.ch.select_one(&sql).await?;
+         WHERE monitor_id = {id:UUID} \
+           AND timestamp >= toDateTime64({from:DateTime64(3)}, 3) \
+           AND timestamp <= toDateTime64({to:DateTime64(3)}, 3)";
+    let row: Option<UptimeStats> = state
+        .ch
+        .select_one_with_params(sql, &[("id", &id_s), ("from", &from_s), ("to", &to_s)])
+        .await?;
     Ok(Json(row.unwrap_or(UptimeStats {
-        total: 0, success: 0, uptime_pct: 100.0, avg_duration_ms: 0.0, p95_duration_ms: 0.0,
+        total: 0,
+        success: 0,
+        uptime_pct: 100.0,
+        avg_duration_ms: 0.0,
+        p95_duration_ms: 0.0,
     })))
 }

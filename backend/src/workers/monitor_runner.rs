@@ -70,7 +70,11 @@ async fn load_monitors(state: &SharedState) -> anyhow::Result<Vec<MonitorRow>> {
         .await
 }
 
-async fn run_check(client: reqwest::Client, m: MonitorRow, state: SharedState) {
+/// Ejecuta un único monitor: hace el request HTTP, evalúa éxito según rango de
+/// status + regex opcional de body, y encola la fila resultado en el canal de
+/// ingesta. Pub para que `tests/workers_monitor_runner.rs` la pueda invocar sin
+/// spawnear el loop completo.
+pub async fn run_check(client: reqwest::Client, m: MonitorRow, state: SharedState) {
     let start = Instant::now();
     let req_builder = match m.method.to_ascii_uppercase().as_str() {
         "GET" => client.get(&m.url),
@@ -80,7 +84,10 @@ async fn run_check(client: reqwest::Client, m: MonitorRow, state: SharedState) {
         "HEAD" => client.head(&m.url),
         "PATCH" => client.patch(&m.url),
         other => {
-            tracing::warn!(method = other, "unsupported monitor method, defaulting to GET");
+            tracing::warn!(
+                method = other,
+                "unsupported monitor method, defaulting to GET"
+            );
             client.get(&m.url)
         }
     };
@@ -114,7 +121,10 @@ async fn run_check(client: reqwest::Client, m: MonitorRow, state: SharedState) {
             let err = if ok {
                 String::new()
             } else if !in_range {
-                format!("status {status} outside {}-{}", m.expected_status_min, m.expected_status_max)
+                format!(
+                    "status {status} outside {}-{}",
+                    m.expected_status_min, m.expected_status_max
+                )
             } else {
                 "body did not match expected pattern".into()
             };

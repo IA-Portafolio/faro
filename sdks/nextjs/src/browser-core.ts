@@ -9,7 +9,46 @@
  * público es `@iaportafolio/nextjs/client`.
  */
 
+import {
+  initSessionReplay,
+  getOrCreateSessionId,
+  type SessionReplayController,
+} from './browser-replay';
+
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+export type ScrubPreset = 'email' | 'jwt' | 'credit-card' | 'api-key';
+
+const DEFAULT_SCRUB_FIELDS = [
+  'password', 'token', 'secret', 'authorization', 'cookie', 'set-cookie', 'api_key', 'apikey',
+];
+const HEADER_SCRUB_FIELDS = ['authorization', 'cookie', 'set-cookie'];
+const REDACTED = '[REDACTED]';
+
+const SCRUB_REGEXES: Record<ScrubPreset, RegExp> = {
+  'email': /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g,
+  'jwt': /\beyJ[\w-]+\.[\w-]+\.[\w-]+\b/g,
+  // Sin Luhn; opt-in deliberadamente.
+  'credit-card': /\b(?:\d[ -]?){13,19}\b/g,
+  'api-key': /\b(?:sk-|ghp_|ghs_|gho_|github_pat_|xoxb-|xoxp-|xoxs-|AKIA|ASIA|AIza)[\w-]{12,}\b/g,
+};
+
+function scrubString(s: string, regexes: RegExp[]): string {
+  let out = s;
+  for (const re of regexes) out = out.replace(re, REDACTED);
+  return out;
+}
+
+function scrubWire(wire: WireEvent, needles: string[], regexes: RegExp[]): void {
+  for (const key of Object.keys(wire.attributes)) {
+    const kLower = key.toLowerCase();
+    if (needles.some((n) => kLower.includes(n))) {
+      wire.attributes[key] = REDACTED;
+    } else if (regexes.length > 0) {
+      wire.attributes[key] = scrubString(wire.attributes[key], regexes);
+    }
+  }
+  if (regexes.length > 0) wire.message = scrubString(wire.message, regexes);
+}
 
 export interface FaroBrowserOptions {
   endpoint: string;
@@ -37,8 +76,39 @@ export interface FaroBrowserOptions {
   captureClicks?: boolean;
   /** Capturar navegaciones SPA (history.pushState/popstate) (default true) */
   captureNavigation?: boolean;
-  /** Hook para muestrear o redactar eventos antes de enviar; devolver null descarta */
+  /** Auto-tracking de product events. Opt-in; por defecto todo apagado. */
+  autoCapture?: AutoCaptureOptions;
+  /**
+   * Habilita session replay con rrweb (default false). Requiere instalar
+   * `rrweb` como peer dependency en el proyecto consumidor. Si está pero
+   * rrweb no se pudo cargar, el SDK loggea un warning y sigue sin replay.
+   */
+  captureSessionReplay?: boolean;
+  /** % de sesiones a grabar cuando captureSessionReplay=true (default 1.0) */
+  sessionReplaySampleRate?: number;
+  /** Hook post-scrub; devolver null descarta el evento. */
   beforeSend?: (event: WireEvent) => WireEvent | null;
+  /** Substrings case-insensitive: cualquier atributo cuya clave los contenga se redacta. Default: lista común de campos sensibles. */
+  scrubFields?: string[];
+  /** Si true, suma headers comunes (authorization, cookie, set-cookie) a scrubFields. Default: true. */
+  scrubHeaders?: boolean;
+  /** Presets de regex aplicados a values string y al message. Default: ['jwt','api-key']. */
+  scrubPatterns?: ScrubPreset[];
+  /** Cadencia de refresh de feature flags en ms (por defecto 30_000). */
+  featureFlagRefreshIntervalMs?: number;
+}
+
+export interface AutoCaptureOptions {
+  /** Page events en init, History API, popstate y hashchange. */
+  pageViews?: boolean;
+  /** Clicks en [data-faro], <button> y <a>. */
+  clicks?: boolean;
+  /** Submit de form[data-faro-form]. */
+  formSubmissions?: boolean;
+  /** 3+ clicks en menos de 2s sobre el mismo elemento. */
+  rageClicks?: boolean;
+  /** Click elegible sin cambio de URL ni DOM en una ventana corta. */
+  deadClicks?: boolean;
 }
 
 export interface UserContext {
@@ -72,17 +142,106 @@ export interface WireEvent {
   span_id?: string;
 }
 
+export interface FeatureFlagContext {
+  distinct_id?: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface FeatureFlagWire {
+  key: string;
+  rollout_percentage: number;
+  conditions?: {
+    properties?: Record<string, unknown>;
+  } & Record<string, unknown>;
+}
+
+interface FeatureFlagsResponse {
+  project?: string;
+  flags?: FeatureFlagWire[];
+}
+
+/** Tipo de evento product API (Segment/PostHog-like). */
+export type ProductEventType = 'track' | 'identify' | 'page' | 'screen' | 'alias';
+
+export interface ProductEventWire {
+  type: ProductEventType;
+  name: string;
+  timestamp: string;
+  distinct_id: string;
+  anonymous_id: string;
+  session_id: string;
+  properties: Record<string, unknown>;
+  user_properties: Record<string, unknown>;
+  context: Record<string, unknown>;
+  source: string;
+}
+
+/** localStorage key — persiste el anonymous_id entre recargas para que la sesión
+ *  pre-login pueda fusionarse con `alias` cuando el user se logee más tarde. */
+const ANON_ID_KEY = 'faro.anon_id';
+
+function getOrCreateAnonymousId(): string {
+  if (typeof localStorage === 'undefined') {
+    return randomAnonymousId();
+  }
+  try {
+    const existing = localStorage.getItem(ANON_ID_KEY);
+    if (existing) return existing;
+    const next = randomAnonymousId();
+    localStorage.setItem(ANON_ID_KEY, next);
+    return next;
+  } catch {
+    return randomAnonymousId();
+  }
+}
+
+function randomAnonymousId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 class FaroBrowser {
   private opts: Required<Omit<FaroBrowserOptions, 'attributes' | 'environment' | 'release' | 'beforeSend'>> &
     Pick<FaroBrowserOptions, 'attributes' | 'environment' | 'release' | 'beforeSend'>;
   private queue: WireEvent[] = [];
+  private eventsQueue: ProductEventWire[] = [];
   private breadcrumbs: Breadcrumb[] = [];
   private user: UserContext | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
+  private featureFlagsTimer: ReturnType<typeof setInterval> | null = null;
   private cleanup: Array<() => void> = [];
   private closed = false;
+  private scrubNeedles: string[];
+  private scrubRegexes: RegExp[];
+  private featureFlags = new Map<string, FeatureFlagWire>();
+  private featureFlagsProject = '';
+  private featureExposureSeen = new Set<string>();
+  private aliasSeen = new Set<string>();
+  private rageClickState: { key: string; times: number[] } | null = null;
+  /** distinct_id (post-login). Vacío hasta que `identify()` se invoca; mientras
+   *  tanto los eventos van con `anonymous_id` también como `distinct_id`. */
+  private distinctId = '';
+  /** anonymous_id persistido en localStorage. Sobrevive a reloads y permite
+   *  que `alias()` fusione la sesión pre-login con el user post-login. */
+  private anonymousId = '';
+  private userProperties: Record<string, unknown> = {};
+  /** Identifica la sesión actual (persistente en el tab). Se incluye en cada
+   *  evento que sale del SDK para que el dashboard pueda saltar de un error
+   *  al replay correspondiente. */
+  private sessionId: string;
+  private replay: SessionReplayController | null = null;
 
   constructor(opts: FaroBrowserOptions) {
+    const scrubFields = opts.scrubFields ?? DEFAULT_SCRUB_FIELDS;
+    const scrubHeaders = opts.scrubHeaders ?? true;
+    const scrubPatterns = opts.scrubPatterns ?? (['jwt', 'api-key'] as ScrubPreset[]);
+    this.scrubNeedles = Array.from(new Set([
+      ...scrubFields.map((s) => s.toLowerCase()),
+      ...(scrubHeaders ? HEADER_SCRUB_FIELDS : []),
+    ]));
+    this.scrubRegexes = scrubPatterns.map((p) => SCRUB_REGEXES[p]).filter(Boolean);
     this.opts = {
       endpoint: opts.endpoint.replace(/\/$/, ''),
       token: opts.token,
@@ -90,6 +249,7 @@ class FaroBrowser {
       environment: opts.environment,
       release: opts.release,
       attributes: opts.attributes,
+      // Perfil de defaults: "browser" (sdks/README.md → Perfiles de defaults).
       flushIntervalMs: opts.flushIntervalMs ?? 2000,
       maxBatchSize: opts.maxBatchSize ?? 100,
       maxQueueSize: opts.maxQueueSize ?? 2000,
@@ -99,25 +259,158 @@ class FaroBrowser {
       captureWebVitals: opts.captureWebVitals ?? true,
       captureClicks: opts.captureClicks ?? true,
       captureNavigation: opts.captureNavigation ?? true,
+      autoCapture: {
+        pageViews: opts.autoCapture?.pageViews ?? false,
+        clicks: opts.autoCapture?.clicks ?? false,
+        formSubmissions: opts.autoCapture?.formSubmissions ?? false,
+        rageClicks: opts.autoCapture?.rageClicks ?? false,
+        deadClicks: opts.autoCapture?.deadClicks ?? false,
+      },
+      captureSessionReplay: opts.captureSessionReplay ?? false,
+      sessionReplaySampleRate: opts.sessionReplaySampleRate ?? 1.0,
       beforeSend: opts.beforeSend,
+      scrubFields,
+      scrubHeaders,
+      scrubPatterns,
+      featureFlagRefreshIntervalMs: opts.featureFlagRefreshIntervalMs ?? 30_000,
     };
 
     if (typeof window === 'undefined') {
       // SSR / Node: degradar a no-op silencioso.
+      this.sessionId = '';
       return;
     }
 
+    this.sessionId = getOrCreateSessionId();
+    this.anonymousId = getOrCreateAnonymousId();
+
     this.timer = setInterval(() => void this.flush(), this.opts.flushIntervalMs);
+    this.featureFlagsTimer = setInterval(
+      () => void this.refreshFeatureFlags(),
+      this.opts.featureFlagRefreshIntervalMs,
+    );
     if (this.opts.captureUnhandled) this.installErrorHandlers();
     if (this.opts.captureConsole) this.installConsoleCapture();
     if (this.opts.captureWebVitals) this.installWebVitals();
+    this.installAutoCapture();
     if (this.opts.captureClicks) this.installClickTracking();
     if (this.opts.captureNavigation) this.installNavigationTracking();
     this.installLifecycleHooks();
+
+    if (this.opts.captureSessionReplay) {
+      this.replay = initSessionReplay({
+        endpoint: this.opts.endpoint,
+        token: this.opts.token,
+        service: this.opts.service,
+        sessionId: this.sessionId,
+        sampleRate: this.opts.sessionReplaySampleRate,
+        getUserId: () => this.user?.id,
+      });
+    }
+  }
+
+  /** Devuelve el id de sesión del tab actual (vacío en SSR). */
+  getSessionId(): string {
+    return this.sessionId;
   }
 
   setUser(user: UserContext | null): void {
     this.user = user;
+  }
+
+  // ---------- Product events API (Segment/PostHog-like) ----------
+
+  /** Envía un evento custom de producto. */
+  track(eventName: string, properties: Record<string, unknown> = {}): void {
+    this.enqueueEvent({ type: 'track', name: eventName, properties });
+  }
+
+  /** Identifica al usuario; setea `distinct_id` para todos los eventos
+   *  posteriores y actualiza `setUser` para que también enriquezca los logs. */
+  identify(userId: string, traits: Record<string, unknown> = {}): void {
+    if (!userId) return;
+    if (this.anonymousId && this.anonymousId !== userId) {
+      this.enqueueAliasOnce(this.anonymousId, userId);
+    }
+    this.distinctId = userId;
+    this.userProperties = { ...this.userProperties, ...traits };
+    this.setUser({
+      id: userId,
+      ...Object.fromEntries(
+        Object.entries(traits).map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)]),
+      ),
+    });
+    this.enqueueEvent({
+      type: 'identify',
+      name: '$identify',
+      properties: {},
+      userPropertiesOverride: traits,
+    });
+  }
+
+  /** Marca un page view. Si no se pasa path, usa `window.location.pathname`. */
+  page(path?: string, properties: Record<string, unknown> = {}): void {
+    const p = path ?? (typeof window !== 'undefined' ? window.location.pathname : '');
+    this.enqueueEvent({ type: 'page', name: p, properties });
+  }
+
+  /** Fusiona un anonymous_id previo con un user_id post-login. */
+  alias(prevId: string, newId: string): void {
+    if (!prevId || !newId) return;
+    this.distinctId = newId;
+    this.enqueueAliasOnce(prevId, newId);
+  }
+
+  private enqueueAliasOnce(prevId: string, newId: string): void {
+    const key = `${prevId}\u0000${newId}`;
+    if (this.aliasSeen.has(key)) return;
+    this.aliasSeen.add(key);
+    this.enqueueEvent({
+      type: 'alias',
+      name: '$alias',
+      properties: { from: prevId, to: newId },
+      anonymousIdOverride: prevId,
+      distinctIdOverride: newId,
+    });
+  }
+
+  async refreshFeatureFlags(): Promise<void> {
+    if (this.closed || typeof fetch === 'undefined') return;
+    try {
+      const res = await fetch(`${this.opts.endpoint}/api/v1/ingest/feature-flags`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${this.opts.token}` },
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as FeatureFlagsResponse;
+      if (!Array.isArray(body.flags)) return;
+      const next = new Map<string, FeatureFlagWire>();
+      for (const flag of body.flags) {
+        if (!flag || typeof flag.key !== 'string' || flag.key.length === 0) continue;
+        next.set(flag.key, {
+          key: flag.key,
+          rollout_percentage: clampRollout(flag.rollout_percentage),
+          conditions: normalizeConditions(flag.conditions),
+        });
+      }
+      this.featureFlags = next;
+      this.featureFlagsProject = typeof body.project === 'string' ? body.project : '';
+    } catch {
+      // Mantener la cache anterior: feature flags no deben romper la app.
+    }
+  }
+
+  isFeatureEnabled(key: string, context: FeatureFlagContext = {}): boolean {
+    const flag = this.featureFlags.get(key);
+    if (!flag) return false;
+    const id = context.distinct_id || this.distinctId || this.anonymousId;
+    if (!matchesFeatureConditions(flag, context)) return false;
+    const rollout = clampRollout(flag.rollout_percentage);
+    const enabled = rollout >= 100
+      ? true
+      : rollout > 0 && stickyBucket(`${this.featureFlagsProject}:${key}:${id}`) < rollout;
+    this.trackFeatureExposure(key, id, enabled);
+    return enabled;
   }
 
   addBreadcrumb(crumb: Omit<Breadcrumb, 'timestamp'>): void {
@@ -143,6 +436,8 @@ class FaroBrowser {
 
   info(message: string, attrs?: Record<string, unknown>): void { this.log({ level: 'INFO', message, attributes: attrs }); }
   warn(message: string, attrs?: Record<string, unknown>): void { this.log({ level: 'WARN', message, attributes: attrs }); }
+  /** Alias de `warn` — paridad con `logging.WARNING` / SDK de Python. */
+  warning(message: string, attrs?: Record<string, unknown>): void { this.log({ level: 'WARN', message, attributes: attrs }); }
   error(message: string, attrs?: Record<string, unknown>): void { this.log({ level: 'ERROR', message, attributes: attrs }); }
 
   captureException(err: unknown, ctx?: { tags?: Record<string, string>; message?: string }): void {
@@ -160,6 +455,12 @@ class FaroBrowser {
   }
 
   async flush(useBeacon = false): Promise<void> {
+    // Logs y events viajan a endpoints distintos; los flusheamos en paralelo
+    // para no pagar dos RTTs cuando hay que cerrar la pestaña.
+    await Promise.all([this.flushLogs(useBeacon), this.flushEvents(useBeacon)]);
+  }
+
+  private async flushLogs(useBeacon = false): Promise<void> {
     if (this.queue.length === 0) return;
     const batch = this.queue.splice(0, this.opts.maxBatchSize);
     const body = JSON.stringify({ service: this.opts.service, logs: batch });
@@ -189,17 +490,101 @@ class FaroBrowser {
     }
   }
 
+  private async flushEvents(useBeacon = false): Promise<void> {
+    if (this.eventsQueue.length === 0) return;
+    const batch = this.eventsQueue.splice(0, this.opts.maxBatchSize);
+    const body = JSON.stringify({ service: this.opts.service, events: batch });
+    const url = `${this.opts.endpoint}/api/v1/ingest/events`;
+
+    if (useBeacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const beaconUrl = `${url}?_token=${encodeURIComponent(this.opts.token)}`;
+      const ok = navigator.sendBeacon(beaconUrl, new Blob([body], { type: 'application/json' }));
+      if (ok) return;
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Authorization': `Bearer ${this.opts.token}`,
+          'Content-Type': 'application/json',
+        },
+        body,
+      });
+      if (!res.ok && res.status >= 500) {
+        this.eventsQueue.unshift(...batch);
+      }
+    } catch {
+      this.eventsQueue.unshift(...batch);
+    }
+  }
+
+  private enqueueEvent(input: {
+    type: ProductEventType;
+    name: string;
+    properties: Record<string, unknown>;
+    userPropertiesOverride?: Record<string, unknown>;
+    anonymousIdOverride?: string;
+    distinctIdOverride?: string;
+  }): void {
+    if (this.closed) return;
+    if (this.eventsQueue.length >= this.opts.maxQueueSize) return;
+    const ctx: Record<string, unknown> = {};
+    if (this.opts.environment) ctx.environment = this.opts.environment;
+    if (this.opts.release) ctx.release = this.opts.release;
+    if (this.opts.attributes) Object.assign(ctx, this.opts.attributes);
+    if (typeof window !== 'undefined') {
+      ctx['page.url'] = window.location.href;
+      ctx['page.path'] = window.location.pathname;
+      ctx['user_agent'] = navigator.userAgent;
+    }
+    this.eventsQueue.push({
+      type: input.type,
+      name: input.name,
+      timestamp: new Date().toISOString(),
+      distinct_id: input.distinctIdOverride ?? (this.distinctId || this.anonymousId),
+      anonymous_id: input.anonymousIdOverride ?? this.anonymousId,
+      session_id: this.sessionId,
+      properties: input.properties,
+      user_properties: input.userPropertiesOverride ?? this.userProperties,
+      context: ctx,
+      source: 'web',
+    });
+  }
+
+  private trackFeatureExposure(flagKey: string, distinctId: string, enabled: boolean): void {
+    const variant = enabled ? 'B' : 'A';
+    const key = `${flagKey}:${distinctId}:${variant}`;
+    if (this.featureExposureSeen.has(key)) return;
+    this.featureExposureSeen.add(key);
+    this.enqueueEvent({
+      type: 'track',
+      name: '$feature_exposure',
+      distinctIdOverride: distinctId,
+      properties: {
+        flag_key: flagKey,
+        variant,
+        enabled,
+      },
+    });
+  }
+
   close(): void {
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    for (const fn of this.cleanup) fn();
+    if (this.featureFlagsTimer) clearInterval(this.featureFlagsTimer);
+    this.featureFlagsTimer = null;
+    for (const fn of [...this.cleanup].reverse()) fn();
     this.cleanup = [];
     void this.flush(true);
+    this.replay?.stop();
   }
 
   private enqueue(evt: WireEvent): void {
+    scrubWire(evt, this.scrubNeedles, this.scrubRegexes);
     const processed = this.opts.beforeSend ? this.opts.beforeSend(evt) : evt;
     if (!processed) return;
     if (this.queue.length >= this.opts.maxQueueSize) return;
@@ -211,6 +596,7 @@ class FaroBrowser {
     if (this.opts.attributes) {
       for (const [k, v] of Object.entries(this.opts.attributes)) attrs[k] = String(v);
     }
+    if (this.sessionId) attrs['session.id'] = this.sessionId;
     if (this.opts.environment) attrs['deployment.environment'] = this.opts.environment;
     if (this.opts.release) attrs['service.version'] = this.opts.release;
     if (typeof window !== 'undefined') {
@@ -288,6 +674,147 @@ class FaroBrowser {
       });
   }
 
+  private installAutoCapture(): void {
+    if (this.opts.autoCapture.pageViews) this.installAutoPageViews();
+    if (
+      this.opts.autoCapture.clicks ||
+      this.opts.autoCapture.rageClicks ||
+      this.opts.autoCapture.deadClicks
+    ) {
+      this.installAutoClickCapture();
+    }
+    if (this.opts.autoCapture.formSubmissions) this.installAutoFormSubmissions();
+  }
+
+  private installAutoPageViews(): void {
+    this.emitAutoPageView('initial');
+
+    const emit = (navigationType: string): void => this.emitAutoPageView(navigationType);
+    const origPush = history.pushState;
+    const origReplace = history.replaceState;
+
+    history.pushState = function (this: History, ...args) {
+      const ret = origPush.apply(this, args);
+      emit('pushState');
+      return ret;
+    };
+    history.replaceState = function (this: History, ...args) {
+      const ret = origReplace.apply(this, args);
+      emit('replaceState');
+      return ret;
+    };
+    const onPop = (): void => emit('popstate');
+    const onHash = (): void => emit('hashchange');
+    window.addEventListener('popstate', onPop);
+    window.addEventListener('hashchange', onHash);
+
+    this.cleanup.push(() => {
+      history.pushState = origPush;
+      history.replaceState = origReplace;
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('hashchange', onHash);
+    });
+  }
+
+  private emitAutoPageView(navigationType: string): void {
+    if (typeof window === 'undefined') return;
+    this.page(window.location.pathname || '/', {
+      url: window.location.href,
+      path: window.location.pathname || '/',
+      referrer: typeof document !== 'undefined' ? document.referrer : '',
+      navigation_type: navigationType,
+    });
+  }
+
+  private installAutoClickCapture(): void {
+    const onClick = (ev: MouseEvent): void => {
+      const target = findAutoCaptureElement(ev.target);
+      if (!target) return;
+      const props = this.elementEventProperties(target);
+      if (this.opts.autoCapture.clicks) {
+        this.track('$autocapture', { type: 'click', ...props });
+      }
+      if (this.opts.autoCapture.rageClicks) {
+        this.maybeTrackRageClick(target, props);
+      }
+      if (this.opts.autoCapture.deadClicks) {
+        this.scheduleDeadClickCheck(target, props);
+      }
+    };
+    document.addEventListener('click', onClick, { capture: true, passive: true });
+    this.cleanup.push(() => document.removeEventListener('click', onClick, { capture: true }));
+  }
+
+  private installAutoFormSubmissions(): void {
+    const onSubmit = (ev: Event): void => {
+      const form = findFormWithFaro(ev.target);
+      if (!form) return;
+      const props = this.elementEventProperties(form);
+      this.track('$form_submit', {
+        type: 'form_submit',
+        ...props,
+        faro_form: safeGetAttribute(form, 'data-faro-form') ?? '',
+      });
+    };
+    document.addEventListener('submit', onSubmit, { capture: true });
+    this.cleanup.push(() => document.removeEventListener('submit', onSubmit, { capture: true }));
+  }
+
+  private maybeTrackRageClick(el: ElementLike, props: Record<string, unknown>): void {
+    const key = elementFingerprint(el);
+    const now = Date.now();
+    const windowStart = now - 2000;
+    const previous = this.rageClickState?.key === key ? this.rageClickState.times : [];
+    const times = [...previous.filter((t) => t >= windowStart), now];
+    this.rageClickState = { key, times };
+    if (times.length < 3) return;
+    this.track('$rage_click', {
+      type: 'rage_click',
+      ...props,
+      click_count: times.length,
+      window_ms: 2000,
+    });
+    this.rageClickState = { key, times: [] };
+  }
+
+  private scheduleDeadClickCheck(el: ElementLike, props: Record<string, unknown>): void {
+    const startUrl = typeof window !== 'undefined' ? window.location.href : '';
+    let mutated = false;
+    let observer: MutationObserver | null = null;
+    if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined' && document.body) {
+      observer = new MutationObserver(() => { mutated = true; });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    }
+    setTimeout(() => {
+      observer?.disconnect();
+      const currentUrl = typeof window !== 'undefined' ? window.location.href : '';
+      if (mutated || currentUrl !== startUrl || this.closed) return;
+      this.track('$dead_click', {
+        type: 'dead_click',
+        ...props,
+        wait_ms: 700,
+        target: elementFingerprint(el),
+      });
+    }, 700);
+  }
+
+  private elementEventProperties(el: ElementLike): Record<string, unknown> {
+    const tag = (el.tagName ?? '').toLowerCase();
+    const text = (el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 100);
+    const href = typeof el.href === 'string' ? el.href : safeGetAttribute(el, 'href');
+    const faro = safeGetAttribute(el, 'data-faro');
+    const props: Record<string, unknown> = {
+      tag,
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      url: typeof window !== 'undefined' ? window.location.href : '',
+    };
+    if (el.id) props.id = el.id;
+    if (text) props.text = text;
+    if (href) props.href = href;
+    if (faro) props.faro = faro;
+    return props;
+  }
+
   private installClickTracking(): void {
     const onClick = (ev: MouseEvent): void => {
       const target = ev.target as Element | null;
@@ -346,6 +873,68 @@ class FaroBrowser {
   }
 }
 
+interface ElementLike {
+  tagName?: string;
+  id?: string;
+  textContent?: string | null;
+  href?: string;
+  parentElement?: ElementLike | null;
+  getAttribute?: (name: string) => string | null;
+  hasAttribute?: (name: string) => boolean;
+}
+
+function asElementLike(value: unknown): ElementLike | null {
+  if (!value || typeof value !== 'object') return null;
+  const candidate = value as ElementLike;
+  return typeof candidate.tagName === 'string' ? candidate : null;
+}
+
+function safeGetAttribute(el: ElementLike, name: string): string | null {
+  try {
+    return typeof el.getAttribute === 'function' ? el.getAttribute(name) : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeHasAttribute(el: ElementLike, name: string): boolean {
+  try {
+    return typeof el.hasAttribute === 'function'
+      ? el.hasAttribute(name)
+      : safeGetAttribute(el, name) !== null;
+  } catch {
+    return false;
+  }
+}
+
+function findAutoCaptureElement(target: unknown): ElementLike | null {
+  let el = asElementLike(target);
+  while (el) {
+    const tag = (el.tagName ?? '').toLowerCase();
+    if (safeHasAttribute(el, 'data-faro') || tag === 'button' || tag === 'a') return el;
+    el = el.parentElement ?? null;
+  }
+  return null;
+}
+
+function findFormWithFaro(target: unknown): ElementLike | null {
+  let el = asElementLike(target);
+  while (el) {
+    if ((el.tagName ?? '').toLowerCase() === 'form' && safeHasAttribute(el, 'data-faro-form')) return el;
+    el = el.parentElement ?? null;
+  }
+  return null;
+}
+
+function elementFingerprint(el: ElementLike): string {
+  const tag = (el.tagName ?? '').toLowerCase();
+  const id = el.id ?? '';
+  const faro = safeGetAttribute(el, 'data-faro') ?? safeGetAttribute(el, 'data-faro-form') ?? '';
+  const href = typeof el.href === 'string' ? el.href : safeGetAttribute(el, 'href') ?? '';
+  const text = (el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 100);
+  return [tag, id, faro, href, text].join('|');
+}
+
 function toError(err: unknown): Error {
   if (err instanceof Error) return err;
   if (typeof err === 'string') return new Error(err);
@@ -366,9 +955,48 @@ function safeJson(v: unknown): string {
   try { return JSON.stringify(v); } catch { return String(v); }
 }
 
+function clampRollout(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+function normalizeConditions(value: FeatureFlagWire['conditions']): FeatureFlagWire['conditions'] {
+  return value && typeof value === 'object' ? value : {};
+}
+
+function matchesFeatureConditions(flag: FeatureFlagWire, context: FeatureFlagContext): boolean {
+  const required = flag.conditions?.properties;
+  if (!required || typeof required !== 'object') return true;
+  const props = context.properties ?? {};
+  for (const [key, expected] of Object.entries(required)) {
+    if (props[key] !== expected) return false;
+  }
+  return true;
+}
+
+function stickyBucket(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % 100;
+}
+
 let singleton: FaroBrowser | null = null;
 
 export function init(opts: FaroBrowserOptions): FaroBrowser {
+  // Paridad cross-SDK: Python/Go/Node/Flutter/Expo/Kotlin lanzan un error claro en el mismo caso.
+  // Validamos aquí (antes del FaroBrowser) para que SSR tampoco trague el error silenciosamente.
+  if (!opts || typeof opts.endpoint !== 'string' || opts.endpoint.length === 0) {
+    throw new Error("faro.init: 'endpoint' es obligatorio (string no vacío)");
+  }
+  if (typeof opts.token !== 'string' || opts.token.length === 0) {
+    throw new Error("faro.init: 'token' es obligatorio (string no vacío)");
+  }
+  if (typeof opts.service !== 'string' || opts.service.length === 0) {
+    throw new Error("faro.init: 'service' es obligatorio (string no vacío)");
+  }
   if (singleton) singleton.close();
   singleton = new FaroBrowser(opts);
   return singleton;
@@ -382,6 +1010,7 @@ export function getClient(): FaroBrowser {
 export function log(entry: LogEntry): void { getClient().log(entry); }
 export function info(msg: string, attrs?: Record<string, unknown>): void { getClient().info(msg, attrs); }
 export function warn(msg: string, attrs?: Record<string, unknown>): void { getClient().warn(msg, attrs); }
+export function warning(msg: string, attrs?: Record<string, unknown>): void { getClient().warning(msg, attrs); }
 export function error(msg: string, attrs?: Record<string, unknown>): void { getClient().error(msg, attrs); }
 export function captureException(err: unknown, ctx?: { tags?: Record<string, string>; message?: string }): void {
   getClient().captureException(err, ctx);
@@ -390,5 +1019,24 @@ export function setUser(user: UserContext | null): void { getClient().setUser(us
 export function addBreadcrumb(crumb: Omit<Breadcrumb, 'timestamp'>): void { getClient().addBreadcrumb(crumb); }
 export function flush(): Promise<void> { return getClient().flush(); }
 export function close(): void { getClient().close(); }
+/** Identificador de la sesión actual del tab. Útil para enriquecer logs propios
+ *  o construir un link al replay desde un mensaje de soporte. */
+export function getSessionId(): string { return getClient().getSessionId(); }
+export function track(event: string, properties?: Record<string, unknown>): void {
+  getClient().track(event, properties);
+}
+export function identify(userId: string, traits?: Record<string, unknown>): void {
+  getClient().identify(userId, traits);
+}
+export function page(path?: string, properties?: Record<string, unknown>): void {
+  getClient().page(path, properties);
+}
+export function alias(prevId: string, newId: string): void {
+  getClient().alias(prevId, newId);
+}
+export function refreshFeatureFlags(): Promise<void> { return getClient().refreshFeatureFlags(); }
+export function isFeatureEnabled(key: string, context?: FeatureFlagContext): boolean {
+  return getClient().isFeatureEnabled(key, context);
+}
 
 export { FaroBrowser };

@@ -1,0 +1,19 @@
+{
+  "name": "work",
+  "version": "1.0.0",
+  "description": "Plataforma centralizada de observabilidad — logs, trazas, métricas, agrupación de errores, monitoreo de disponibilidad de APIs y alertas basadas en umbrales — todo en un único stack auto-hospedado.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@cspell/dict-es-es": "^3.0.8",
+    "cspell": "^8.19.4"
+  }
+}

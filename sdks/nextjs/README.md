@@ -5,6 +5,8 @@ SDK para Next.js — App Router y Pages Router. Cubre ambos lados en un único p
 - **Server**: captura errores de Route Handlers, Server Actions y SSR. Usa [`@iaportafolio/node`](../node/) como dependencia peer.
 - **Client (browser)**: RUM completo — Web Vitals (LCP/CLS/INP/FCP/TTFB), `window.error`, `unhandledrejection`, clicks/navegaciones como breadcrumbs, React `<FaroErrorBoundary>` y flush garantizado al cerrar el tab. Todo el código vive dentro de este mismo paquete.
 
+> **Perfil de defaults:** el subimport `/server` usa el perfil `server` (750ms · 200 · 10 000) heredado de [`@iaportafolio/node`](../node/); el subimport cliente usa el perfil `browser` (2000ms · 100 · 2 000). Ver [perfiles](../README.md#perfiles-de-defaults).
+
 ```bash
 npm install @iaportafolio/nextjs @iaportafolio/node
 ```
@@ -102,6 +104,33 @@ setUser({ id: user.id, email: user.email });
 
 Todos los eventos siguientes incluyen `user.id`, `user.email`.
 
+### Feature flags
+
+Calienta la cache en el cliente y evalúa localmente. El SDK vuelve a pedir flags cada 30s.
+
+```tsx
+'use client';
+import { useEffect, useState } from 'react';
+import { refreshFeatureFlags, isFeatureEnabled } from '@iaportafolio/nextjs/client';
+
+export function CheckoutGate({ user }) {
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    void refreshFeatureFlags().then(() => {
+      setEnabled(isFeatureEnabled('new-checkout', {
+        distinct_id: user.id,
+        properties: { plan: user.plan },
+      }));
+    });
+  }, [user.id, user.plan]);
+
+  return enabled ? <NewCheckout /> : <Checkout />;
+}
+```
+
+Las reglas de flags se descargan al navegador; no pongas secretos en `conditions`.
+
 ### React Error Boundary
 
 Envuelve secciones críticas para capturar errores de render sin reventar la app entera:
@@ -139,6 +168,46 @@ export default function CheckoutPage() {
 | Navegaciones | Breadcrumb en cada `history.pushState`/`popstate` |
 | Contexto | `browser.url`, `browser.userAgent`, `user.*` (si llamas `setUser`) |
 | Flush al cerrar tab | `navigator.sendBeacon` en `pagehide`/`visibilitychange=hidden` |
+| Session replay (opt-in) | Graba el DOM con rrweb y lo asocia a errores por `session.id`. Ver [SESSION-REPLAY.md](./SESSION-REPLAY.md) |
+
+### Auto-tracking de producto (opt-in)
+
+Además de los breadcrumbs de RUM, el cliente puede emitir product events automáticamente:
+
+```ts
+initFaroClient({
+  endpoint, token, service,
+  autoCapture: {
+    pageViews: true,        // init, pushState, replaceState, popstate, hashchange
+    clicks: true,           // [data-faro], button, a
+    formSubmissions: true,  // form[data-faro-form]
+    rageClicks: true,       // 3+ clicks en <2s sobre el mismo elemento
+    deadClicks: true,       // click elegible sin cambio de URL ni DOM
+  },
+});
+```
+
+Eventos emitidos:
+
+| Opción | Evento |
+| --- | --- |
+| `pageViews` | `page(path, { navigation_type, url, path, referrer })` |
+| `clicks` | `track('$autocapture', { type: 'click', tag, id, text, href, faro })` |
+| `formSubmissions` | `track('$form_submit', { type: 'form_submit', id, faro_form })` |
+| `rageClicks` | `track('$rage_click', { type: 'rage_click', click_count, ... })` |
+| `deadClicks` | `track('$dead_click', { type: 'dead_click', wait_ms, ... })` |
+
+`autoCapture` está apagado por defecto. `captureClicks` y `captureNavigation`
+siguen siendo breadcrumbs; no se convierten en product events salvo que actives
+`autoCapture`.
+
+### Identidad estable
+
+El cliente browser genera `anonymous_id` con `crypto.randomUUID()` y lo persiste
+en `localStorage`. En el primer `identify('user_42')`, emite automáticamente
+`$alias` con `{ from: anonymous_id, to: 'user_42' }`; desde ese punto, todos los
+product events llevan `distinct_id='user_42'` y mantienen el `anonymous_id`
+original para joins retrospectivos.
 
 ### Apagar comportamientos
 
@@ -152,6 +221,10 @@ initFaroClient({
   captureConsole: true,    // por defecto false (puede meter ruido)
 });
 ```
+
+## Opciones cross-SDK
+
+`warning()` (alias de `warn()`), `scrubFields`/`scrubHeaders`/`scrubPatterns` y el hook `beforeSend` están disponibles tanto en el cliente browser como (vía `@iaportafolio/node`) en el servidor, con la misma semántica que en el resto de SDKs. Ver [API uniforme entre SDKs](../README.md#api-uniforme-entre-sdks).
 
 ## Variables de entorno
 

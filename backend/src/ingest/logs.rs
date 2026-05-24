@@ -7,6 +7,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::{ApiError, ApiResult};
+use crate::observability::names;
 use crate::state::SharedState;
 use crate::storage::{AttrMap, LogRow};
 
@@ -37,7 +38,9 @@ struct RawLog {
     attributes: Option<Value>,
 }
 
-fn default_level() -> String { "INFO".into() }
+fn default_level() -> String {
+    "INFO".into()
+}
 
 async fn ingest_logs(
     State(state): State<SharedState>,
@@ -45,6 +48,41 @@ async fn ingest_logs(
     Json(payload): Json<IngestPayload>,
 ) -> ApiResult<Json<serde_json::Value>> {
     let project = super::resolve_project(&state, &headers)?;
+    // Si el request trae `Origin`, validar contra la whitelist del proyecto.
+    // Server-side SDKs no envían Origin y pasan sin chequeo (el bearer alcanza).
+    super::check_origin(&state, &project, &headers)?;
+
+    // Mismo bucket que OTLP — un cliente no puede esquivar el límite saltando
+    // de transporte. Contamos los records del payload antes de procesar.
+    let n: u32 = payload.logs.len().try_into().unwrap_or(u32::MAX);
+    match state.limiter.check(&project, n) {
+        super::rate_limit::LimitOutcome::Allowed => {}
+        other => {
+            let secs = other.retry_after_secs();
+            tracing::warn!(
+                project,
+                records = n,
+                retry_after_secs = secs,
+                "ingest /logs rate-limited"
+            );
+            metrics::counter!(
+                names::RATE_LIMITED,
+                "project" => project.clone(),
+                "signal" => "logs",
+            )
+            .increment(1);
+            metrics::counter!(
+                names::INGEST_RECORDS,
+                "project" => project.clone(),
+                "signal" => "logs",
+                "outcome" => "rate_limited",
+            )
+            .increment(n as u64);
+            return Err(ApiError::TooManyRequests {
+                retry_after_secs: secs,
+            });
+        }
+    }
 
     // Telemetría de compatibilidad de SDK — por ahora solo loggeamos, no
     // rechazamos. La política de rechazo (cuando `Unsupported`) se activa
@@ -54,13 +92,17 @@ async fn ingest_logs(
     let now = Utc::now();
     let svc_default = payload.service.unwrap_or_else(|| "unknown".into());
     let mut accepted = 0u64;
+    // Resolvemos las reglas UNA vez por batch — `redaction()` toma el RwLock por
+    // lectura, no queremos hacerlo por cada log. Si entre tanto el admin guarda
+    // un cambio, los logs siguientes del próximo POST ya verán la versión nueva.
+    let redaction_rules = state.projects.redaction(&project);
 
     for raw in payload.logs {
         let svc = raw.service.unwrap_or_else(|| svc_default.clone());
         let ts = raw.timestamp.unwrap_or(now);
         let attrs = json_to_attr_map(raw.attributes.as_ref());
         let severity = LogRow::severity_from_text(&raw.level);
-        let row = LogRow {
+        let mut row = LogRow {
             timestamp: ts,
             observed_timestamp: now,
             project_id: project.clone(),
@@ -74,6 +116,7 @@ async fn ingest_logs(
             resource_attributes: AttrMap::new(),
             attributes: attrs,
         };
+        super::redact_log(redaction_rules.as_ref(), &mut row);
         let _ = state.live_bus.logs.send(row.clone());
         if state.ingest.logs_tx.try_send(row).is_ok() {
             accepted += 1;
@@ -82,7 +125,19 @@ async fn ingest_logs(
         }
     }
 
-    Ok(Json(serde_json::json!({ "accepted": accepted, "project": project })))
+    if accepted > 0 {
+        metrics::counter!(
+            names::INGEST_RECORDS,
+            "project" => project.clone(),
+            "signal" => "logs",
+            "outcome" => "accepted",
+        )
+        .increment(accepted);
+    }
+
+    Ok(Json(
+        serde_json::json!({ "accepted": accepted, "project": project }),
+    ))
 }
 
 pub fn json_to_attr_map(v: Option<&Value>) -> AttrMap {
@@ -123,8 +178,14 @@ fn log_sdk_compat(headers: &HeaderMap) {
     if status == CompatStatus::Ok {
         return;
     }
-    let sdk_name = headers.get(HEADER_SDK_NAME).and_then(|v| v.to_str().ok()).unwrap_or("unknown");
-    let sdk_version = headers.get(HEADER_SDK_VERSION).and_then(|v| v.to_str().ok()).unwrap_or("unknown");
+    let sdk_name = headers
+        .get(HEADER_SDK_NAME)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown");
+    let sdk_version = headers
+        .get(HEADER_SDK_VERSION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown");
     tracing::warn!(
         sdk_name,
         sdk_version,

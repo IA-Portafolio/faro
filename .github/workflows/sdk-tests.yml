@@ -1,22 +1,27 @@
 name: sdk-tests
 
-# Lint + build + test de cada SDK. Corre solo cuando el directorio del
-# SDK respectivo (o este workflow) cambia, para no gastar minutos en cada
-# PR que toque el core.
+# Lint + build + **test obligatorio** de cada SDK. Bloquea PRs y, vía el
+# `needs:` en publish-sdks.yml, también bloquea cualquier publish a npm/PyPI/
+# Maven/pub.dev si los tests fallan.
 #
-# Para SDKs que aún no tienen tests escritos, el job al menos garantiza
-# que el código compila / pasa lint. Los `if grep`/`if [ -f ]` evitan
-# explotar en suites vacías; cuando añadas tests reales se ejecutan solas.
+# Antes este workflow toleraba "sin tests" con un grep — esa válvula de escape
+# se removió a propósito tras 6.D.3 (no había tests reales en ningún SDK).
 
 on:
   pull_request:
     paths:
       - 'sdks/**'
+      - 'backend/**'
+      - 'clickhouse/**'
+      - 'docker-compose.sdk-integration.yml'
       - '.github/workflows/sdk-tests.yml'
   push:
     branches: [main]
     paths:
       - 'sdks/**'
+      - 'backend/**'
+      - 'clickhouse/**'
+      - 'docker-compose.sdk-integration.yml'
       - '.github/workflows/sdk-tests.yml'
 
 concurrency:
@@ -33,9 +38,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc }
       - run: npm install
-      - run: npm run build
-      - run: |
-          if grep -q '"test"' package.json; then npm test; else echo "sin tests"; fi
+      - run: npm test
 
   nextjs:
     runs-on: ubuntu-latest
@@ -46,9 +49,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc }
       - run: npm install
-      - run: npm run build
-      - run: |
-          if grep -q '"test"' package.json; then npm test; else echo "sin tests"; fi
+      - run: npm test
 
   expo:
     runs-on: ubuntu-latest
@@ -59,9 +60,7 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version-file: .nvmrc }
       - run: npm install
-      - run: npm run build
-      - run: |
-          if grep -q '"test"' package.json; then npm test; else echo "sin tests"; fi
+      - run: npm test
 
   python:
     runs-on: ubuntu-latest
@@ -83,12 +82,7 @@ jobs:
           pip install build
           python -m build
       - name: pytest
-        run: |
-          if [ -d tests ] || ls tests_*.py 2>/dev/null | grep -q .; then
-            pytest
-          else
-            echo "sin tests"
-          fi
+        run: pytest
 
   go:
     runs-on: ubuntu-latest
@@ -100,7 +94,7 @@ jobs:
         with: { go-version: '1.22' }
       - run: go vet ./...
       - run: go build ./...
-      - run: go test ./... || echo "sin tests"
+      - run: go test -race ./...
       - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
@@ -117,7 +111,7 @@ jobs:
         with: { channel: stable }
       - run: flutter pub get
       - run: dart analyze
-      - run: flutter test || echo "sin tests"
+      - run: flutter test
 
   kotlin:
     runs-on: ubuntu-latest
@@ -128,5 +122,58 @@ jobs:
       - uses: actions/setup-java@v4
         with: { distribution: temurin, java-version: 17 }
       - uses: gradle/actions/setup-gradle@v4
+      - name: bootstrap gradle wrapper if missing
+        run: |
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version 8.7
+          fi
       - run: ./gradlew build --no-daemon
-      - run: ./gradlew test --no-daemon || echo "sin tests"
+      - run: ./gradlew test --no-daemon
+
+  # Integration: stack real (clickhouse + redis + backend) + Node SDK envía un log
+  # y consulta la API para verificar que llegó. Mismo wire que todos los SDKs
+  # usan, así que con uno alcanza para detectar regresiones de protocolo.
+  #
+  # Pre-buildeamos `faro-backend` con buildx + cache=gha en vez de dejarlo a
+  # `compose up --build`, porque el builder de compose no usa los exporters
+  # de buildx — sin esto cada corrida recompila Rust desde cero (~10 min).
+  # Con cargo-chef en el Dockerfile + cache layer en GHA, una corrida que sólo
+  # toca src/*.rs baja a ~1-2 min (hit en la layer de `cargo chef cook`).
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build faro-backend image with GHA layer cache
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          # `load: true` mete la imagen al daemon local para que `compose up`
+          # (sin --build) la encuentre como faro-backend:integration.
+          load: true
+          tags: faro-backend:integration
+          # scope= namespaceia la cache por uso (no la mezcles con la del
+          # workflow release-images, que es multi-arch y vive en otra scope).
+          # GHA cachea por branch con fallback a la default branch — perfecto
+          # para PRs que heredan la cache de main.
+          cache-from: type=gha,scope=sdk-integration-backend
+          cache-to: type=gha,scope=sdk-integration-backend,mode=max
+
+      - name: docker compose up
+        # SIN --build: la imagen ya está cargada por el step anterior. Si por
+        # algún motivo no estuviera, compose abortaría con "image not found"
+        # antes de levantar dependencias — falla rápida y obvia, mejor que
+        # gastar 10 min rebuilding en silencio.
+        run: |
+          docker compose -f docker-compose.sdk-integration.yml up --no-build \
+            --abort-on-container-exit --exit-code-from sdk-runner
+
+      - name: dump backend logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.sdk-integration.yml logs backend || true
+          docker compose -f docker-compose.sdk-integration.yml logs clickhouse || true

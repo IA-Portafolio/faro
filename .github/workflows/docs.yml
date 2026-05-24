@@ -1,0 +1,169 @@
+name: docs
+
+# Validación de la documentación (links rotos, typos, estilo markdown).
+# El detonante típico de este workflow es un rename de archivo que dejó
+# links muertos hacia el path anterior, o un typo en términos técnicos
+# (clickhose, sveltekitt, opentelemtry) que se filtra a producción.
+#
+# Sigue el mismo patrón umbrella que `ci.yml`: el workflow corre siempre
+# en PRs, los jobs internos se skipean si el diff no toca `**/*.md` ni
+# config de las tools, y el job final `docs` agrega los resultados. En
+# branch protection se marca SOLO `docs` como required (no los individuales).
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      docs: ${{ steps.filter.outputs.docs }}
+      orphan: ${{ steps.filter.outputs.orphan }}
+      env_ref: ${{ steps.filter.outputs.env_ref }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs:
+              - '**/*.md'
+              - '.markdownlint.jsonc'
+              - '.cspell.json'
+              - 'lychee.toml'
+              - '.github/workflows/docs.yml'
+            orphan:
+              - 'docs/**'
+              - '*.md'
+              - 'scripts/check-orphan-docs.sh'
+              - '.github/workflows/docs.yml'
+            env_ref:
+              - '.env.example'
+              - 'docs/reference/environment.md'
+              - 'scripts/gen-env-reference.sh'
+              - 'scripts/check-env-reference.sh'
+              - '.github/workflows/docs.yml'
+
+  markdownlint:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DavidAnson/markdownlint-cli2-action@v17
+        with:
+          config: .markdownlint.jsonc
+          # markdownlint-cli2 acepta patrones negativos con `!`. Excluimos
+          # node_modules y artefactos de build (jamás documentación nuestra),
+          # más los CHANGELOGs auto-generados de los SDKs (formato release-please).
+          globs: |
+            **/*.md
+            !**/node_modules/**
+            !**/target/**
+            !frontend/build/**
+            !frontend/.svelte-kit/**
+            !**/CHANGELOG.md
+            !sdks/**/CHANGELOG.md
+
+  cspell:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: install cspell + es-ES dict
+        # `--no-save` deja `package.json` intacto (no hay uno en root y no
+        # queremos crearlo sólo para esto). El dict de español se resuelve
+        # vía `import` en `.cspell.json`; npx encuentra el paquete en
+        # ./node_modules al correr cspell.
+        run: npm install --no-save cspell@8 @cspell/dict-es-es
+      - name: cspell
+        # `--no-summary` reduce el output a sólo los errores (más fácil
+        # de leer en la PR check). `--gitignore` respeta nuestro .gitignore
+        # como capa adicional sobre `ignorePaths` del config.
+        run: npx cspell --no-progress --no-summary --gitignore --config .cspell.json '**/*.md'
+
+  lychee:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore lychee cache
+        # Persistimos el cache de URLs externas resueltas (1 día) para no
+        # martillar CDNs y dominios cada PR. El cache es por commit pero
+        # `restore-keys` cae al más reciente disponible.
+        uses: actions/cache@v4
+        with:
+          path: .lycheecache
+          key: lychee-${{ github.run_id }}
+          restore-keys: lychee-
+      - uses: lycheeverse/lychee-action@v2
+        with:
+          # `fail: true` rompe el build ante el PRIMER link roto; sin esto
+          # lychee imprime pero retorna 0 (CI verde con links rotos = inútil).
+          fail: true
+          args: --no-progress --cache --max-cache-age 1d --config lychee.toml './**/*.md'
+
+  orphan-docs:
+    needs: changes
+    if: needs.changes.outputs.orphan == 'true'
+    # Bloquea un PR que añada un archivo bajo docs/ que ningún índice ni
+    # sidebar referencia. Un doc no descubrible es como no existir: tarde o
+    # temprano queda obsoleto y nadie se entera porque nadie lo abre.
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: check orphan docs
+        run: bash scripts/check-orphan-docs.sh
+
+  env-reference:
+    needs: changes
+    if: needs.changes.outputs.env_ref == 'true'
+    # Bloquea un PR que toque `.env.example` sin regenerar
+    # `docs/reference/environment.md` (o viceversa). El .env.example es la
+    # fuente única de verdad — README, docs/deployment.md, infra/README.md
+    # y los templates de prod linkean a la página generada. Mantener los
+    # dos en sync garantiza que la única tabla de env-vars del repo no se
+    # desincronice.
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+      - name: check env reference sync
+        run: bash scripts/check-env-reference.sh
+
+  # Umbrella para branch protection. Pasa si todos los jobs requeridos
+  # terminaron success o skipped (PR no-docs); falla si CUALQUIERA terminó
+  # en failure/cancelled. Mismo patrón que el job `ci` en ci.yml.
+  docs:
+    if: always()
+    needs: [changes, markdownlint, cspell, lychee, orphan-docs, env-reference]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all docs jobs succeeded or were skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ',') }}
+        run: |
+          echo "needs results: $RESULTS"
+          case ",$RESULTS," in
+            *,failure,*|*,cancelled,*)
+              echo "::error::Al menos un job de docs terminó en failure/cancelled"
+              exit 1
+              ;;
+          esac
+          echo "Todos los jobs de docs pasaron o fueron skipped sin error."

@@ -1,5 +1,7 @@
 # faro (Kotlin · Android + JVM)
 
+> **Perfil de defaults:** `mobile` — flush 1500ms · batch 100 · queue 5 000. Ver [perfiles](../README.md#perfiles-de-defaults).
+
 Para Android añade al `build.gradle.kts` del módulo:
 
 ```kotlin
@@ -55,3 +57,7 @@ Asegúrate de tener `INTERNET` en el manifest (suele estar por defecto):
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
 ```
+
+## Opciones cross-SDK
+
+`Faro.warning()` (alias de `warn()`), `scrubFields`/`scrubHeaders`/`scrubPatterns` y el hook `beforeSend: (WireEntry) -> WireEntry?` están disponibles con la misma semántica que en el resto de SDKs. Ver [API uniforme entre SDKs](../README.md#api-uniforme-entre-sdks).

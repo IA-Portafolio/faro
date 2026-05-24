@@ -1,8 +1,17 @@
 # ADR-0005: Sin autenticación nativa en el dashboard
 
-- **Estado**: Accepted
+- **Estado**: Superseded by [ADR-0009](0009-security-hardening.md) (2026-05-24)
 - **Fecha**: 2026-05-23
 - **Autores**: @victalejo
+
+> **Nota**: la decisión "sin auth nativa" fue revertida en ADR-0009.
+> El dashboard ahora tiene auth nativa (Argon2id, sesiones cookie-based,
+> 2FA TOTP opcional) gateada por bootstrap. El argumento de "delegar al
+> proxy de red" sigue siendo válido como defense-in-depth pero ya no
+> es obligatorio; la motivación principal fue habilitar checks
+> dependientes del modelo de proyectos (origin allowlist para RUM,
+> rotación de sesión post-password-change) que un proxy externo no
+> puede hacer.
 
 ## Contexto
 

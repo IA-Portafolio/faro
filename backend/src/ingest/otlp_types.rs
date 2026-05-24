@@ -317,7 +317,16 @@ impl AnyValue {
             let parts: Vec<String> = kv
                 .values
                 .iter()
-                .map(|p| format!("\"{}\":\"{}\"", p.key, p.value.as_ref().map(|v| v.to_string_value()).unwrap_or_default()))
+                .map(|p| {
+                    format!(
+                        "\"{}\":\"{}\"",
+                        p.key,
+                        p.value
+                            .as_ref()
+                            .map(|v| v.to_string_value())
+                            .unwrap_or_default()
+                    )
+                })
                 .collect();
             return format!("{{{}}}", parts.join(","));
         }

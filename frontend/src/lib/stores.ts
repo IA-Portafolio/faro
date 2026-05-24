@@ -6,28 +6,39 @@ export const currentUser = writable<AuthUser | null>(null);
 
 export type RangePreset = '5m' | '15m' | '1h' | '6h' | '24h' | '7d';
 
-const PROJECT_KEY = 'faro:selectedProject';
+const VALID_RANGES: readonly RangePreset[] = ['5m', '15m', '1h', '6h', '24h', '7d'];
 
-function loadProject(): string {
-  if (!browser) return '';
-  try {
-    return window.localStorage.getItem(PROJECT_KEY) ?? '';
-  } catch {
-    return '';
-  }
+export function isValidRange(s: string): s is RangePreset {
+  return (VALID_RANGES as readonly string[]).includes(s);
 }
 
-export const selectedProject = writable<string>(loadProject());
+// ---------- Estado global de exploración ----------
+//
+// Antes vivían en localStorage. Hoy son simplemente writables en memoria; la
+// **persistencia entre máquinas** la da el backend (`faro.user_preferences`) y
+// el **deep link** lo da el query string. Cuando una página quiere fijar el
+// proyecto o el rango, escribe al store y la propia página/layout sincroniza
+// con la URL. Defaults del usuario se hidratan al login en `+layout.svelte`.
 
-if (browser) {
-  selectedProject.subscribe((v) => {
-    try {
-      if (v) window.localStorage.setItem(PROJECT_KEY, v);
-      else window.localStorage.removeItem(PROJECT_KEY);
-    } catch {
-      // ignora errores de cuota
-    }
-  });
+/** Slug del proyecto seleccionado, o `''` para "todos". */
+export const selectedProject = writable<string>('');
+
+/** Preset de rango temporal activo en exploración. */
+export const timeRange = writable<RangePreset>('1h');
+
+/**
+ * Lee `?project=` y `?range=` de la URL actual y los aplica a los stores,
+ * **solo si la URL los trae**. Devuelve qué claves estaban presentes para
+ * que el caller pueda decidir si todavía debe hidratar defaults del backend.
+ */
+export function applyGlobalUrlParams(): { hasProject: boolean; hasRange: boolean } {
+  if (!browser) return { hasProject: false, hasRange: false };
+  const p = new URLSearchParams(window.location.search);
+  const proj = p.get('project');
+  const range = p.get('range');
+  if (proj !== null) selectedProject.set(proj);
+  if (range && isValidRange(range)) timeRange.set(range);
+  return { hasProject: proj !== null, hasRange: range !== null };
 }
 
 const presetMinutes: Record<RangePreset, number> = {
@@ -38,8 +49,6 @@ const presetMinutes: Record<RangePreset, number> = {
   '24h': 1440,
   '7d': 10080
 };
-
-export const timeRange = writable<RangePreset>('1h');
 
 export function rangeMinutes(p: RangePreset): number {
   return presetMinutes[p];

@@ -1,0 +1,11 @@
+# Excluí target/ del context: pesa GB y el build dentro del contenedor genera el
+# suyo propio. Antes hacía que `docker build` empezara con un context de >2 GB
+# y la planner stage re-corriera con cada build local.
+target/
+
+# Lo que no necesita el build:
+*.log
+*.tmp
+.git/
+.gitignore
+README.md

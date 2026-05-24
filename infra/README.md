@@ -31,6 +31,10 @@ El workflow `deploy.yml` se ejecuta dentro de `infra-iaportafolio`. Sirve para e
 | Registros              | `journalctl -u 'actions.runner.*' -f`      |
 | Re-registrar (token nuevo)| `sudo /opt/actions-runner/svc.sh uninstall && REG_TOKEN=... bash infra/runner-install.sh` |
 
+### Variables de entorno del host
+
+El runner ejecuta `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build` dentro de `/opt/faro/`. El `.env.prod` se construye a partir de [`.env.prod.template`](../.env.prod.template) y la [referencia completa de variables](../docs/reference/environment.md) (autogenerada desde `.env.example`). No duplicamos la tabla acá — la fuente única es esa página.
+
 ### Qué hace el workflow `deploy.yml`
 
 En cada push a `main`:

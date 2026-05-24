@@ -58,8 +58,37 @@ Está dentro de alcance cualquier código de este repositorio, incluyendo:
 
 ## Recordatorio operacional
 
-Faro no implementa autenticación en la API del dashboard ni aislamiento
-multi-tenant (es intencional, ver README → "Limitaciones"). **No expongas
-una instancia directamente a internet sin un proxy de autenticación delante.**
-Cualquier reporte basado en "el dashboard es accesible sin login" será
-cerrado como _working as designed_.
+### Autenticación del dashboard
+
+Faro tiene **auth nativa** desde 2026-05 (ver [ADR-0009](docs/adr/0009-security-hardening.md)).
+El bootstrap se hace vía variables de entorno:
+
+```
+FARO_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+FARO_BOOTSTRAP_ADMIN_PASSWORD=...         # opcional; si no se setea se genera uno y se loguea
+FARO_BOOTSTRAP_ADMIN_NAME=Admin
+```
+
+Sin estas variables y sin users existentes, el dashboard queda no-loginable
+(falla cerrado, no abierto).
+
+**2FA TOTP opcional**: cada admin puede activarlo desde `/settings/security`.
+Recomendado para cuentas con poder de crear users y rotar tokens.
+
+### Aislamiento multi-tenant
+
+Faro sigue siendo **single-tenant por instancia**. Los proyectos agrupan
+datos lógicamente, pero un user del dashboard ve todos los proyectos. Para
+separación dura, desplegá una instancia por tenant.
+
+### Defense-in-depth recomendado en producción
+
+| Capa | Recomendación |
+|------|---------------|
+| TLS | Reverse proxy (Caddy, nginx, Cloudflare) con HTTPS válido. Encender `FARO_ENABLE_HSTS=true`. |
+| Auth | El admin bootstrap + 2FA TOTP cubre el dashboard. Para acceso REST programático, considerar un proxy de auth adicional. |
+| Ingest token | Rotar periódicamente desde `/settings/projects/:slug`. El RUM/browser SDK requiere [allowlist de orígenes](docs/adr/0009-security-hardening.md#para-origin-check-cambio-6). |
+| Datos sensibles | Activar [PII redaction](docs/adr/0009-security-hardening.md#para-pii-redaction-cambio-5) por proyecto. Aplica antes de escribir en ClickHouse — un dump comprometido no expone secretos. |
+| CSP | Activa por default en el router del dashboard. Bloquea XSS reflejado + beaconing de exfil. |
+
+Para el detalle completo y las decisiones, ver [ADR-0009](docs/adr/0009-security-hardening.md).

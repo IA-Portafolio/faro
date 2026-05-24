@@ -11,7 +11,7 @@
 use utoipa::OpenApi;
 
 use crate::api::dashboard::DashboardSummary;
-use crate::api::services::Service;
+use crate::api::services::{Service, ServiceMap, ServiceMapEdge, ServiceMapNode};
 
 /// Punto de entrada del documento OpenAPI. Lista los handlers anotados
 /// (vacío por ahora) y los schemas exportados. A medida que se anoten
@@ -41,6 +41,9 @@ use crate::api::services::Service;
         schemas(
             DashboardSummary,
             Service,
+            ServiceMap,
+            ServiceMapNode,
+            ServiceMapEdge,
         )
     ),
     tags(

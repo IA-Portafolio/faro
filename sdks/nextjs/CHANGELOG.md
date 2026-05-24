@@ -6,6 +6,24 @@ empujando un tag `sdk-nextjs-v<semver>`.
 
 ## [Unreleased]
 
+### Added
+- Alias `warning()` en el cliente browser (re-exportado desde `/client`).
+- Auto-redacción del cliente browser: `scrubFields`, `scrubHeaders`,
+  `scrubPatterns` con los mismos defaults que el resto de SDKs. Aplica a
+  values de attributes y al `message`.
+- Validación temprana en `initFaroClient()`: endpoint/token/service
+  obligatorios lanzan `Error` claro en lugar de TypeError críptico (paridad
+  cross-SDK; aplica tanto en cliente como en SSR para no tragar el error).
+- Suite de tests del browser-core (10 tests) con stubs mínimos de globales
+  del DOM (`window`, `document`, `navigator`, `location`, storage) — corre
+  con `node --test`. Cubre las 6 invariantes mínimas: init inválido (×3),
+  payload shape, queue cap, retry 5xx, captureException, close graceful
+  + beforeSend + scrubbing.
+
+### Changed
+- El pipeline del cliente browser pasa por scrubbing **antes** de
+  `beforeSend` (el hook recibe el wire ya saneado).
+
 ## [0.3.0] — 2026-05-23
 
 ### Changed
