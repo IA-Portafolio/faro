@@ -24,6 +24,12 @@ use crate::storage::{AttrMap, ProductEventRow, ProductUserAliasRow, ProductUserR
 
 const MAX_EVENT_NAME_LEN: usize = 64;
 const MAX_PROPERTIES_BYTES: usize = 16 * 1024;
+// Cota dura al tamaño del batch para evitar que un cliente patológico (o un bug
+// del SDK con back-pressure mal calibrada) mande payloads de cientos de miles
+// de eventos en un solo request. El handler los procesa todos en memoria antes
+// de enviarlos al canal del writer; 100 sigue siendo cómodo para los SDKs
+// reales (los defaults de @iaportafolio/nextjs y /node usan 50-100 por flush).
+const MAX_BATCH_EVENTS: usize = 100;
 
 pub fn router() -> Router<SharedState> {
     Router::new().route("/events", post(ingest_events))
@@ -111,6 +117,12 @@ async fn ingest_events(
     // Mismo bucket que el resto de ingesta — `signal = "events"` lo distingue
     // en métricas. Si un proyecto satura, se rate-limita igual que logs/traces.
     let events = payload.events_batch()?;
+    if events.len() > MAX_BATCH_EVENTS {
+        return Err(ApiError::BadRequest(format!(
+            "batch demasiado grande: {} eventos (máximo {MAX_BATCH_EVENTS} por request)",
+            events.len()
+        )));
+    }
     let n: u32 = events.len().try_into().unwrap_or(u32::MAX);
     match state.limiter.check(&project, n) {
         super::rate_limit::LimitOutcome::Allowed => {}

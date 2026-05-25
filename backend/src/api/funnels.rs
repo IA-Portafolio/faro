@@ -1,7 +1,7 @@
 //! Funnels exploratorios sobre `faro.product_events` (6º pilar).
 //!
 //! `GET  /funnels/events`   → catálogo de event_name distintos (autocomplete del builder).
-//! `POST /funnels/preview`  → cómputo ad-hoc de un funnel usando `windowFunnel` de ClickHouse.
+//! `POST /funnels/compute`  → cómputo ad-hoc de un funnel usando `windowFunnel` de ClickHouse.
 //!
 //! Diseño para hit <500ms en 7 días (objetivo del goal 10.D.1):
 //!  * El SELECT interno sólo materializa `timestamp`, `distinct_id` y `event_name`, evitando
@@ -27,7 +27,7 @@ use crate::state::SharedState;
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/funnels/events", get(list_events))
-        .route("/funnels/preview", post(preview))
+        .route("/funnels/compute", post(compute))
         .route("/funnels/drop-off", post(drop_off))
         .route("/funnels/time-to-convert", post(time_to_convert))
 }
@@ -75,7 +75,7 @@ async fn list_events(
 }
 
 // ---------------------------------------------------------------------------
-// POST /funnels/preview
+// POST /funnels/compute
 // ---------------------------------------------------------------------------
 
 const MAX_STEPS: usize = 8;
@@ -84,8 +84,8 @@ const DEFAULT_WINDOW_SECS: u32 = 86_400;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct FunnelRequest {
-    /// Lista ordenada de event_name. Mínimo 2, máximo 8 pasos.
-    pub events: Vec<String>,
+    /// Lista ordenada de event_name del funnel. Mínimo 2, máximo 8 pasos.
+    pub steps: Vec<String>,
     /// Ventana de conversión en segundos. Default 86_400 (1 día); máximo 30 días.
     #[serde(default)]
     pub window_seconds: Option<u32>,
@@ -120,24 +120,24 @@ pub struct FunnelResult {
     pub took_ms: u64,
 }
 
-async fn preview(
+async fn compute(
     State(state): State<SharedState>,
     Json(req): Json<FunnelRequest>,
 ) -> ApiResult<Json<FunnelResult>> {
     let started = Instant::now();
 
     // -- Validación
-    if req.events.len() < 2 {
+    if req.steps.len() < 2 {
         return Err(ApiError::BadRequest(
-            "un funnel necesita al menos 2 eventos".into(),
+            "un funnel necesita al menos 2 pasos".into(),
         ));
     }
-    if req.events.len() > MAX_STEPS {
+    if req.steps.len() > MAX_STEPS {
         return Err(ApiError::BadRequest(format!(
             "máximo {MAX_STEPS} pasos por funnel"
         )));
     }
-    if req.events.iter().any(|e| e.trim().is_empty()) {
+    if req.steps.iter().any(|e| e.trim().is_empty()) {
         return Err(ApiError::BadRequest(
             "los nombres de evento no pueden ser vacíos".into(),
         ));
@@ -167,7 +167,7 @@ async fn preview(
     // event names del usuario nunca tocan el query crudo.
     let mut conds = String::new();
     let mut in_list = String::new();
-    for i in 0..req.events.len() {
+    for i in 0..req.steps.len() {
         if i > 0 {
             conds.push_str(", ");
             in_list.push_str(", ");
@@ -197,15 +197,15 @@ async fn preview(
     );
 
     // -- Parámetros. Los Strings deben vivir mientras dure el await — mantenemos
-    //    `event_keys` y `events` (ref a req) en stack.
-    let event_keys: Vec<String> = (0..req.events.len())
+    //    `event_keys` y `steps` (ref a req) en stack.
+    let event_keys: Vec<String> = (0..req.steps.len())
         .map(|i| format!("event_{i}"))
         .collect();
-    let mut params: Vec<(&str, &str)> = Vec::with_capacity(req.events.len() + 4);
+    let mut params: Vec<(&str, &str)> = Vec::with_capacity(req.steps.len() + 4);
     params.push(("window", &window_s));
     params.push(("from", &from_s));
     params.push(("to", &to_s));
-    for (i, ev) in req.events.iter().enumerate() {
+    for (i, ev) in req.steps.iter().enumerate() {
         params.push((event_keys[i].as_str(), ev.as_str()));
     }
     if let Some(p) = &req.project {
@@ -223,7 +223,7 @@ async fn preview(
 
     // -- Convertir (level, users) → counts por paso (cumulative-from-top).
     //    level=k significa "alcanzó k pasos", así que step_i = Σ users donde level ≥ i+1.
-    let n = req.events.len();
+    let n = req.steps.len();
     let mut step_users = vec![0u64; n];
     for r in &rows {
         let reached = (r.level as usize).min(n);
@@ -234,7 +234,7 @@ async fn preview(
     let total_entered = step_users.first().copied().unwrap_or(0);
 
     let steps: Vec<FunnelStep> = req
-        .events
+        .steps
         .iter()
         .enumerate()
         .map(|(i, name)| {
@@ -286,9 +286,9 @@ const MAX_DROPOFF_LIMIT: u32 = 100;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DropOffRequest {
-    /// Definición del funnel (mismos pasos que `POST /funnels/preview`).
-    pub events: Vec<String>,
-    /// Paso a analizar (0-indexado). Debe ser < `events.len() - 1`:
+    /// Definición del funnel (mismos pasos que `POST /funnels/compute`).
+    pub steps: Vec<String>,
+    /// Paso a analizar (0-indexado). Debe ser < `steps.len() - 1`:
     /// el último paso no tiene "siguiente" del que se pueda caer.
     pub step_index: usize,
     /// Ventana de conversión del funnel en segundos. Define qué cuenta como
@@ -341,22 +341,22 @@ async fn drop_off(
     let started = Instant::now();
 
     // -- Validación
-    if req.events.len() < 2 {
+    if req.steps.len() < 2 {
         return Err(ApiError::BadRequest(
             "un funnel necesita al menos 2 eventos".into(),
         ));
     }
-    if req.events.len() > MAX_STEPS {
+    if req.steps.len() > MAX_STEPS {
         return Err(ApiError::BadRequest(format!(
             "máximo {MAX_STEPS} pasos por funnel"
         )));
     }
-    if req.events.iter().any(|e| e.trim().is_empty()) {
+    if req.steps.iter().any(|e| e.trim().is_empty()) {
         return Err(ApiError::BadRequest(
             "los nombres de evento no pueden ser vacíos".into(),
         ));
     }
-    if req.step_index >= req.events.len() - 1 {
+    if req.step_index >= req.steps.len() - 1 {
         return Err(ApiError::BadRequest(
             "el último paso no tiene drop-off (no hay paso siguiente)".into(),
         ));
@@ -397,7 +397,7 @@ async fn drop_off(
 
     let mut conds = String::new();
     let mut in_list = String::new();
-    for i in 0..req.events.len() {
+    for i in 0..req.steps.len() {
         if i > 0 {
             conds.push_str(", ");
             in_list.push_str(", ");
@@ -433,15 +433,15 @@ async fn drop_off(
     );
 
     // -- Parámetros compartidos (todos los Strings viven en el scope de la fn).
-    let event_keys: Vec<String> = (0..req.events.len())
+    let event_keys: Vec<String> = (0..req.steps.len())
         .map(|i| format!("event_{i}"))
         .collect();
-    let mut base_params: Vec<(&str, &str)> = Vec::with_capacity(req.events.len() + 8);
+    let mut base_params: Vec<(&str, &str)> = Vec::with_capacity(req.steps.len() + 8);
     base_params.push(("window", &window_s));
     base_params.push(("from", &from_s));
     base_params.push(("to", &to_s));
     base_params.push(("target_level", &target_level_s));
-    for (i, ev) in req.events.iter().enumerate() {
+    for (i, ev) in req.steps.iter().enumerate() {
         base_params.push((event_keys[i].as_str(), ev.as_str()));
     }
     if let Some(p) = &req.project {
@@ -511,7 +511,7 @@ async fn drop_off(
              LIMIT {{drop_limit:UInt32}}"
         );
 
-        let step_event = req.events[req.step_index].as_str();
+        let step_event = req.steps[req.step_index].as_str();
         let mut params = base_params.clone();
         params.push(("lookahead", &lookahead_s));
         params.push(("drop_limit", &limit_s));
@@ -541,8 +541,8 @@ async fn drop_off(
             .collect()
     };
 
-    let step_event = req.events[req.step_index].clone();
-    let next_event = req.events[req.step_index + 1].clone();
+    let step_event = req.steps[req.step_index].clone();
+    let next_event = req.steps[req.step_index + 1].clone();
 
     Ok(Json(DropOffResult {
         step_index: req.step_index,

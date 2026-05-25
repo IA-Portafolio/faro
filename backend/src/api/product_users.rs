@@ -3,9 +3,9 @@
 //! Cuando un mismo humano interactúa desde web (anon-A → user_42 tras login)
 //! y desde mobile (anon-B → user_42 tras login), Faro debe poder responder:
 //!
-//!   * "lista de usuarios identificados con su breakdown de devices" → `GET /product_users`.
-//!   * "todo lo que sé del user_42" → `GET /product_users/:distinct_id`.
-//!   * "todos los eventos del user_42 en CUALQUIER device" → `GET /product_users/:distinct_id/events`.
+//!   * "lista de usuarios identificados con su breakdown de devices" → `GET /product-users`.
+//!   * "todo lo que sé del user_42" → `GET /product-users/:distinct_id`.
+//!   * "todos los eventos del user_42 en CUALQUIER device" → `GET /product-users/:distinct_id/events`.
 //!
 //! La unificación la mantiene el worker `user_unifier`. Esta capa sólo lee:
 //!  * `faro.product_users FINAL` para el row canónico de cada usuario,
@@ -28,13 +28,13 @@ use crate::storage::ProductEventRow;
 
 pub fn router() -> Router<SharedState> {
     Router::new()
-        .route("/product_users", get(list_users))
-        .route("/product_users/:distinct_id", get(get_user))
-        .route("/product_users/:distinct_id/events", get(user_events))
+        .route("/product-users", get(list_users))
+        .route("/product-users/{distinct_id}", get(get_user))
+        .route("/product-users/{distinct_id}/events", get(user_events))
 }
 
 // ---------------------------------------------------------------------------
-// GET /product_users
+// GET /product-users
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
@@ -158,7 +158,7 @@ fn into_summary(r: UserRow) -> ProductUserSummary {
 }
 
 // ---------------------------------------------------------------------------
-// GET /product_users/:distinct_id
+// GET /product-users/:distinct_id
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize)]
@@ -294,7 +294,7 @@ async fn compute_breakdown(
 }
 
 // ---------------------------------------------------------------------------
-// GET /product_users/:distinct_id/events
+// GET /product-users/:distinct_id/events
 // ---------------------------------------------------------------------------
 //
 // Este es EL endpoint del goal 10.E.1: "todos los events de user_42 en
