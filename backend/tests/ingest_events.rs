@@ -153,7 +153,10 @@ async fn ingest_events_identify_upserts_product_users_immediately() {
             !rows.is_empty()
         })
         .await;
-    assert!(arrived, "identify no materializó product_users via fast-path");
+    assert!(
+        arrived,
+        "identify no materializó product_users via fast-path"
+    );
 
     let rows: Vec<UserRow> = app
         .ch
