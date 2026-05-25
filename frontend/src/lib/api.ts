@@ -508,16 +508,16 @@ function productUsersQs(params: ProductUserFilters): string {
 }
 
 export const fetchProductUsers = (params: ProductUserFilters = {}) =>
-  api<ProductUserSummary[]>(`/api/v1/product_users${productUsersQs(params)}`);
+  api<ProductUserSummary[]>(`/api/v1/product-users${productUsersQs(params)}`);
 
 export const fetchProductUser = (distinctId: string, params: RangeArgs = {}) =>
-  api<ProductUserDetail>(`/api/v1/product_users/${encodeURIComponent(distinctId)}${qs(params)}`);
+  api<ProductUserDetail>(`/api/v1/product-users/${encodeURIComponent(distinctId)}${qs(params)}`);
 
 export const fetchProductUserEvents = (
   distinctId: string,
   params: RangeArgs & { source?: string } = {}
 ) => api<ProductEvent[]>(
-  `/api/v1/product_users/${encodeURIComponent(distinctId)}/events${qs(params)}`
+  `/api/v1/product-users/${encodeURIComponent(distinctId)}/events${qs(params)}`
 );
 
 // ---------- Funnels (product analytics) ----------
@@ -542,7 +542,7 @@ export type FunnelResult = {
 };
 
 export type FunnelRequest = {
-  events: string[];
+  steps: string[];
   window_seconds?: number;
   from?: string;
   to?: string;
@@ -552,8 +552,8 @@ export type FunnelRequest = {
 
 export const fetchFunnelEvents = (r: RangeArgs = {}) =>
   api<EventCandidate[]>(`/api/v1/funnels/events${qs(r)}`);
-export const previewFunnel = (body: FunnelRequest) =>
-  api<FunnelResult>(`/api/v1/funnels/preview`, {
+export const computeFunnel = (body: FunnelRequest) =>
+  api<FunnelResult>(`/api/v1/funnels/compute`, {
     method: 'POST',
     body: JSON.stringify(body)
   });

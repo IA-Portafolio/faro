@@ -13,6 +13,7 @@
    * cuando el usuario edita rápido o cambia de cohort durante un fetch.
    */
   import { onMount } from 'svelte';
+  import { browser } from '$app/environment';
   import {
     createCohort,
     deleteCohort,
@@ -278,6 +279,23 @@
     }
   }
 
+  // ---------- URL state ----------
+  // Persistir el cohort abierto en la URL para que F5 / shared link reabran
+  // exactamente lo que el usuario estaba viendo. Mismo patrón que `/events`.
+  function syncToUrl(): void {
+    if (!browser) return;
+    const p = new URLSearchParams();
+    if ($selectedProject) p.set('project', $selectedProject);
+    if (editing?.id) p.set('selected', editing.id);
+    const qs = p.toString();
+    const url = `${window.location.origin}${window.location.pathname}${qs ? '?' + qs : ''}`;
+    try {
+      window.history.replaceState(null, '', url);
+    } catch {
+      /* no bloqueante */
+    }
+  }
+
   // ---------- Reactividad ----------
   let prevProject = $selectedProject;
   $: if (prevProject !== $selectedProject) {
@@ -289,7 +307,26 @@
   // Recompute preview cuando cambien los inputs del builder.
   $: formEvent, formOp, formCount, formLastDays, formFilters, void schedulePreview();
 
-  onMount(loadList);
+  // Sync URL ante cambios del cohort seleccionado o proyecto. El flag
+  // `urlInited` evita pisar el `?selected=...` recién leído antes de que
+  // `loadEditing` lo materialice en `editing`.
+  let urlInited = false;
+  $: if (browser && urlInited) { void editing; void $selectedProject; syncToUrl(); }
+
+  onMount(async () => {
+    await loadList();
+    if (browser) {
+      const p = new URLSearchParams(window.location.search);
+      const proj = p.get('project');
+      if (proj && proj !== $selectedProject) selectedProject.set(proj);
+      const sel = p.get('selected');
+      if (sel) {
+        const match = cohorts.find((c) => c.id === sel);
+        if (match) loadEditing(match);
+      }
+    }
+    urlInited = true;
+  });
 
   // ---------- Helpers ----------
   function fmtCount(n: number): string {

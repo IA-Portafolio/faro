@@ -5,7 +5,7 @@
   import {
     fetchFunnelEvents,
     previewDropOff,
-    previewFunnel,
+    computeFunnel,
     previewTimeToConvert,
     type DropOffResult,
     type EventCandidate,
@@ -118,7 +118,7 @@
     dropOffErrors = { ...dropOffErrors, [stepIndex]: '' };
     try {
       const r = await previewDropOff({
-        events: funnel,
+        steps: funnel,
         step_index: stepIndex,
         window_seconds: windowSecs,
         lookahead_seconds: lookaheadSecs,
@@ -217,8 +217,8 @@
     previewLoading = true;
     previewError = '';
     try {
-      const r = await previewFunnel({
-        events: funnel,
+      const r = await computeFunnel({
+        steps: funnel,
         window_seconds: windowSecs,
         last_minutes: rangeMinutes($timeRange),
         project: $selectedProject || undefined
@@ -311,6 +311,50 @@
     dragFromIndex = -1;
   }
 
+  // ---------- URL state ----------
+  // Persistir el funnel construido + parámetros a la URL para que un F5 no
+  // pierda lo que el usuario armó. Mismo patrón que `/events` y `/logs`:
+  // applyUrlParams() en onMount, syncToUrl() reactivo en cualquier cambio.
+  function syncToUrl(): void {
+    if (!browser) return;
+    const p = new URLSearchParams();
+    if ($selectedProject) p.set('project', $selectedProject);
+    if (funnel.length > 0) p.set('steps', funnel.join(','));
+    if (windowSecs !== 86_400) p.set('window', String(windowSecs));
+    if (lookaheadSecs !== 300) p.set('lookahead', String(lookaheadSecs));
+    if (timingMaxSecs !== 30 * 86_400) p.set('timing_max', String(timingMaxSecs));
+    if ($timeRange) p.set('range', $timeRange);
+    const qs = p.toString();
+    const url = `${window.location.origin}${window.location.pathname}${qs ? '?' + qs : ''}`;
+    try {
+      window.history.replaceState(null, '', url);
+    } catch {
+      /* no bloqueante */
+    }
+  }
+
+  function applyUrlParams(): void {
+    if (!browser) return;
+    const p = new URLSearchParams(window.location.search);
+    const proj = p.get('project');
+    if (proj && proj !== $selectedProject) selectedProject.set(proj);
+    const steps = p.get('steps');
+    if (steps) funnel = steps.split(',').map((s) => s.trim()).filter(Boolean);
+    const w = Number(p.get('window'));
+    if (Number.isFinite(w) && w > 0) windowSecs = w;
+    const la = Number(p.get('lookahead'));
+    if (Number.isFinite(la) && la > 0) lookaheadSecs = la;
+    const tm = Number(p.get('timing_max'));
+    if (Number.isFinite(tm) && tm > 0) timingMaxSecs = tm;
+    const range = p.get('range');
+    if (range) {
+      const presets = ['5m', '15m', '1h', '6h', '24h', '7d'] as const;
+      if ((presets as readonly string[]).includes(range)) {
+        timeRange.set(range as typeof presets[number]);
+      }
+    }
+  }
+
   // ---------- Reactividad: recargar catálogo cuando cambia rango/proyecto ----------
   // Y re-disparar preview también, porque los parámetros del request cambiaron.
   let inited = false;
@@ -319,12 +363,21 @@
     if (inited) {
       void loadCatalog();
       schedulePreview();
+      syncToUrl();
     }
+  }
+  // Sync URL en cualquier cambio del estado persistible.
+  $: if (browser && inited) {
+    void funnel; void windowSecs; void lookaheadSecs; void timingMaxSecs;
+    syncToUrl();
   }
 
   onMount(async () => {
+    applyUrlParams();
     await loadCatalog();
     inited = true;
+    // Si el URL trajo un funnel pre-armado, dispará el preview de una.
+    if (funnel.length >= 2) schedulePreview();
   });
 
   onDestroy(() => {
