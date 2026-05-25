@@ -345,7 +345,7 @@ async fn resource_attributes_with_mixed_types_are_all_stringified() {
                 "attributes": [
                     { "key": "service.name", "value": { "stringValue": "neg" } },
                     { "key": "k.int",    "value": { "intValue": "42" } },
-                    { "key": "k.double", "value": { "doubleValue": 3.14 } },
+                    { "key": "k.double", "value": { "doubleValue": 3.25 } },
                     { "key": "k.bool",   "value": { "boolValue": true } },
                     { "key": "k.arr",    "value": { "arrayValue": { "values": [
                         { "stringValue": "a" }, { "intValue": "1" }
@@ -381,7 +381,7 @@ async fn resource_attributes_with_mixed_types_are_all_stringified() {
     let attrs = &rows[0].resource_attributes;
     assert_eq!(attrs.get("k.int").map(String::as_str), Some("42"));
     assert_eq!(attrs.get("k.bool").map(String::as_str), Some("true"));
-    assert_eq!(attrs.get("k.double").map(String::as_str), Some("3.14"));
+    assert_eq!(attrs.get("k.double").map(String::as_str), Some("3.25"));
     assert!(attrs
         .get("k.arr")
         .map(|s| s.starts_with('['))

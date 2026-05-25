@@ -31,10 +31,7 @@ use futures::StreamExt;
 fn extract_data_events(buf: &mut Vec<u8>) -> Vec<String> {
     let mut out = Vec::new();
     let mut start = 0usize;
-    loop {
-        let Some(rel_end) = window_find(&buf[start..], b"\n\n") else {
-            break;
-        };
+    while let Some(rel_end) = window_find(&buf[start..], b"\n\n") {
         let end = start + rel_end;
         let block = std::str::from_utf8(&buf[start..end]).unwrap_or("");
         for line in block.split('\n') {
