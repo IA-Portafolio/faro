@@ -1,10 +1,23 @@
 # Infraestructura · CI/CD de Faro
 
-## 1 · Self-hosted runner (auto-deploy)
+> **Por qué corre todo en self-hosted**: el plan GitHub Actions del repo
+> tiene presupuesto cero. Tanto `deploy.yml` como el resto (`ci.yml`,
+> `codeql.yml`, `docs.yml`, `publish-sdks.yml`, `release-images.yml`,
+> `sdk-tests.yml`, `validate-tag.yml`) usan el mismo runner en
+> `infra-iaportafolio`, distinguidos por label:
+>
+> - `faro-deploy` — exclusivo del workflow `deploy.yml` (concurrency=1).
+> - `faro-ci` — el resto. Comparten un único agente runner, los jobs
+>   se serializan si llegan en paralelo.
 
-El workflow `deploy.yml` se ejecuta dentro de `infra-iaportafolio`. Sirve para evitar abrir SSH público — todo el trabajo lo hace el runner localmente.
+## 1 · Self-hosted runner
 
-### Una vez
+El workflow `deploy.yml` y el resto del CI se ejecutan dentro de
+`infra-iaportafolio`. Sirve para evitar abrir SSH público (deploy) y
+para no pagar minutos de GitHub Actions (CI). Todo el trabajo lo hace
+el runner localmente.
+
+### Instalación nueva (primera vez)
 
 1. En GitHub abre **https://github.com/IA-Portafolio/faro/settings/actions/runners/new**. Elige Linux x64. Verás un token estilo `AABBCC...` (válido ~1 hora).
 2. Copia el token y entra al server:
@@ -15,11 +28,68 @@ El workflow `deploy.yml` se ejecuta dentro de `infra-iaportafolio`. Sirve para e
    El script:
    - Crea `/opt/actions-runner/`
    - Descarga el runner v2.319.x
-   - Lo registra en el repo con labels `self-hosted,linux,faro-deploy`
+   - Lo registra en el repo con labels `self-hosted,linux,faro-deploy,faro-ci`
    - Añade el user `victalejo` al grupo `docker` si falta
    - Lo instala como servicio systemd y lo arranca
 
-3. Verifica en **Settings → Actions → Runners** que aparece `faro-infra` en estado **Idle (online)**.
+3. Verifica en **Settings → Actions → Runners** que aparece `faro-infra` en estado **Idle (online)** con los 4 labels.
+
+### Migración: agregar `faro-ci` al runner ya existente
+
+El runner que ya tenés sólo trae `self-hosted,linux,faro-deploy`. Para
+que también acepte jobs de CI hay que sumarle `faro-ci`. Tres caminos:
+
+**A) Vía GitHub UI (más rápido)**:
+   Settings → Actions → Runners → click `faro-infra` → botón
+   **Edit labels** → agregar `faro-ci` → Save. El runner sigue
+   corriendo, no requiere reinicio.
+
+**B) Vía REST API** (si preferís CLI desde tu workstation):
+   ```bash
+   gh api -X POST /repos/IA-Portafolio/faro/actions/runners/<RUNNER_ID>/labels \
+     -f labels[]=faro-ci
+   ```
+   `RUNNER_ID` lo sacás con
+   `gh api /repos/IA-Portafolio/faro/actions/runners | jq '.runners[] | {id,name,labels}'`.
+
+**C) Re-registrar** (último recurso — pierde el ID actual):
+   ```bash
+   ssh infra-iaportafolio
+   sudo /opt/actions-runner/svc.sh stop
+   cd /opt/actions-runner && sudo -u victalejo ./config.sh remove --token "<remove-token>"
+   REG_TOKEN="<token nuevo>" bash /opt/faro/infra/runner-install.sh
+   ```
+   El script ya viene con `RUNNER_LABELS` incluyendo `faro-ci`.
+
+Tras cualquiera de las 3, el próximo push a `main` debería disparar
+los workflows que estaban bloqueados por el billing.
+
+### Pre-requisitos del runner para `faro-ci`
+
+CI necesita más herramientas que deploy. Verificá que el server tenga:
+
+| Herramienta | Para qué | Cómo instalar |
+| --- | --- | --- |
+| `docker` + `docker compose` | services: clickhouse en ci.yml, build de imágenes | ya está (corre Faro de producción) |
+| `git`, `bash`, `curl`, `wget`, `tar`, `jq` | utilidades comunes de los workflows | `apt-get install -y git curl wget jq` |
+| `build-essential`, `pkg-config`, `libssl-dev` | compilación de crates Rust con bindings C | `apt-get install -y build-essential pkg-config libssl-dev` |
+| Rust toolchain | `dtolnay/rust-toolchain` lo descarga por job; pero rustup pre-instalado acelera | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh -s -- -y` |
+| Node.js + npm | `actions/setup-node` lo descarga; **NO** instalar globalmente para no chocar con la versión del repo (`.nvmrc`) | nada |
+| Python, Go, Java/Gradle | `actions/setup-*` los descargan en `_work/_tool/` por job | nada |
+
+El runner descarga binarios a `/opt/actions-runner/_work/_tool/` y los
+cachea entre jobs — espacio de disco a tener en cuenta (~5-10 GB tras
+varias corridas). Para limpiar: `rm -rf /opt/actions-runner/_work/_tool/*`.
+
+### Colisiones de puerto a tener en cuenta
+
+El job `backend` y `migrations` levantan ClickHouse como `services:`.
+Por defecto GitHub mapea los puertos del container al host del runner.
+**El host tiene Faro de producción usando `8123/9000`** — esos workflows
+ya están reconfigurados para usar `18123/19000` en el host (ver
+`ports: ['18123:8123', '19000:9000']` en `ci.yml`). Si en el futuro
+agregás otro service que use puertos hardcoded, repetí el patrón
+(usá `1XXXX:XXXX` para no chocar con prod).
 
 ### Operación
 

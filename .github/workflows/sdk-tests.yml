@@ -30,7 +30,7 @@ concurrency:
 
 jobs:
   node:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     defaults: { run: { working-directory: sdks/node } }
     steps:
@@ -41,7 +41,7 @@ jobs:
       - run: npm test
 
   nextjs:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     defaults: { run: { working-directory: sdks/nextjs } }
     steps:
@@ -52,7 +52,7 @@ jobs:
       - run: npm test
 
   expo:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     defaults: { run: { working-directory: sdks/expo } }
     steps:
@@ -63,7 +63,7 @@ jobs:
       - run: npm test
 
   python:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     defaults: { run: { working-directory: sdks/python } }
     steps:
@@ -85,7 +85,7 @@ jobs:
         run: pytest
 
   go:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     defaults: { run: { working-directory: sdks/go } }
     steps:
@@ -102,7 +102,7 @@ jobs:
           args: --timeout=5m
 
   flutter:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 15
     defaults: { run: { working-directory: sdks/flutter } }
     steps:
@@ -114,7 +114,7 @@ jobs:
       - run: flutter test
 
   kotlin:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 20
     defaults: { run: { working-directory: sdks/kotlin } }
     steps:
@@ -140,7 +140,7 @@ jobs:
   # Con cargo-chef en el Dockerfile + cache layer en GHA, una corrida que sólo
   # toca src/*.rs baja a ~1-2 min (hit en la layer de `cargo chef cook`).
   integration:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4

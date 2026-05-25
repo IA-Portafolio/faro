@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
@@ -57,12 +57,15 @@ jobs:
   backend:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 25
     services:
       clickhouse:
         image: clickhouse/clickhouse-server:24.8
-        ports: ['8123:8123', '9000:9000']
+        # Mapeo a 18123/19000 en el host del runner self-hosted porque el
+        # server de infra ya tiene Faro de producción corriendo en 8123/9000.
+        # Usar los mismos puertos colisionaría con el deploy en vivo.
+        ports: ['18123:8123', '19000:9000']
         env:
           CLICKHOUSE_DB: faro
           CLICKHOUSE_USER: faro
@@ -110,12 +113,14 @@ jobs:
       - name: Bootstrap ClickHouse schema
         # Aplica todos los init/ y migrations/ contra el servicio levantado,
         # para que los tests que toquen ClickHouse encuentren el esquema.
+        # Puerto 18123 para no chocar con el CH de producción en el host
+        # self-hosted (ver comment en `services.clickhouse.ports`).
         run: |
           for f in clickhouse/init/*.sql clickhouse/migrations/*.sql; do
             [ -f "$f" ] || continue
             echo "::group::Applying $(basename "$f")"
             curl -sS -u faro:faro \
-              "http://localhost:8123/?database=faro" \
+              "http://localhost:18123/?database=faro" \
               --data-binary "@$f" || true
             echo "::endgroup::"
           done
@@ -123,7 +128,7 @@ jobs:
       - name: cargo nextest run
         working-directory: backend
         env:
-          CLICKHOUSE_URL: http://localhost:8123
+          CLICKHOUSE_URL: http://localhost:18123
           CLICKHOUSE_USER: faro
           CLICKHOUSE_PASSWORD: faro
           CLICKHOUSE_DATABASE: faro
@@ -138,7 +143,7 @@ jobs:
   backend-audit:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +187,7 @@ jobs:
   frontend:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -220,7 +225,7 @@ jobs:
   compose:
     needs: changes
     if: needs.changes.outputs.compose == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -242,12 +247,14 @@ jobs:
     # y que correr migrations/ DOS veces no rompe (bug clásico de "una migración
     # rompe en el segundo deploy"). El job `backend` también aplica el schema,
     # pero usa `|| true` y enmascara errores; este job es el gate estricto.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     services:
       clickhouse:
         image: clickhouse/clickhouse-server:24.8
-        ports: ['8123:8123', '9000:9000']
+        # Puertos 18123/19000 igual que el job `backend` (evitar colisión con
+        # la instancia de producción en el host self-hosted).
+        ports: ['18123:8123', '19000:9000']
         env:
           CLICKHOUSE_DB: faro
           CLICKHOUSE_USER: faro
@@ -267,7 +274,7 @@ jobs:
       - name: test-migrations.sh (forward + idempotency + SHOW TABLES)
         env:
           CLICKHOUSE_HOST: localhost
-          CLICKHOUSE_PORT: '9000'
+          CLICKHOUSE_PORT: '19000'
           CLICKHOUSE_USER: faro
           CLICKHOUSE_PASSWORD: faro
           CLICKHOUSE_DATABASE: faro
@@ -281,7 +288,7 @@ jobs:
   ci:
     if: always()
     needs: [changes, backend, backend-audit, frontend, compose, migrations]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     steps:
       - name: Verify all jobs succeeded or were skipped
         env:

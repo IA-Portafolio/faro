@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   changes:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     outputs:
       docs: ${{ steps.filter.outputs.docs }}
@@ -54,7 +54,7 @@ jobs:
   markdownlint:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
@@ -76,7 +76,7 @@ jobs:
   cspell:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
@@ -98,7 +98,7 @@ jobs:
   lychee:
     needs: changes
     if: needs.changes.outputs.docs == 'true'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -124,7 +124,7 @@ jobs:
     # Bloquea un PR que añada un archivo bajo docs/ que ningún índice ni
     # sidebar referencia. Un doc no descubrible es como no existir: tarde o
     # temprano queda obsoleto y nadie se entera porque nadie lo abre.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@v4
@@ -140,7 +140,7 @@ jobs:
     # y los templates de prod linkean a la página generada. Mantener los
     # dos en sync garantiza que la única tabla de env-vars del repo no se
     # desincronice.
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     steps:
       - uses: actions/checkout@v4
@@ -153,7 +153,7 @@ jobs:
   docs:
     if: always()
     needs: [changes, markdownlint, cspell, lychee, orphan-docs, env-reference]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     steps:
       - name: Verify all docs jobs succeeded or were skipped
         env:

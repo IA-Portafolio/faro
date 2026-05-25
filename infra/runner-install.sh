@@ -12,7 +12,7 @@ REPO_URL="https://github.com/IA-Portafolio/faro"
 RUNNER_USER="${RUNNER_USER:-victalejo}"
 RUNNER_DIR="${RUNNER_DIR:-/opt/actions-runner}"
 RUNNER_NAME="${RUNNER_NAME:-faro-infra}"
-RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,linux,faro-deploy}"
+RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,linux,faro-deploy,faro-ci}"
 RUNNER_VERSION="${RUNNER_VERSION:-2.319.1}"
 RUNNER_ARCH="${RUNNER_ARCH:-x64}"
 

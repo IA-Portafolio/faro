@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   validate:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     steps:
       - name: Validate tag
