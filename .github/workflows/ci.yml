@@ -68,7 +68,11 @@ jobs:
           CLICKHOUSE_USER: faro
           CLICKHOUSE_PASSWORD: faro
           CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+        # ClickHouse necesita `nofile` alto o falla en boot con mlock/EMFILE
+        # (docker-compose.yml de dev también lo levanta a 262144). Sin esto
+        # el container se queda en "starting" hasta timeout en GH Actions.
         options: >-
+          --ulimit nofile=262144:262144
           --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
           --health-interval=5s
           --health-timeout=3s
@@ -249,7 +253,11 @@ jobs:
           CLICKHOUSE_USER: faro
           CLICKHOUSE_PASSWORD: faro
           CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+        # ClickHouse necesita `nofile` alto o falla en boot con mlock/EMFILE
+        # (docker-compose.yml de dev también lo levanta a 262144). Sin esto
+        # el container se queda en "starting" hasta timeout en GH Actions.
         options: >-
+          --ulimit nofile=262144:262144
           --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"
           --health-interval=5s
           --health-timeout=3s

@@ -19,7 +19,7 @@ use parking_lot::Mutex;
 use qrcode::render::svg;
 use qrcode::{EcLevel, QrCode};
 use rand::rngs::OsRng;
-use rand::RngCore;
+use rand::TryRngCore;
 use sha2::{Digest, Sha256};
 use totp_rs::{Algorithm, Secret, TOTP};
 use uuid::Uuid;
@@ -41,7 +41,8 @@ const RECOVERY_CODE_COUNT: usize = 10;
 /// éste es el string que el authenticator necesita.
 pub fn generate_secret_base32() -> String {
     let mut bytes = vec![0u8; TOTP_SECRET_BYTES];
-    OsRng.fill_bytes(&mut bytes);
+    // rand 0.9: OsRng impl TryRngCore, no RngCore — usar try_fill_bytes.
+    OsRng.try_fill_bytes(&mut bytes).expect("OS RNG failed");
     Secret::Raw(bytes).to_encoded().to_string()
 }
 
@@ -125,7 +126,7 @@ pub fn generate_recovery_codes() -> Vec<String> {
 
 fn generate_one_code() -> String {
     let mut buf = vec![0u8; RECOVERY_CODE_LEN];
-    OsRng.fill_bytes(&mut buf);
+    OsRng.try_fill_bytes(&mut buf).expect("OS RNG failed");
     let raw: String = buf
         .into_iter()
         .map(|b| RECOVERY_CODE_ALPHABET[(b as usize) % RECOVERY_CODE_ALPHABET.len()] as char)

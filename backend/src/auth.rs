@@ -23,8 +23,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
-use rand::distributions::Alphanumeric;
-use rand::{thread_rng, Rng, RngCore};
+use rand::distr::Alphanumeric;
+use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -165,7 +165,7 @@ pub fn verify_password(plain: &str, hash: &str) -> bool {
 
 fn new_random_token() -> String {
     let mut bytes = [0u8; 32];
-    thread_rng().fill_bytes(&mut bytes);
+    rand::rng().fill_bytes(&mut bytes);
     hex::encode(bytes)
 }
 
@@ -705,7 +705,7 @@ fn unauthorized() -> Response {
 }
 
 // El extractor AuthUser toma el usuario inyectado por el middleware.
-#[axum::async_trait]
+// axum 0.8 usa async-fn-in-trait nativo: ya no se necesita #[async_trait].
 impl<S: Send + Sync> axum::extract::FromRequestParts<S> for AuthUser {
     type Rejection = ApiError;
 
@@ -721,7 +721,6 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for AuthUser {
     }
 }
 
-#[axum::async_trait]
 impl<S: Send + Sync> axum::extract::FromRequestParts<S> for CurrentSessionTokenHash {
     type Rejection = ApiError;
 
@@ -765,7 +764,7 @@ pub async fn bootstrap_admin_if_empty(state: &SharedState) -> anyhow::Result<()>
         .ok()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| {
-            let p: String = thread_rng()
+            let p: String = rand::rng()
                 .sample_iter(&Alphanumeric)
                 .take(20)
                 .map(char::from)

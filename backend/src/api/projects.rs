@@ -2,7 +2,7 @@ use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::Utc;
-use rand::distributions::Alphanumeric;
+use rand::distr::Alphanumeric;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -107,7 +107,7 @@ fn slugify(s: &str) -> String {
 }
 
 fn random_token() -> String {
-    rand::thread_rng()
+    rand::rng()
         .sample_iter(&Alphanumeric)
         .take(40)
         .map(char::from)
