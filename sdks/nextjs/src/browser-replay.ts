@@ -30,6 +30,12 @@ export interface SessionReplayOptions {
   maxQueueSize?: number;
   /** user.id que adjuntar al chunk, si lo hay */
   getUserId?: () => string | undefined;
+  /**
+   * Si true (default), `page_url` se publica sin querystring ni fragmento
+   * para no filtrar tokens/PII en query params. Mirroreado desde
+   * `FaroBrowserOptions.scrubUrlQuery`.
+   */
+  scrubUrlQuery?: boolean;
 }
 
 /**
@@ -106,6 +112,13 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
   const flushIntervalMs = opts.flushIntervalMs ?? 5000;
   const maxEventsPerChunk = opts.maxEventsPerChunk ?? 80;
   const maxQueueSize = opts.maxQueueSize ?? 1000;
+  const scrubUrlQuery = opts.scrubUrlQuery ?? true;
+  const pageUrl = (): string => {
+    if (typeof window === 'undefined') return '';
+    const { location } = window;
+    if (!scrubUrlQuery) return location.href;
+    return `${location.origin}${location.pathname}`;
+  };
 
   let buffer: unknown[] = [];
   let seq = 0;
@@ -124,7 +137,7 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
       seq: seq++,
       events,
       user_id: opts.getUserId?.() ?? '',
-      page_url: location.href,
+      page_url: pageUrl(),
       user_agent: navigator.userAgent,
     };
     const body = JSON.stringify(chunk);

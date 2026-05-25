@@ -96,6 +96,14 @@ export interface FaroBrowserOptions {
   scrubPatterns?: ScrubPreset[];
   /** Cadencia de refresh de feature flags en ms (por defecto 30_000). */
   featureFlagRefreshIntervalMs?: number;
+  /**
+   * Si true (default), las URLs capturadas automáticamente (`browser.url`,
+   * `page.url`, navegaciones, click props) se publican sin querystring ni
+   * fragmento. Esto evita filtrar tokens de reset, emails y otros secretos
+   * que las apps suelen poner en query params. Setealo en `false` cuando
+   * realmente necesités la URL completa y sepas que no contiene PII.
+   */
+  scrubUrlQuery?: boolean;
 }
 
 export interface AutoCaptureOptions {
@@ -273,6 +281,7 @@ class FaroBrowser {
       scrubHeaders,
       scrubPatterns,
       featureFlagRefreshIntervalMs: opts.featureFlagRefreshIntervalMs ?? 30_000,
+      scrubUrlQuery: opts.scrubUrlQuery ?? true,
     };
 
     if (typeof window === 'undefined') {
@@ -305,6 +314,7 @@ class FaroBrowser {
         sessionId: this.sessionId,
         sampleRate: this.opts.sessionReplaySampleRate,
         getUserId: () => this.user?.id,
+        scrubUrlQuery: this.opts.scrubUrlQuery,
       });
     }
   }
@@ -535,7 +545,7 @@ class FaroBrowser {
     if (this.opts.release) ctx.release = this.opts.release;
     if (this.opts.attributes) Object.assign(ctx, this.opts.attributes);
     if (typeof window !== 'undefined') {
-      ctx['page.url'] = window.location.href;
+      ctx['page.url'] = this.currentUrl();
       ctx['page.path'] = window.location.pathname;
       ctx['user_agent'] = navigator.userAgent;
     }
@@ -591,6 +601,19 @@ class FaroBrowser {
     this.queue.push(processed);
   }
 
+  /**
+   * URL actual lista para publicar en telemetría. Por defecto se quita el
+   * querystring y el hash para no filtrar tokens / emails / claves que
+   * algunas apps ponen ahí. El cliente puede revertirlo seteando
+   * `scrubUrlQuery: false` en las opciones.
+   */
+  private currentUrl(): string {
+    if (typeof window === 'undefined') return '';
+    const { location } = window;
+    if (!this.opts.scrubUrlQuery) return location.href;
+    return `${location.origin}${location.pathname}`;
+  }
+
   private composeAttributes(extra?: Record<string, unknown>): Record<string, string> {
     const attrs: Record<string, string> = {};
     if (this.opts.attributes) {
@@ -600,7 +623,7 @@ class FaroBrowser {
     if (this.opts.environment) attrs['deployment.environment'] = this.opts.environment;
     if (this.opts.release) attrs['service.version'] = this.opts.release;
     if (typeof window !== 'undefined') {
-      attrs['browser.url'] = window.location.href;
+      attrs['browser.url'] = this.currentUrl();
       attrs['browser.userAgent'] = navigator.userAgent;
     }
     if (this.user) {
@@ -719,7 +742,7 @@ class FaroBrowser {
   private emitAutoPageView(navigationType: string): void {
     if (typeof window === 'undefined') return;
     this.page(window.location.pathname || '/', {
-      url: window.location.href,
+      url: this.currentUrl(),
       path: window.location.pathname || '/',
       referrer: typeof document !== 'undefined' ? document.referrer : '',
       navigation_type: navigationType,
@@ -778,6 +801,9 @@ class FaroBrowser {
   }
 
   private scheduleDeadClickCheck(el: ElementLike, props: Record<string, unknown>): void {
+    // Comparamos URL completas (incluyendo querystring) para detectar
+    // navegaciones por SPA que sólo mutan query params — no es telemetría
+    // saliente, así que no aplicamos el scrub.
     const startUrl = typeof window !== 'undefined' ? window.location.href : '';
     let mutated = false;
     let observer: MutationObserver | null = null;
@@ -806,7 +832,7 @@ class FaroBrowser {
     const props: Record<string, unknown> = {
       tag,
       path: typeof window !== 'undefined' ? window.location.pathname : '',
-      url: typeof window !== 'undefined' ? window.location.href : '',
+      url: this.currentUrl(),
     };
     if (el.id) props.id = el.id;
     if (text) props.text = text;
@@ -832,6 +858,9 @@ class FaroBrowser {
   }
 
   private installNavigationTracking(): void {
+    // Capturamos la URL respetando el scrub: las navegaciones SPA con
+    // tokens en query string son un vector típico de leak vía breadcrumbs.
+    const snapshot = (): string => this.currentUrl();
     const log = (from: string, to: string, method: string): void => {
       if (from === to) return;
       this.addBreadcrumb({ category: 'navigation', message: `${from} → ${to}`, data: { method, to } });
@@ -840,18 +869,18 @@ class FaroBrowser {
     const origPush = history.pushState;
     const origReplace = history.replaceState;
     history.pushState = function (this: History, ...args) {
-      const from = location.href;
+      const from = snapshot();
       const ret = origPush.apply(this, args);
-      log(from, location.href, 'pushState');
+      log(from, snapshot(), 'pushState');
       return ret;
     };
     history.replaceState = function (this: History, ...args) {
-      const from = location.href;
+      const from = snapshot();
       const ret = origReplace.apply(this, args);
-      log(from, location.href, 'replaceState');
+      log(from, snapshot(), 'replaceState');
       return ret;
     };
-    const onPop = (): void => log('', location.href, 'popstate');
+    const onPop = (): void => log('', snapshot(), 'popstate');
     window.addEventListener('popstate', onPop);
 
     this.cleanup.push(() => {
