@@ -238,16 +238,7 @@ struct ListQuery {
     project: Option<String>,
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/cohorts",
-    tag = "cohorts",
-    responses(
-        (status = 200, description = "Cohorts del proyecto (FINAL, soft-delete filtrado)"),
-        (status = 401, description = "Sesión inválida o ausente")
-    )
-)]
-pub(crate) async fn list_cohorts(
+async fn list_cohorts(
     State(state): State<SharedState>,
     AxumQuery(q): AxumQuery<ListQuery>,
 ) -> ApiResult<Json<Vec<CohortRow>>> {
@@ -407,17 +398,7 @@ pub struct PreviewResult {
     pub took_ms: u64,
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/v1/cohorts/preview",
-    tag = "cohorts",
-    responses(
-        (status = 200, description = "Tamaño + sample del cohort definido (sin guardar)"),
-        (status = 400, description = "Definición inválida"),
-        (status = 401, description = "Sesión inválida o ausente")
-    )
-)]
-pub(crate) async fn preview_cohort(
+async fn preview_cohort(
     State(state): State<SharedState>,
     Json(input): Json<PreviewInput>,
 ) -> ApiResult<Json<PreviewResult>> {

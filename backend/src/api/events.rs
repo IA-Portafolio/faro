@@ -66,16 +66,7 @@ fn parse_props(raw: &[String]) -> Vec<(String, String)> {
     out
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/events",
-    tag = "events",
-    responses(
-        (status = 200, description = "Lista de product events filtrados por rango/filtros"),
-        (status = 401, description = "Sesión inválida o ausente")
-    )
-)]
-pub(crate) async fn list_events(
+async fn list_events(
     State(state): State<SharedState>,
     Query(q): Query<EventQuery>,
 ) -> ApiResult<Json<Vec<ProductEventRow>>> {
@@ -218,16 +209,7 @@ pub struct EventBucket {
     pub count: u64,
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/v1/events/stats",
-    tag = "events",
-    responses(
-        (status = 200, description = "Histograma por bucket de tiempo"),
-        (status = 401, description = "Sesión inválida o ausente")
-    )
-)]
-pub(crate) async fn event_stats(
+async fn event_stats(
     State(state): State<SharedState>,
     Query(q): Query<StatsQuery>,
 ) -> ApiResult<Json<Vec<EventBucket>>> {

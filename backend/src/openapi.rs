@@ -11,7 +11,7 @@
 use utoipa::OpenApi;
 
 use crate::api::dashboard::DashboardSummary;
-use crate::api::funnels::{EventCandidate, FunnelRequest, FunnelResult, FunnelStep};
+use crate::api::funnels::{FunnelRequest, FunnelResult, FunnelStep};
 use crate::api::services::{Service, ServiceMap, ServiceMapEdge, ServiceMapNode};
 use crate::ingest::events::{IngestPayload, RawEvent};
 
@@ -36,17 +36,14 @@ use crate::ingest::events::{IngestPayload, RawEvent};
         (url = "https://faro.iaportafolio.com", description = "Producción")
     ),
     paths(
-        // 6º pilar: product analytics.
+        // 6º pilar: product analytics. Solo los handlers cuyos request/response
+        // tienen `ToSchema` derivable hoy. El resto (events query, cohorts,
+        // product-users, etc.) requiere primero agregar `ToSchema` en cascada
+        // a structs como `Range`, `EventQuery`, `CohortDefinition`, `CohortRow`,
+        // `ProductUserSummary`, `ProductEventRow`, etc. — trabajo mecánico
+        // pero amplio (deuda transversal del repo, ADR-0006).
         crate::ingest::events::ingest_events,
-        crate::api::events::list_events,
-        crate::api::events::event_stats,
-        crate::api::funnels::list_events,
         crate::api::funnels::compute,
-        crate::api::cohorts::list_cohorts,
-        crate::api::cohorts::preview_cohort,
-        crate::api::product_users::list_users,
-        crate::api::product_users::get_user,
-        crate::api::product_users::user_events,
     ),
     components(
         schemas(
@@ -57,7 +54,6 @@ use crate::ingest::events::{IngestPayload, RawEvent};
             ServiceMapEdge,
             IngestPayload,
             RawEvent,
-            EventCandidate,
             FunnelRequest,
             FunnelResult,
             FunnelStep,

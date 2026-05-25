@@ -46,16 +46,7 @@ pub struct EventCandidate {
 /// Lee el catálogo de eventos desde la MV `product_events_per_day` para no escanear
 /// la tabla cruda. La MV ya tiene `(day, project_id, event_name)` ordenado, así que un
 /// `GROUP BY event_name` con `countMerge` se resuelve en milisegundos para meses de datos.
-#[utoipa::path(
-    get,
-    path = "/api/v1/funnels/events",
-    tag = "funnels",
-    responses(
-        (status = 200, description = "Catálogo de event_name distintos para el builder", body = [EventCandidate]),
-        (status = 401, description = "Sesión inválida o ausente")
-    )
-)]
-pub(crate) async fn list_events(
+async fn list_events(
     State(state): State<SharedState>,
     axum_extra::extract::Query(range): axum_extra::extract::Query<Range>,
 ) -> ApiResult<Json<Vec<EventCandidate>>> {
