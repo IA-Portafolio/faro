@@ -153,7 +153,7 @@ service:
 | GET    | `/api/v1/events`                           | eventos de producto |
 | POST   | `/api/v1/experiments/analyze`              | A/B stats por flag + evento de conversión |
 | GET    | `/api/v1/funnels/events`                   | catálogo de eventos para builders |
-| POST   | `/api/v1/funnels/preview`                  | funnel exploratorio |
+| POST   | `/api/v1/funnels/compute`                  | funnel exploratorio (body: `{steps:[...]}`) |
 | GET    | `/api/v1/services`                         |       |
 | GET    | `/api/v1/dashboard`                        |       |
 

@@ -4,7 +4,7 @@
 
 **Goal:** Build `/users` as the product end-user list and `/users/[distinct_id]` as a linkable user profile with chronological events, session grouping, and trace links.
 
-**Architecture:** Keep backend unchanged for this iteration and consume the existing `/api/v1/product_users` endpoints from the Svelte frontend. Put URL/timeline logic in pure TypeScript helpers with Vitest coverage, then keep Svelte pages focused on data loading and rendering.
+**Architecture:** Keep backend unchanged for this iteration and consume the existing `/api/v1/product-users` endpoints from the Svelte frontend. Put URL/timeline logic in pure TypeScript helpers with Vitest coverage, then keep Svelte pages focused on data loading and rendering.
 
 **Tech Stack:** SvelteKit 2, Svelte 5, TypeScript, Vitest, existing Faro REST API helpers.
 
@@ -347,16 +347,16 @@ function productUsersQs(params: ProductUserFilters): string {
 }
 
 export const fetchProductUsers = (params: ProductUserFilters = {}) =>
-  api<ProductUserSummary[]>(`/api/v1/product_users${productUsersQs(params)}`);
+  api<ProductUserSummary[]>(`/api/v1/product-users${productUsersQs(params)}`);
 
 export const fetchProductUser = (distinctId: string, params: RangeArgs = {}) =>
-  api<ProductUserDetail>(`/api/v1/product_users/${encodeURIComponent(distinctId)}${qs(params)}`);
+  api<ProductUserDetail>(`/api/v1/product-users/${encodeURIComponent(distinctId)}${qs(params)}`);
 
 export const fetchProductUserEvents = (
   distinctId: string,
   params: RangeArgs & { source?: string } = {}
 ) => api<ProductEvent[]>(
-  `/api/v1/product_users/${encodeURIComponent(distinctId)}/events${qs(params)}`
+  `/api/v1/product-users/${encodeURIComponent(distinctId)}/events${qs(params)}`
 );
 ```
 

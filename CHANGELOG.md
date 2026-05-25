@@ -55,11 +55,11 @@ y el proyecto usa [Semantic Versioning](https://semver.org/lang/es/).
     [`backend/src/main.rs`](backend/src/main.rs) tras los demás workers.
   * **API**
     [`backend/src/api/product_users.rs`](backend/src/api/product_users.rs):
-    `GET /api/v1/product_users` lista usuarios con filtros por rango,
+    `GET /api/v1/product-users` lista usuarios con filtros por rango,
     substring (distinct_id/properties) y `source` (semántica AND para
-    aislar "cross-device only"); `GET /api/v1/product_users/:distinct_id`
+    aislar "cross-device only"); `GET /api/v1/product-users/:distinct_id`
     devuelve el row canónico + breakdown por device; `GET
-    /api/v1/product_users/:distinct_id/events` resuelve los anon_ids del
+    /api/v1/product-users/:distinct_id/events` resuelve los anon_ids del
     user (fallback a `product_user_aliases` si el worker aún no procesó)
     y filtra `product_events` por `distinct_id IN (…) OR anonymous_id IN
     (…)`. Es el endpoint que materializa el goal.

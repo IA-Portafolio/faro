@@ -29,9 +29,9 @@ queda reservado para detalles puntuales de un evento dentro del timeline.
 
 El backend ya expone la base necesaria:
 
-- `GET /api/v1/product_users`
-- `GET /api/v1/product_users/:distinct_id`
-- `GET /api/v1/product_users/:distinct_id/events`
+- `GET /api/v1/product-users`
+- `GET /api/v1/product-users/:distinct_id`
+- `GET /api/v1/product-users/:distinct_id/events`
 
 El frontend debe agregar helpers tipados en `src/lib/api.ts` para esos
 endpoints y reemplazar el redirect actual de `src/routes/users/+page.svelte`.
@@ -75,7 +75,7 @@ query string cuando estén presentes.
 
 La pantalla carga en paralelo:
 
-- resumen del usuario desde `/product_users/:distinct_id`
+- resumen del usuario desde `/product-users/:distinct_id`
 - eventos desde `/product_users/:distinct_id/events`
 
 Header:

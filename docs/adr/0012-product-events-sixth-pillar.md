@@ -27,7 +27,7 @@ juntarlos sale casi gratis si el schema lo soporta desde el día uno.
 Añadimos un **sexto pilar** llamado `product_events`, con su propio schema en
 ClickHouse, ingesta HTTP separada (`POST /ingest/events`) y endpoints de lectura
 (`GET /events`, `GET /events/stats`, `GET /events/live`, `GET /funnels/events`,
-`POST /funnels/preview`). El schema:
+`POST /funnels/compute`). El schema:
 
 - **`faro.product_events`** — tabla principal, una fila por evento. `properties`
   / `user_properties` / `context` viajan como **String JSON**, no como `Map`.
