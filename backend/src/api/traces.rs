@@ -12,7 +12,7 @@ use crate::storage::SpanRow;
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/traces", get(list_traces))
-        .route("/traces/:trace_id", get(get_trace))
+        .route("/traces/{trace_id}", get(get_trace))
 }
 
 #[derive(Debug, Deserialize)]

@@ -42,12 +42,12 @@ pub fn router() -> Router<SharedState> {
         .route("/cohorts", get(list_cohorts).post(create_cohort))
         .route("/cohorts/preview", post(preview_cohort))
         .route(
-            "/cohorts/:id",
+            "/cohorts/{id}",
             get(get_cohort).put(update_cohort).delete(delete_cohort),
         )
-        .route("/cohorts/:id/users", get(cohort_users))
-        .route("/cohorts/:id/retention", get(cohort_retention))
-        .route("/cohorts/:id/overlap", get(cohort_overlap))
+        .route("/cohorts/{id}/users", get(cohort_users))
+        .route("/cohorts/{id}/retention", get(cohort_retention))
+        .route("/cohorts/{id}/overlap", get(cohort_overlap))
 }
 
 // ---------------------------------------------------------------------------

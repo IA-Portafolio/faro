@@ -15,7 +15,7 @@ pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/alerts/rules", get(list_rules).post(create_rule))
         .route(
-            "/alerts/rules/:id",
+            "/alerts/rules/{id}",
             get(get_rule).put(update_rule).delete(delete_rule),
         )
         .route("/alerts/incidents", get(list_incidents))

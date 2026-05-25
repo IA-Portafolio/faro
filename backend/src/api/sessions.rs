@@ -12,7 +12,7 @@ use crate::state::SharedState;
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/sessions", get(list_sessions))
-        .route("/sessions/:session_id/traces", get(session_traces))
+        .route("/sessions/{session_id}/traces", get(session_traces))
 }
 
 #[derive(Debug, Deserialize)]

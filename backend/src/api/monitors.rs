@@ -15,11 +15,11 @@ pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/monitors", get(list_monitors).post(create_monitor))
         .route(
-            "/monitors/:id",
+            "/monitors/{id}",
             get(get_monitor).put(update_monitor).delete(delete_monitor),
         )
-        .route("/monitors/:id/results", get(monitor_results))
-        .route("/monitors/:id/uptime", get(monitor_uptime))
+        .route("/monitors/{id}/results", get(monitor_results))
+        .route("/monitors/{id}/uptime", get(monitor_uptime))
 }
 
 async fn list_monitors(

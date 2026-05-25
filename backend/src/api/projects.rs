@@ -17,15 +17,15 @@ pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/projects", get(list_projects).post(create_project))
         .route(
-            "/projects/:slug",
+            "/projects/{slug}",
             get(get_project).put(update_project).delete(delete_project),
         )
-        .route("/projects/:slug/rotate", axum::routing::post(rotate_token))
+        .route("/projects/{slug}/rotate", axum::routing::post(rotate_token))
         .route(
-            "/projects/:slug/redaction",
+            "/projects/{slug}/redaction",
             get(get_redaction).put(put_redaction),
         )
-        .route("/projects/:slug/origins", get(get_origins).put(put_origins))
+        .route("/projects/{slug}/origins", get(get_origins).put(put_origins))
 }
 
 #[derive(Debug, Serialize)]

@@ -15,10 +15,10 @@ pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/users", get(list_users).post(create_user))
         .route(
-            "/users/:id",
+            "/users/{id}",
             get(get_user).put(update_user).delete(delete_user),
         )
-        .route("/users/:id/password", axum::routing::put(change_password))
+        .route("/users/{id}/password", axum::routing::put(change_password))
 }
 
 #[derive(Serialize)]

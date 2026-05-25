@@ -12,8 +12,8 @@ use crate::state::SharedState;
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/errors", get(list_issues))
-        .route("/errors/:fingerprint", get(issue_detail))
-        .route("/errors/:fingerprint/status", post(update_status))
+        .route("/errors/{fingerprint}", get(issue_detail))
+        .route("/errors/{fingerprint}/status", post(update_status))
 }
 
 #[derive(Debug, Deserialize)]

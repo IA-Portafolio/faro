@@ -10,13 +10,13 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::SharedState;
 
 pub fn router() -> Router<SharedState> {
-    // `:fingerprint` debe coincidir con el nombre que usa `api::errors::router`
-    // en `/errors/:fingerprint/status` — matchit panica al arrancar si dos rutas
+    // `{fingerprint}` debe coincidir con el nombre que usa `api::errors::router`
+    // en `/errors/{fingerprint}/status` — matchit panica al arrancar si dos rutas
     // que comparten estructura usan nombres distintos para el mismo segmento.
     Router::new()
         .route("/replays", get(list_replays))
-        .route("/replays/:session_id", get(get_replay))
-        .route("/errors/:fingerprint/sessions", get(sessions_for_issue))
+        .route("/replays/{session_id}", get(get_replay))
+        .route("/errors/{fingerprint}/sessions", get(sessions_for_issue))
 }
 
 #[derive(Debug, Serialize, Deserialize)]
