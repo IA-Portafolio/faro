@@ -17,8 +17,7 @@ use crate::state::SharedState;
 use crate::storage::AlertIncidentRow;
 
 const RULE_NAME_PREFIX: &str = "feature-rollback:";
-const FEATURE_ROLLBACK_NAMESPACE: Uuid =
-    Uuid::from_u128(0x6661726f_66656174_726f6c6c_6261636b);
+const FEATURE_ROLLBACK_NAMESPACE: Uuid = Uuid::from_u128(0x6661726f_66656174_726f6c6c_6261636b);
 
 #[derive(Debug, Deserialize)]
 struct FlagErrorRow {
