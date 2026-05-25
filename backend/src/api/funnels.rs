@@ -198,9 +198,7 @@ async fn compute(
 
     // -- Parámetros. Los Strings deben vivir mientras dure el await — mantenemos
     //    `event_keys` y `steps` (ref a req) en stack.
-    let event_keys: Vec<String> = (0..req.steps.len())
-        .map(|i| format!("event_{i}"))
-        .collect();
+    let event_keys: Vec<String> = (0..req.steps.len()).map(|i| format!("event_{i}")).collect();
     let mut params: Vec<(&str, &str)> = Vec::with_capacity(req.steps.len() + 4);
     params.push(("window", &window_s));
     params.push(("from", &from_s));
@@ -433,9 +431,7 @@ async fn drop_off(
     );
 
     // -- Parámetros compartidos (todos los Strings viven en el scope de la fn).
-    let event_keys: Vec<String> = (0..req.steps.len())
-        .map(|i| format!("event_{i}"))
-        .collect();
+    let event_keys: Vec<String> = (0..req.steps.len()).map(|i| format!("event_{i}")).collect();
     let mut base_params: Vec<(&str, &str)> = Vec::with_capacity(req.steps.len() + 8);
     base_params.push(("window", &window_s));
     base_params.push(("from", &from_s));

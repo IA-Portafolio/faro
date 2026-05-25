@@ -25,7 +25,10 @@ pub fn router() -> Router<SharedState> {
             "/projects/{slug}/redaction",
             get(get_redaction).put(put_redaction),
         )
-        .route("/projects/{slug}/origins", get(get_origins).put(put_origins))
+        .route(
+            "/projects/{slug}/origins",
+            get(get_origins).put(put_origins),
+        )
 }
 
 #[derive(Debug, Serialize)]
