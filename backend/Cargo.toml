@@ -15,7 +15,7 @@ name = "faro"
 path = "src/main.rs"
 
 [dependencies]
-axum = { version = "0.7", features = ["macros", "tokio"] }
+axum = { version = "0.8", features = ["macros", "tokio"] }
 tokio = { version = "1.40", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tower = "0.5"
