@@ -11,11 +11,13 @@
 use utoipa::OpenApi;
 
 use crate::api::dashboard::DashboardSummary;
+use crate::api::funnels::{EventCandidate, FunnelRequest, FunnelResult, FunnelStep};
 use crate::api::services::{Service, ServiceMap, ServiceMapEdge, ServiceMapNode};
+use crate::ingest::events::{IngestPayload, RawEvent};
 
-/// Punto de entrada del documento OpenAPI. Lista los handlers anotados
-/// (vacío por ahora) y los schemas exportados. A medida que se anoten
-/// handlers con `#[utoipa::path]`, se referencian acá en `paths(...)`.
+/// Punto de entrada del documento OpenAPI. Lista los handlers anotados con
+/// `#[utoipa::path]`. El primer batch documentado son los del 6º pilar
+/// (product analytics) — el resto se irá sumando en PRs siguientes.
 #[derive(OpenApi)]
 #[openapi(
     info(
@@ -34,8 +36,17 @@ use crate::api::services::{Service, ServiceMap, ServiceMapEdge, ServiceMapNode};
         (url = "https://faro.iaportafolio.com", description = "Producción")
     ),
     paths(
-        // TODO: añadir aquí los `crate::api::<mod>::<handler>` a medida
-        // que se anoten con `#[utoipa::path]`. Plan en ADR-0006.
+        // 6º pilar: product analytics.
+        crate::ingest::events::ingest_events,
+        crate::api::events::list_events,
+        crate::api::events::event_stats,
+        crate::api::funnels::list_events,
+        crate::api::funnels::compute,
+        crate::api::cohorts::list_cohorts,
+        crate::api::cohorts::preview_cohort,
+        crate::api::product_users::list_users,
+        crate::api::product_users::get_user,
+        crate::api::product_users::user_events,
     ),
     components(
         schemas(
@@ -44,6 +55,12 @@ use crate::api::services::{Service, ServiceMap, ServiceMapEdge, ServiceMapNode};
             ServiceMap,
             ServiceMapNode,
             ServiceMapEdge,
+            IngestPayload,
+            RawEvent,
+            EventCandidate,
+            FunnelRequest,
+            FunnelResult,
+            FunnelStep,
         )
     ),
     tags(
@@ -56,7 +73,11 @@ use crate::api::services::{Service, ServiceMap, ServiceMapEdge, ServiceMapNode};
         (name = "alerts", description = "Reglas e incidentes de alertas"),
         (name = "services", description = "Servicios visibles en los datos"),
         (name = "projects", description = "Proyectos / tenants lógicos"),
-        (name = "users", description = "Gestión de usuarios del dashboard")
+        (name = "users", description = "Gestión de usuarios del dashboard"),
+        (name = "events", description = "Product events (6º pilar): ingesta y consulta"),
+        (name = "funnels", description = "Conversión por pasos con windowFunnel"),
+        (name = "cohorts", description = "Segmentación de usuarios persistida"),
+        (name = "product-users", description = "Perfil de usuario unificado multi-device")
     )
 )]
 pub struct ApiDoc;

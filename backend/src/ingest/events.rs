@@ -35,8 +35,8 @@ pub fn router() -> Router<SharedState> {
     Router::new().route("/events", post(ingest_events))
 }
 
-#[derive(Deserialize)]
-struct IngestPayload {
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct IngestPayload {
     service: Option<String>,
     /// Nuevo contrato público.
     #[serde(default)]
@@ -46,8 +46,8 @@ struct IngestPayload {
     events: Option<Vec<RawEvent>>,
 }
 
-#[derive(Deserialize)]
-struct RawEvent {
+#[derive(Deserialize, utoipa::ToSchema)]
+pub struct RawEvent {
     /// `track` | `identify` | `page` | `screen` | `alias` (o un nombre custom).
     /// Si falta, asumimos `track` para minimizar fricción.
     #[serde(default = "default_type")]
@@ -106,7 +106,20 @@ impl IngestPayload {
     }
 }
 
-async fn ingest_events(
+#[utoipa::path(
+    post,
+    path = "/api/v1/ingest/events",
+    tag = "events",
+    request_body = IngestPayload,
+    responses(
+        (status = 200, description = "Eventos aceptados", body = serde_json::Value),
+        (status = 400, description = "Payload inválido"),
+        (status = 401, description = "Token bearer inválido o ausente"),
+        (status = 429, description = "Rate limit excedido")
+    ),
+    security(("bearer_auth" = []))
+)]
+pub(crate) async fn ingest_events(
     State(state): State<SharedState>,
     headers: HeaderMap,
     Json(payload): Json<IngestPayload>,

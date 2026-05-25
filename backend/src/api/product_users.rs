@@ -81,7 +81,16 @@ struct UserRow {
     properties: String,
 }
 
-async fn list_users(
+#[utoipa::path(
+    get,
+    path = "/api/v1/product-users",
+    tag = "product-users",
+    responses(
+        (status = 200, description = "Usuarios activos en el rango con breakdown por source"),
+        (status = 401, description = "Sesión inválida o ausente")
+    )
+)]
+pub(crate) async fn list_users(
     State(state): State<SharedState>,
     Query(q): Query<ListQuery>,
 ) -> ApiResult<Json<Vec<ProductUserSummary>>> {
@@ -188,7 +197,20 @@ pub struct DetailQuery {
     pub range: Range,
 }
 
-async fn get_user(
+#[utoipa::path(
+    get,
+    path = "/api/v1/product-users/{distinct_id}",
+    tag = "product-users",
+    params(
+        ("distinct_id" = String, Path, description = "ID estable del usuario (post-identify)")
+    ),
+    responses(
+        (status = 200, description = "Detalle del usuario + breakdown por device"),
+        (status = 401, description = "Sesión inválida o ausente"),
+        (status = 404, description = "Usuario no encontrado")
+    )
+)]
+pub(crate) async fn get_user(
     State(state): State<SharedState>,
     Path(distinct_id): Path<String>,
     Query(q): Query<DetailQuery>,
@@ -311,7 +333,19 @@ pub struct EventsQuery {
     pub source: Option<String>,
 }
 
-async fn user_events(
+#[utoipa::path(
+    get,
+    path = "/api/v1/product-users/{distinct_id}/events",
+    tag = "product-users",
+    params(
+        ("distinct_id" = String, Path, description = "ID estable del usuario")
+    ),
+    responses(
+        (status = 200, description = "Eventos del user en CUALQUIER device (expande anon_ids)"),
+        (status = 401, description = "Sesión inválida o ausente")
+    )
+)]
+pub(crate) async fn user_events(
     State(state): State<SharedState>,
     Path(distinct_id): Path<String>,
     Query(q): Query<EventsQuery>,

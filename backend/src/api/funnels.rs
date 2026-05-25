@@ -46,7 +46,16 @@ pub struct EventCandidate {
 /// Lee el catálogo de eventos desde la MV `product_events_per_day` para no escanear
 /// la tabla cruda. La MV ya tiene `(day, project_id, event_name)` ordenado, así que un
 /// `GROUP BY event_name` con `countMerge` se resuelve en milisegundos para meses de datos.
-async fn list_events(
+#[utoipa::path(
+    get,
+    path = "/api/v1/funnels/events",
+    tag = "funnels",
+    responses(
+        (status = 200, description = "Catálogo de event_name distintos para el builder", body = [EventCandidate]),
+        (status = 401, description = "Sesión inválida o ausente")
+    )
+)]
+pub(crate) async fn list_events(
     State(state): State<SharedState>,
     axum_extra::extract::Query(range): axum_extra::extract::Query<Range>,
 ) -> ApiResult<Json<Vec<EventCandidate>>> {
@@ -120,7 +129,18 @@ pub struct FunnelResult {
     pub took_ms: u64,
 }
 
-async fn compute(
+#[utoipa::path(
+    post,
+    path = "/api/v1/funnels/compute",
+    tag = "funnels",
+    request_body = FunnelRequest,
+    responses(
+        (status = 200, description = "Conversión por paso con windowFunnel", body = FunnelResult),
+        (status = 400, description = "Pasos inválidos / rango temporal inválido"),
+        (status = 401, description = "Sesión inválida o ausente")
+    )
+)]
+pub(crate) async fn compute(
     State(state): State<SharedState>,
     Json(req): Json<FunnelRequest>,
 ) -> ApiResult<Json<FunnelResult>> {
