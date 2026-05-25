@@ -34,6 +34,8 @@ field_reassign_with_default = "allow"
 bool_comparison = "allow"
 nonminimal_bool = "allow"
 unnecessary_cast = "allow"
+while_let_loop = "allow"
+approx_constant = "allow"
 
 [lints.rust]
 dead_code = "allow"
