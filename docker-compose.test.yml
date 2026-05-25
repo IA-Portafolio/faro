@@ -14,7 +14,7 @@
 
 services:
   clickhouse-test:
-    image: clickhouse/clickhouse-server:24-alpine
+    image: clickhouse/clickhouse-server:24.8-alpine
     environment:
       CLICKHOUSE_DB: faro
       CLICKHOUSE_USER: faro

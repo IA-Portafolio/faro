@@ -61,7 +61,7 @@ jobs:
     timeout-minutes: 25
     services:
       clickhouse:
-        image: clickhouse/clickhouse-server:24-alpine
+        image: clickhouse/clickhouse-server:24.8-alpine
         ports: ['8123:8123', '9000:9000']
         env:
           CLICKHOUSE_DB: faro
@@ -221,6 +221,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: validate docker-compose
+        # `.env.prod.template` intencionalmente NO contiene CLICKHOUSE_PASSWORD
+        # (se inyecta en el deploy). Para que `docker compose config` no falle
+        # por la regla `${VAR:?...}`, pasamos un placeholder via env.
+        env:
+          CLICKHOUSE_PASSWORD: ci-validate-placeholder
         run: |
           cp .env.example .env
           docker compose -f docker-compose.yml config >/dev/null
@@ -237,7 +242,7 @@ jobs:
     timeout-minutes: 10
     services:
       clickhouse:
-        image: clickhouse/clickhouse-server:24-alpine
+        image: clickhouse/clickhouse-server:24.8-alpine
         ports: ['8123:8123', '9000:9000']
         env:
           CLICKHOUSE_DB: faro

@@ -169,7 +169,7 @@
     </div>
     <div class="field"><label>Regex del cuerpo (opcional)</label><input bind:value={editing.expected_body_regex} class="mono" placeholder=".*ok.*" /></div>
     <div class="field"><label>Cuerpo</label><textarea bind:value={editing.body} rows="4" class="mono"></textarea></div>
-    <div class="field"><label><input type="checkbox" checked={editing.enabled === 1} on:change={(e) => (editing.enabled = (e.currentTarget).checked ? 1 : 0)} /> Activo</label></div>
+    <div class="field"><label><input type="checkbox" checked={editing.enabled === 1} on:change={(e) => (editing!.enabled = (e.currentTarget).checked ? 1 : 0)} /> Activo</label></div>
 
     <button class="primary" on:click={save}>Guardar</button>
   </div>
