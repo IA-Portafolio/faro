@@ -166,6 +166,8 @@ async fn ingest_events(
         if let Some((alias, user)) = alias_identity_rows(&row) {
             alias_rows.push(alias);
             user_rows.push(user);
+        } else if let Some(user) = identify_upsert_row(&row) {
+            user_rows.push(user);
         }
         rows.push(row);
     }
@@ -365,19 +367,55 @@ fn alias_identity_rows(row: &ProductEventRow) -> Option<(ProductUserAliasRow, Pr
     ))
 }
 
+/// Fast-path para `$identify`: además del evento, hacemos un best-effort upsert
+/// inmediato a `faro.product_users` para que el dashboard vea al usuario sin
+/// esperar el próximo tick del worker `user_unifier` (que corre cada 60s por
+/// defecto). El worker después corrige discrepancias (anonymous_ids unión,
+/// event_count real) — esto es solo para que el row exista YA con
+/// last_seen/properties frescas. ReplacingMergeTree(last_seen) garantiza que
+/// el worker pueda re-insertar con un last_seen mayor sin conflicto.
+fn identify_upsert_row(row: &ProductEventRow) -> Option<ProductUserRow> {
+    if row.event_name != "$identify" || row.distinct_id.is_empty() {
+        return None;
+    }
+    Some(ProductUserRow {
+        project_id: row.project_id.clone(),
+        distinct_id: row.distinct_id.clone(),
+        first_seen: row.timestamp,
+        last_seen: row.timestamp,
+        anonymous_ids: if row.anonymous_id.is_empty() {
+            Vec::new()
+        } else {
+            vec![row.anonymous_id.clone()]
+        },
+        sources: if row.source.is_empty() {
+            Vec::new()
+        } else {
+            vec![row.source.clone()]
+        },
+        // El worker calcula el event_count real; 0 acá indica "no autoritativo".
+        event_count: 0,
+        properties: row.user_properties.clone(),
+    })
+}
+
 async fn upsert_alias_identity(
     state: &SharedState,
     aliases: &[ProductUserAliasRow],
     users: &[ProductUserRow],
 ) {
-    if aliases.is_empty() {
+    if aliases.is_empty() && users.is_empty() {
         return;
     }
-    if let Err(e) = state.ch.insert("faro.product_user_aliases", aliases).await {
-        tracing::warn!(error = %e, "best-effort alias identity upsert failed");
+    if !aliases.is_empty() {
+        if let Err(e) = state.ch.insert("faro.product_user_aliases", aliases).await {
+            tracing::warn!(error = %e, "best-effort alias identity upsert failed");
+        }
     }
-    if let Err(e) = state.ch.insert("faro.product_users", users).await {
-        tracing::warn!(error = %e, "best-effort product user upsert failed");
+    if !users.is_empty() {
+        if let Err(e) = state.ch.insert("faro.product_users", users).await {
+            tracing::warn!(error = %e, "best-effort product user upsert failed");
+        }
     }
 }
 

@@ -112,6 +112,69 @@ async fn ingest_events_identify_writes_canonical_name() {
 }
 
 #[tokio::test]
+async fn ingest_events_identify_upserts_product_users_immediately() {
+    // Fast-path: el handler hace best-effort INSERT a faro.product_users en
+    // cuanto llega un $identify, así el dashboard ve al usuario sin esperar
+    // los 60s del worker user_unifier. El row queda con event_count=0
+    // (no autoritativo); el worker lo corrige más tarde.
+    let app = TestApp::spawn().await;
+
+    let payload = serde_json::json!({
+        "batch": [{
+            "type": "identify",
+            "distinct_id": "fast_user_1",
+            "anonymous_id": "anon_fast_1",
+            "user_properties": { "plan": "pro" },
+            "source": "web"
+        }]
+    });
+    let resp = post_events(&app, payload).await;
+    assert!(resp.status().is_success(), "status: {}", resp.status());
+
+    #[derive(Debug, Deserialize)]
+    struct UserRow {
+        distinct_id: String,
+        properties: String,
+        sources: Vec<String>,
+    }
+    // El INSERT a product_users es síncrono dentro del handler — no esperamos
+    // al flush del writer. Damos un margen mínimo por la latencia del round-trip.
+    let arrived = app
+        .wait_for(20, || async {
+            let rows: Vec<UserRow> = app
+                .ch
+                .select_with_params(
+                    "SELECT distinct_id, properties, sources FROM faro.product_users FINAL \
+                     WHERE project_id = {p:String} AND distinct_id = 'fast_user_1'",
+                    &[("p", &app.project_slug)],
+                )
+                .await
+                .unwrap_or_default();
+            !rows.is_empty()
+        })
+        .await;
+    assert!(arrived, "identify no materializó product_users via fast-path");
+
+    let rows: Vec<UserRow> = app
+        .ch
+        .select_with_params(
+            "SELECT distinct_id, properties, sources FROM faro.product_users FINAL \
+             WHERE project_id = {p:String} AND distinct_id = 'fast_user_1' LIMIT 1",
+            &[("p", &app.project_slug)],
+        )
+        .await
+        .expect("select product_users");
+    let row = rows.first().expect("una fila product_users");
+    assert_eq!(row.distinct_id, "fast_user_1");
+    assert!(row.properties.contains("\"plan\":\"pro\""));
+    assert!(
+        row.sources.iter().any(|s| s == "web"),
+        "sources debería incluir 'web', got: {:?}",
+        row.sources
+    );
+}
+
+#[tokio::test]
 async fn ingest_events_rejects_missing_bearer() {
     let app = TestApp::spawn().await;
     let resp = app
