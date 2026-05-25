@@ -39,7 +39,7 @@ bytes = "1"
 parking_lot = "0.12"
 rand = "0.8"
 argon2 = "0.5"
-axum-extra = { version = "0.9", features = ["query", "cookie"] }
+axum-extra = { version = "0.12", features = ["query", "cookie"] }
 time = "0.3"
 
 # OpenAPI. `utoipa` deriva el schema desde tipos Rust; `utoipa-axum` lo integra
