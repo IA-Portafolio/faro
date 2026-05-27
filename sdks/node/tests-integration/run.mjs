@@ -55,21 +55,35 @@ async function healthCheck() {
 }
 
 async function adminLogin() {
-  const r = await fetch(`${ENDPOINT}/api/v1/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    throw new Error(`login fallido: HTTP ${r.status} ${t.slice(0, 200)}`);
-  }
-  const setCookie = r.headers.get('set-cookie');
-  if (!setCookie) throw new Error('login no devolvió Set-Cookie');
-  // Quedarse solo con `name=value` (la primera coma separa cookies; quitamos atributos).
-  const cookie = setCookie.split(/,\s*(?=[^=]+=)/)[0].split(';')[0];
-  log(`login OK; cookie=${cookie.slice(0, 30)}...`);
-  return cookie;
+  // El bootstrap del admin ocurre en `main.rs` ANTES de bindear /readyz, pero
+  // el escritura a `faro.users` es asíncrona vs los workers que también arrancan
+  // en paralelo. Reintentamos hasta 20s para tolerar la latencia de propagación
+  // del INSERT en ReplacingMergeTree (sin esto, en runners cold el primer login
+  // pega antes de que el row sea visible y devuelve 401).
+  return await waitUntil(
+    'admin login OK',
+    async () => {
+      const r = await fetch(`${ENDPOINT}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
+      });
+      if (!r.ok) {
+        // 401 es transitorio mientras el admin se materializa; otros códigos no.
+        if (r.status !== 401) {
+          const t = await r.text().catch(() => '');
+          throw new Error(`login fallido (no-401): HTTP ${r.status} ${t.slice(0, 200)}`);
+        }
+        return null;
+      }
+      const setCookie = r.headers.get('set-cookie');
+      if (!setCookie) throw new Error('login no devolvió Set-Cookie');
+      const cookie = setCookie.split(/,\s*(?=[^=]+=)/)[0].split(';')[0];
+      log(`login OK; cookie=${cookie.slice(0, 30)}...`);
+      return cookie;
+    },
+    { timeoutMs: 20_000, intervalMs: 500 },
+  );
 }
 
 async function sendViaSdk() {
@@ -88,11 +102,14 @@ async function sendViaSdk() {
 }
 
 async function fetchLogs(cookie) {
+  // El handler usa `Range` (api/mod.rs) que acepta `from`/`to` como DateTime UTC
+  // o `last_minutes` como duración relativa. `from=-15m` no es válido para chrono
+  // → HTTP 400.
   const url =
     `${ENDPOINT}/api/v1/logs` +
     `?service=${encodeURIComponent(SERVICE)}` +
     `&query=${encodeURIComponent(MARKER)}` +
-    `&from=-15m`;
+    `&last_minutes=15`;
   const r = await fetch(url, { headers: { cookie } });
   if (!r.ok) {
     const t = await r.text().catch(() => '');
