@@ -6,6 +6,14 @@
 # Uso (local):
 #   docker compose -f docker-compose.sdk-integration.yml up --build \
 #     --abort-on-container-exit --exit-code-from sdk-runner
+#
+# CRÍTICO: el project name fijo `faro-sdk-integration` es lo que separa
+# este stack del `faro` de producción. Sin esto, docker compose toma el
+# nombre del directorio padre (típicamente `faro` cuando se clona el
+# repo así) y termina reusando los volúmenes `faro_clickhouse_data` /
+# `faro_redis_data` de prod — el integration test escribiría en la base
+# en vivo y el bootstrap_admin no se dispararía porque ya habría usuarios.
+name: faro-sdk-integration
 
 services:
   clickhouse:
