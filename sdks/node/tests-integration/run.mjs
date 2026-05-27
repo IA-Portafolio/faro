@@ -56,10 +56,11 @@ async function healthCheck() {
 
 async function adminLogin() {
   // El bootstrap del admin ocurre en `main.rs` ANTES de bindear /readyz, pero
-  // el escritura a `faro.users` es asíncrona vs los workers que también arrancan
-  // en paralelo. Reintentamos hasta 20s para tolerar la latencia de propagación
-  // del INSERT en ReplacingMergeTree (sin esto, en runners cold el primer login
-  // pega antes de que el row sea visible y devuelve 401).
+  // el INSERT a `faro.users` es asíncrono vs los workers que también arrancan
+  // en paralelo. ReplacingMergeTree puede tardar muchos segundos en hacer
+  // visible la fila bajo concurrencia (sobre todo en runners cold con CH
+  // recién levantado y schema sin warmup). Toleramos hasta 90s tratando el
+  // 401 como transitorio — el resto de códigos siguen siendo fatales.
   return await waitUntil(
     'admin login OK',
     async () => {
@@ -69,7 +70,6 @@ async function adminLogin() {
         body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
       });
       if (!r.ok) {
-        // 401 es transitorio mientras el admin se materializa; otros códigos no.
         if (r.status !== 401) {
           const t = await r.text().catch(() => '');
           throw new Error(`login fallido (no-401): HTTP ${r.status} ${t.slice(0, 200)}`);
@@ -82,7 +82,7 @@ async function adminLogin() {
       log(`login OK; cookie=${cookie.slice(0, 30)}...`);
       return cookie;
     },
-    { timeoutMs: 20_000, intervalMs: 500 },
+    { timeoutMs: 90_000, intervalMs: 1_000 },
   );
 }
 

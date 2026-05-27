@@ -283,10 +283,27 @@ jobs:
       - name: Restore pub credentials
         # PUB_CREDENTIALS_JSON: el contenido del archivo ~/.config/dart/pub-credentials.json
         # que se obtiene corriendo `dart pub token add https://pub.dev` localmente.
+        # Si el secret está vacío/inválido, `flutter pub publish` queda colgado
+        # esperando OAuth interactivo (que en CI nunca llega) — chequeamos antes.
         run: |
           mkdir -p ~/.config/dart
           printf '%s' "${{ secrets.PUB_CREDENTIALS_JSON }}" > ~/.config/dart/pub-credentials.json
+          if [ ! -s ~/.config/dart/pub-credentials.json ]; then
+            echo "::error::PUB_CREDENTIALS_JSON está vacío — regenera con 'dart pub token add https://pub.dev'"
+            exit 1
+          fi
+          # Smoke: dart parsea el file y muestra los tokens registrados (no
+          # contacta a pub.dev, solo verifica que el JSON es válido).
+          dart pub token list || { echo "::error::pub-credentials.json malformado"; exit 1; }
       - working-directory: sdks/flutter
+        # Timeout 5 min: si pasa de eso es OAuth interactivo colgado. Tirar
+        # rápido para que el siguiente push tenga el runner libre, no colgado
+        # 6h como pasó en el batch anterior.
+        timeout-minutes: 5
+        env:
+          # Dart explícitamente NO-interactive: si el token está expirado el
+          # comando falla en vez de redirigir a OAuth.
+          PUB_HOSTED_URL: https://pub.dev
         run: |
           flutter pub get
           flutter pub publish --force
