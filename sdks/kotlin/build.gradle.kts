@@ -1,8 +1,12 @@
 import java.time.Duration
 
 plugins {
-    kotlin("jvm") version "1.9.23"
-    kotlin("plugin.serialization") version "1.9.23"
+    // Dependabot subió kotlinx-serialization-json a 1.11.0 que requiere
+    // Kotlin compiler 2.x. Quedarse en 1.9.x rompe el compile con
+    // "Class 'kotlinx.serialization.Serializable' was compiled with an
+    // incompatible version of Kotlin (metadata 2.3.0, compiler 1.9.0)".
+    kotlin("jvm") version "2.0.21"
+    kotlin("plugin.serialization") version "2.0.21"
     `maven-publish`
     signing
     id("com.gradleup.nmcp") version "0.0.9"

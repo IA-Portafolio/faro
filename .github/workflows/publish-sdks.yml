@@ -76,8 +76,12 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
       - working-directory: sdks/${{ needs.ctx.outputs.sdk }}
+        # --legacy-peer-deps: nextjs declara `next` y `react` como peerDeps;
+        # con npm 9+ ERESOLVE rompe el install cuando next@16 pide react@19
+        # pero alguna otra dep transitiva está en react@18. node y expo no
+        # tienen ese conflicto pero el flag tampoco les hace daño.
         run: |
-          npm install
+          npm install --legacy-peer-deps
           npm test
 
   test-python:
@@ -175,7 +179,7 @@ jobs:
       - working-directory: sdks/node
         run: |
           npm pkg set version="${{ needs.ctx.outputs.version }}"
-          npm install
+          npm install --legacy-peer-deps
           npm run build
           npm publish --access public
         env:
@@ -192,7 +196,7 @@ jobs:
       - working-directory: sdks/nextjs
         run: |
           npm pkg set version="${{ needs.ctx.outputs.version }}"
-          npm install
+          npm install --legacy-peer-deps
           npm run build
           npm publish --access public
         env:
@@ -209,7 +213,7 @@ jobs:
       - working-directory: sdks/expo
         run: |
           npm pkg set version="${{ needs.ctx.outputs.version }}"
-          npm install
+          npm install --legacy-peer-deps
           npm run build
           npm publish --access public
         env:
