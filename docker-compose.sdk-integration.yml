@@ -94,6 +94,7 @@ services:
       FARO_TOKEN: dev-ingest-token
       # npm cache out-of-mount; `/home/node` puede no ser writable para el UID externo.
       npm_config_cache: /tmp/.npm
-    # Reinstala (npm ci falla con package-lock obsoleto en CI) y dispara la suite
+    # Reinstala (npm ci falla con package-lock obsoleto en CI), buildea
+    # `dist/index.js` que el integration script importa, y dispara la suite
     # de integración que vive junto al SDK.
-    entrypoint: ["sh", "-c", "npm install --no-audit --no-fund && node tests-integration/run.mjs"]
+    entrypoint: ["sh", "-c", "npm install --no-audit --no-fund && npm run build && node tests-integration/run.mjs"]
