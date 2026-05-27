@@ -75,9 +75,17 @@ services:
     working_dir: /work
     volumes:
       - ./sdks/node:/work
+    # Correr como el UID/GID del host evita dejar `node_modules/` como root
+    # en el bind mount. En CI self-hosted ese basura rompe el `actions/checkout`
+    # del siguiente run con EACCES porque el runner-user no puede `rmdir`.
+    # Si UID_GID no está seteado, default a 1000:1000 (estándar Debian/Ubuntu —
+    # `victalejo` en infra-iaportafolio coincide con ese UID).
+    user: "${UID_GID:-1000:1000}"
     environment:
       FARO_ENDPOINT: http://backend:8080
       FARO_TOKEN: dev-ingest-token
+      # npm cache out-of-mount; `/home/node` puede no ser writable para el UID externo.
+      npm_config_cache: /tmp/.npm
     # Reinstala (npm ci falla con package-lock obsoleto en CI) y dispara la suite
     # de integración que vive junto al SDK.
     entrypoint: ["sh", "-c", "npm install --no-audit --no-fund && node tests-integration/run.mjs"]

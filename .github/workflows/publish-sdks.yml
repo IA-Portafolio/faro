@@ -151,6 +151,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: |
+          # UID_GID se inyecta para que el sdk-runner cree node_modules/ con
+          # ownership del runner-user en vez de root (sino el siguiente
+          # actions/checkout falla con EACCES intentando limpiar el workspace).
+          export UID_GID="$(id -u):$(id -g)"
           docker compose -f docker-compose.sdk-integration.yml up --build \
             --abort-on-container-exit --exit-code-from sdk-runner
       - if: failure()

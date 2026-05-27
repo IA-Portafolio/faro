@@ -169,6 +169,9 @@ jobs:
         # antes de levantar dependencias — falla rápida y obvia, mejor que
         # gastar 10 min rebuilding en silencio.
         run: |
+          # Inyectar UID_GID para que el sdk-runner cree node_modules/ como el
+          # runner-user (ver doc en publish-sdks.yml).
+          export UID_GID="$(id -u):$(id -g)"
           docker compose -f docker-compose.sdk-integration.yml up --no-build \
             --abort-on-container-exit --exit-code-from sdk-runner
 
