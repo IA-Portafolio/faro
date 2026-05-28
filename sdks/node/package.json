@@ -24,34 +24,61 @@
       "require": "./dist/winston.cjs"
     }
   },
-  "files": ["dist", "src", "README.md"],
-  "repository": { "type": "git", "url": "git+https://github.com/IA-Portafolio/faro.git", "directory": "sdks/node" },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IA-Portafolio/faro.git",
+    "directory": "sdks/node"
+  },
   "homepage": "https://github.com/IA-Portafolio/faro/tree/main/sdks/node#readme",
   "bugs": "https://github.com/IA-Portafolio/faro/issues",
-  "keywords": ["faro", "observability", "logging", "logs", "telemetry", "otel", "pino", "winston"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "faro",
+    "observability",
+    "logging",
+    "logs",
+    "telemetry",
+    "otel",
+    "pino",
+    "winston"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup src/index.ts src/pino.ts src/winston.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts src/pino.ts src/winston.ts --format esm --dts --watch",
     "test": "npm run build && node --test test/client.test.mjs"
   },
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "peerDependencies": {
     "@opentelemetry/api": ">=1.0.0",
     "pino-abstract-transport": ">=1.0.0",
     "winston-transport": ">=4.0.0"
   },
   "peerDependenciesMeta": {
-    "@opentelemetry/api": { "optional": true },
-    "pino-abstract-transport": { "optional": true },
-    "winston-transport": { "optional": true }
+    "@opentelemetry/api": {
+      "optional": true
+    },
+    "pino-abstract-transport": {
+      "optional": true
+    },
+    "winston-transport": {
+      "optional": true
+    }
   },
   "devDependencies": {
+    "@opentelemetry/api": "^1.0.0",
+    "@types/node": "^20.0.0",
+    "pino-abstract-transport": "^1.0.0",
     "tsup": "^8.0.0",
     "typescript": "^6.0.3",
-    "@types/node": "^20.0.0",
-    "@opentelemetry/api": "^1.0.0",
-    "pino-abstract-transport": "^1.0.0",
     "winston-transport": "^4.0.0"
   }
 }
