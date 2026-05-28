@@ -358,12 +358,16 @@ jobs:
             echo "::error::la key resuelta no tiene formato armored válido"
             exit 1
           fi
+          # Normalizar line endings — si el secret se pegó desde Windows
+          # quedan CRLF y BouncyCastle (lo que usa Gradle PGP) rechaza
+          # "Could not read PGP secret key" sin más explicación.
+          FINAL=$(printf '%s' "$FINAL" | tr -d '\r')
           {
             echo "GPG_ARMORED_KEY<<__END__"
             printf '%s\n' "$FINAL"
             echo "__END__"
           } >> "$GITHUB_ENV"
-          echo "armored key listo (${#FINAL} bytes)"
+          echo "armored key listo (${#FINAL} bytes, CRLF stripped)"
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
