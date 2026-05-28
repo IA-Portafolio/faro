@@ -345,9 +345,12 @@ jobs:
           printf '%s\n' "use-agent" "pinentry-mode loopback" "batch" "no-tty" >> ~/.gnupg/gpg.conf
           echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
           gpgconf --kill gpg-agent || true
-          # Re-export armored desde el keyring que ya importó la action, y guárdalo
-          # en una variable de entorno para que useInMemoryPgpKeys lo lea.
-          ARMORED=$(gpg --batch --pinentry-mode loopback --passphrase "$PASSPHRASE" --armor --export-secret-keys "$KEY_ID")
+          # Re-export armored desde el keyring que ya importó la action.
+          # `--passphrase-fd 0` lee la passphrase de stdin (vía heredoc) en
+          # vez de inline — necesario porque si MAVEN_GPG_PASSPHRASE empieza
+          # con `--`, el shell lo entrega como un argumento separado y gpg
+          # rechaza `--armor` y `--export-secret-keys` con "no command supplied".
+          ARMORED=$(gpg --batch --pinentry-mode loopback --passphrase-fd 0 --armor --export-secret-keys "$KEY_ID" <<<"$PASSPHRASE")
           if [ -z "$ARMORED" ]; then
             echo "::error::no se pudo exportar la key $KEY_ID"
             exit 1
