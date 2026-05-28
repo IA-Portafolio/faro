@@ -332,6 +332,24 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+      - name: Test passphrase matches key
+        # Diagnóstico definitivo: ¿el MAVEN_GPG_PASSPHRASE actual descifra
+        # la key que ya está importada en el keyring del runner por
+        # crazy-max? Si NO, no hay workflow que pueda firmar.
+        env:
+          PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
+          KEY_ID: ${{ steps.gpg.outputs.keyid }}
+        run: |
+          echo "passphrase len: ${#PASSPHRASE} chars"
+          echo "passphrase sha256 (first 16): $(printf '%s' "$PASSPHRASE" | sha256sum | cut -c1-16)"
+          echo "key id: $KEY_ID"
+          echo "--- intento de sign con la passphrase del secret:"
+          if printf 'test' | gpg --batch --pinentry-mode loopback --passphrase-fd 3 --local-user "$KEY_ID" --sign 3<<<"$PASSPHRASE" >/dev/null 2>&1; then
+            echo "✓ PASSPHRASE OK — descifra la key"
+          else
+            echo "✗ PASSPHRASE NO descifra la key del secret MAVEN_GPG_PRIVATE_KEY"
+            echo "::error::el secret MAVEN_GPG_PASSPHRASE no corresponde a MAVEN_GPG_PRIVATE_KEY — regenerá uno de los dos en GitHub Secrets"
+          fi
       - name: Configure GPG armored key for Gradle
         # Antes hacíamos re-export desde el keyring local con
         # `gpg --export-secret-keys`. En self-hosted eso falla con
