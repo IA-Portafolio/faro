@@ -332,46 +332,38 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-      - name: Configure GPG for non-interactive signing
-        # Sin esto gradle->gpg pide TTY al firmar (Inappropriate ioctl for device).
-        # Volvemos a `useInMemoryPgpKeys` exportando la armored ahora que la
-        # action ya importó la key — exportar desde el keyring local funciona
-        # aunque el secret pase mal por env.
+      - name: Configure GPG armored key for Gradle
+        # Antes hacíamos re-export desde el keyring local con
+        # `gpg --export-secret-keys`. En self-hosted eso falla con
+        # "Bad passphrase" porque la subkey tiene un keygrip distinto
+        # al cacheado por crazy-max y el agent rechaza el preset.
+        # Solución: usar el secret raw directamente — MAVEN_GPG_PRIVATE_KEY
+        # ya viene armored (`-----BEGIN PGP PRIVATE KEY BLOCK-----`),
+        # `useInMemoryPgpKeys` de Gradle lo come tal cual sin tocar el agent.
         env:
-          PASSPHRASE: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
-          KEY_ID: ${{ steps.gpg.outputs.keyid }}
+          ARMORED_KEY: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          ARMORED_KEY_B64: ${{ secrets.MAVEN_GPG_PRIVATE_KEY_B64 }}
         run: |
-          mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          # Append idempotente (sin duplicar línea) y con newline al final —
-          # en self-hosted persiste entre runs y `echo "..." >> file` sin
-          # newline previo termina pegando texto sobre la última línea
-          # ("allow-preset-passphraseallow-loopback-pinentry"), lo cual
-          # vuelve la config inválida y gpg-agent no arranca.
-          for line in "use-agent" "pinentry-mode loopback" "batch" "no-tty"; do
-            grep -qxF "$line" ~/.gnupg/gpg.conf 2>/dev/null || printf '%s\n' "$line" >> ~/.gnupg/gpg.conf
-          done
-          grep -qxF "allow-loopback-pinentry" ~/.gnupg/gpg-agent.conf 2>/dev/null || printf '\n%s\n' "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-          gpgconf --kill gpg-agent || true
-          # Re-export armored desde el keyring que ya importó la action.
-          # `--passphrase-fd 0` lee la passphrase de stdin — necesario porque
-          # si MAVEN_GPG_PASSPHRASE empieza con `--`, pasarla inline como
-          # `--passphrase "$VAR"` deja al shell descomponiendo y gpg rechaza
-          # `--armor` con "no command supplied".
-          # `printf '%s'` (sin %s\n) garantiza que NO se agregue newline al
-          # final del stdin; `<<<` lo agregaba y gpg leía la passphrase +
-          # newline → mismatch contra la cacheada por el agent ("Bad passphrase").
-          ARMORED=$(printf '%s' "$PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --armor --export-secret-keys "$KEY_ID")
-          if [ -z "$ARMORED" ]; then
-            echo "::error::no se pudo exportar la key $KEY_ID"
+          # Preferir la versión armored directa; caer al B64 si la primera
+          # no contiene el header esperado (algunos repos solo tienen B64).
+          if printf '%s' "$ARMORED_KEY" | grep -q "BEGIN PGP PRIVATE KEY"; then
+            FINAL="$ARMORED_KEY"
+          elif [ -n "$ARMORED_KEY_B64" ]; then
+            FINAL=$(printf '%s' "$ARMORED_KEY_B64" | base64 -d)
+          else
+            echo "::error::ni MAVEN_GPG_PRIVATE_KEY ni MAVEN_GPG_PRIVATE_KEY_B64 contienen una key utilizable"
             exit 1
           fi
-          # Compartir con el siguiente step via GITHUB_ENV (multiline syntax)
+          if ! printf '%s' "$FINAL" | grep -q "BEGIN PGP PRIVATE KEY"; then
+            echo "::error::la key resuelta no tiene formato armored válido"
+            exit 1
+          fi
           {
             echo "GPG_ARMORED_KEY<<__END__"
-            printf '%s\n' "$ARMORED"
+            printf '%s\n' "$FINAL"
             echo "__END__"
           } >> "$GITHUB_ENV"
-          echo "gpg key exported OK"
+          echo "armored key listo (${#FINAL} bytes)"
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
