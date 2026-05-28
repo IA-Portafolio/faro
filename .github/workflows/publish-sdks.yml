@@ -359,15 +359,34 @@ jobs:
             exit 1
           fi
           # Normalizar line endings — si el secret se pegó desde Windows
-          # quedan CRLF y BouncyCastle (lo que usa Gradle PGP) rechaza
-          # "Could not read PGP secret key" sin más explicación.
+          # quedan CRLF y BouncyCastle rechaza con "Could not read PGP
+          # secret key" sin más detalle.
           FINAL=$(printf '%s' "$FINAL" | tr -d '\r')
+          # Diagnóstico (sin exponer la key): cuántas líneas tiene y headers.
+          LINE_COUNT=$(printf '%s' "$FINAL" | wc -l)
+          FIRST_LINE=$(printf '%s' "$FINAL" | head -1)
+          LAST_LINE=$(printf '%s' "$FINAL" | tail -1)
+          echo "diag: ${#FINAL} bytes, $LINE_COUNT líneas (\\n)"
+          echo "diag: first='$FIRST_LINE'"
+          echo "diag: last='$LAST_LINE'"
+          # Si la key entera vino en UNA sola línea (GitHub UI a veces hace
+          # eso), reconstruir newlines: BEGIN header, body en chunks de 64
+          # chars (formato armored estándar), END footer.
+          if [ "$LINE_COUNT" -le 2 ]; then
+            echo "::warning::secret en una sola línea, reconstruyendo formato armored"
+            # Extraer body entre BEGIN y END headers
+            BODY=$(printf '%s' "$FINAL" | sed -E 's|.*-----BEGIN PGP PRIVATE KEY BLOCK-----||; s|-----END PGP PRIVATE KEY BLOCK-----.*||')
+            FINAL=$(printf '%s\n%s\n%s\n' \
+              "-----BEGIN PGP PRIVATE KEY BLOCK-----" \
+              "$(printf '%s' "$BODY" | fold -w 64)" \
+              "-----END PGP PRIVATE KEY BLOCK-----")
+          fi
           {
             echo "GPG_ARMORED_KEY<<__END__"
             printf '%s\n' "$FINAL"
             echo "__END__"
           } >> "$GITHUB_ENV"
-          echo "armored key listo (${#FINAL} bytes, CRLF stripped)"
+          echo "armored key listo final ${#FINAL} bytes"
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
