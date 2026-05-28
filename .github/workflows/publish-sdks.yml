@@ -342,8 +342,15 @@ jobs:
           KEY_ID: ${{ steps.gpg.outputs.keyid }}
         run: |
           mkdir -p ~/.gnupg && chmod 700 ~/.gnupg
-          printf '%s\n' "use-agent" "pinentry-mode loopback" "batch" "no-tty" >> ~/.gnupg/gpg.conf
-          echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+          # Append idempotente (sin duplicar línea) y con newline al final —
+          # en self-hosted persiste entre runs y `echo "..." >> file` sin
+          # newline previo termina pegando texto sobre la última línea
+          # ("allow-preset-passphraseallow-loopback-pinentry"), lo cual
+          # vuelve la config inválida y gpg-agent no arranca.
+          for line in "use-agent" "pinentry-mode loopback" "batch" "no-tty"; do
+            grep -qxF "$line" ~/.gnupg/gpg.conf 2>/dev/null || printf '%s\n' "$line" >> ~/.gnupg/gpg.conf
+          done
+          grep -qxF "allow-loopback-pinentry" ~/.gnupg/gpg-agent.conf 2>/dev/null || printf '\n%s\n' "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
           gpgconf --kill gpg-agent || true
           # Re-export armored desde el keyring que ya importó la action.
           # `--passphrase-fd 0` lee la passphrase de stdin (vía heredoc) en
