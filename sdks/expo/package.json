@@ -16,5 +16,9 @@
     "test": "npm run build && node --test --test-force-exit test/*.test.mjs"
   },
   "peerDependencies": { "react-native": ">=0.72" },
-  "devDependencies": { "tsup": "^8.0.0", "typescript": "^6.0.3" }
+  "devDependencies": {
+    "tsup": "^8.0.0",
+    "typescript": "^6.0.3",
+    "@types/node": "^20.0.0"
+  }
 }
