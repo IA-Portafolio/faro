@@ -353,11 +353,14 @@ jobs:
           grep -qxF "allow-loopback-pinentry" ~/.gnupg/gpg-agent.conf 2>/dev/null || printf '\n%s\n' "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
           gpgconf --kill gpg-agent || true
           # Re-export armored desde el keyring que ya importó la action.
-          # `--passphrase-fd 0` lee la passphrase de stdin (vía heredoc) en
-          # vez de inline — necesario porque si MAVEN_GPG_PASSPHRASE empieza
-          # con `--`, el shell lo entrega como un argumento separado y gpg
-          # rechaza `--armor` y `--export-secret-keys` con "no command supplied".
-          ARMORED=$(gpg --batch --pinentry-mode loopback --passphrase-fd 0 --armor --export-secret-keys "$KEY_ID" <<<"$PASSPHRASE")
+          # `--passphrase-fd 0` lee la passphrase de stdin — necesario porque
+          # si MAVEN_GPG_PASSPHRASE empieza con `--`, pasarla inline como
+          # `--passphrase "$VAR"` deja al shell descomponiendo y gpg rechaza
+          # `--armor` con "no command supplied".
+          # `printf '%s'` (sin %s\n) garantiza que NO se agregue newline al
+          # final del stdin; `<<<` lo agregaba y gpg leía la passphrase +
+          # newline → mismatch contra la cacheada por el agent ("Bad passphrase").
+          ARMORED=$(printf '%s' "$PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 --armor --export-secret-keys "$KEY_ID")
           if [ -z "$ARMORED" ]; then
             echo "::error::no se pudo exportar la key $KEY_ID"
             exit 1
