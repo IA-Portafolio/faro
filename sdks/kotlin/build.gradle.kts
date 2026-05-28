@@ -19,6 +19,12 @@ repositories { mavenCentral() }
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
+    // src/test/kotlin/.../FaroTest.kt importa org.junit.jupiter.api.* —
+    // las testImplementation faltaban y el compile de tests pinchaba con
+    // "Unresolved reference 'junit'". `useJUnitPlatform()` abajo asume
+    // JUnit 5 en el classpath.
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 kotlin { jvmToolchain(17) }
