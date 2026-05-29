@@ -159,6 +159,7 @@ type Client struct {
 	opts         Options
 	ch           chan Entry
 	eventsCh     chan ProductEvent
+	spansCh      chan *Span
 	wg           sync.WaitGroup
 	closed       chan struct{}
 	once         sync.Once
@@ -239,15 +240,17 @@ func New(opts Options) (*Client, error) {
 		opts:           opts,
 		ch:             make(chan Entry, opts.MaxQueueSize),
 		eventsCh:       make(chan ProductEvent, opts.MaxQueueSize),
+		spansCh:        make(chan *Span, opts.MaxQueueSize),
 		closed:         make(chan struct{}),
 		scrubNeedles:   needles,
 		scrubRegexes:   regexes,
 		anonymousID:    fmt.Sprintf("anon_%d_%d", time.Now().UnixNano(), rand63()),
 		userProperties: map[string]any{},
 	}
-	c.wg.Add(2)
+	c.wg.Add(3)
 	go c.loop()
 	go c.eventsLoop()
+	go c.spansLoop()
 	return c, nil
 }
 
@@ -327,6 +330,68 @@ func (c *Client) Info(msg string, attrs map[string]any)    { c.Log(SevInfo, msg,
 func (c *Client) Warn(msg string, attrs map[string]any)    { c.Log(SevWarn, msg, attrs) }
 func (c *Client) Warning(msg string, attrs map[string]any) { c.Log(SevWarn, msg, attrs) } // alias de Warn (paridad logging.WARNING)
 func (c *Client) Error(msg string, attrs map[string]any)   { c.Log(SevError, msg, attrs) }
+
+// LogContext emite un log adjuntando el trace_id/span_id del span activo en
+// ctx (si hay). Equivalente a Log pero con auto-correlación.
+func (c *Client) LogContext(ctx context.Context, level Severity, msg string, attrs map[string]any) {
+	if c == nil {
+		return
+	}
+	merged := make(map[string]string, len(c.opts.Attributes)+len(attrs)+2)
+	for k, v := range c.opts.Attributes {
+		merged[k] = v
+	}
+	if c.opts.Environment != "" {
+		merged["deployment.environment"] = c.opts.Environment
+	}
+	if c.opts.Release != "" {
+		merged["service.version"] = c.opts.Release
+	}
+	for k, v := range attrs {
+		merged[k] = stringify(v)
+	}
+	entry := Entry{
+		Level:      level,
+		Message:    msg,
+		Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
+		Attributes: merged,
+	}
+	// Auto-correlación con el span activo en ctx.
+	if span := SpanFromContext(ctx); span != nil {
+		entry.TraceID = span.traceID
+		entry.SpanID = span.spanID
+	} else if c.opts.TraceContext != nil {
+		tc := normalizeTraceContext(c.opts.TraceContext(ctx))
+		if tc.TraceID != "" {
+			entry.TraceID = tc.TraceID
+			entry.SpanID = tc.SpanID
+		}
+	}
+	c.scrubEntry(&entry)
+	if c.opts.BeforeSend != nil {
+		out := c.opts.BeforeSend(&entry)
+		if out == nil {
+			return
+		}
+		entry = *out
+	}
+	select {
+	case c.ch <- entry:
+	default:
+		c.opts.OnInternalError(fmt.Errorf("cola llena, evento descartado"))
+	}
+}
+
+// InfoContext / WarnContext / ErrorContext — variantes context-aware con auto-correlación.
+func (c *Client) InfoContext(ctx context.Context, msg string, attrs map[string]any) {
+	c.LogContext(ctx, SevInfo, msg, attrs)
+}
+func (c *Client) WarnContext(ctx context.Context, msg string, attrs map[string]any) {
+	c.LogContext(ctx, SevWarn, msg, attrs)
+}
+func (c *Client) ErrorContext(ctx context.Context, msg string, attrs map[string]any) {
+	c.LogContext(ctx, SevError, msg, attrs)
+}
 
 // CaptureException reporta un error con stack trace y tags opcionales.
 func (c *Client) CaptureException(err error, tags map[string]string) {
@@ -485,14 +550,14 @@ func (c *Client) Recover(tags map[string]string) {
 	}
 }
 
-// Flush bloquea hasta que ambas colas (logs + events) se vacíen o se cumpla el deadline.
+// Flush bloquea hasta que las tres colas (logs + events + spans) se vacíen o se cumpla el deadline.
 func (c *Client) Flush(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) && (len(c.ch) > 0 || len(c.eventsCh) > 0) {
+	for time.Now().Before(deadline) && (len(c.ch) > 0 || len(c.eventsCh) > 0 || len(c.spansCh) > 0) {
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(c.ch) > 0 || len(c.eventsCh) > 0 {
-		return fmt.Errorf("timeout de flush con %d logs y %d events pendientes", len(c.ch), len(c.eventsCh))
+	if len(c.ch) > 0 || len(c.eventsCh) > 0 || len(c.spansCh) > 0 {
+		return fmt.Errorf("timeout de flush con %d logs, %d events y %d spans pendientes", len(c.ch), len(c.eventsCh), len(c.spansCh))
 	}
 	return nil
 }
@@ -726,6 +791,18 @@ func Info(msg string, attrs map[string]any)                { defaultClient.Info(
 func Warn(msg string, attrs map[string]any)                { defaultClient.Warn(msg, attrs) }
 func Warning(msg string, attrs map[string]any)             { defaultClient.Warning(msg, attrs) }
 func Error(msg string, attrs map[string]any)               { defaultClient.Error(msg, attrs) }
+func LogContext(ctx context.Context, level Severity, msg string, attrs map[string]any) {
+	defaultClient.LogContext(ctx, level, msg, attrs)
+}
+func InfoContext(ctx context.Context, msg string, attrs map[string]any) {
+	defaultClient.InfoContext(ctx, msg, attrs)
+}
+func WarnContext(ctx context.Context, msg string, attrs map[string]any) {
+	defaultClient.WarnContext(ctx, msg, attrs)
+}
+func ErrorContext(ctx context.Context, msg string, attrs map[string]any) {
+	defaultClient.ErrorContext(ctx, msg, attrs)
+}
 func CaptureException(err error, tags map[string]string)   { defaultClient.CaptureException(err, tags) }
 func Track(eventName string, properties map[string]any)    { defaultClient.Track(eventName, properties) }
 func TrackContext(ctx context.Context, eventName string, properties map[string]any) {

@@ -7,7 +7,35 @@ cuando se empuja un tag `sdk-go-v<semver>` al repo.
 
 ## [Unreleased]
 
-### Added
+### Added — v0.2.0 (tracing)
+- **Tracing nativo OTLP/HTTP/JSON**, sin deps. API paridad cross-SDK con
+  `@iaportafolio/node` y `faro_sdk` (Python):
+  - `client.StartSpan(ctx, name, faro.SpanOptions{Kind, Attributes, Parent}) → (ctx, *Span)`
+  - `client.WithSpan(ctx, name, func(ctx, span) error, opts) → error` con
+    auto-close + `RecordException` en error.
+  - Métodos del span: `SetAttribute / SetAttributes / AddEvent / SetStatus /
+    RecordException / End / Traceparent / TraceID / SpanID`.
+  - `SpanKind*` enums (Internal/Server/Client/Producer/Consumer) y
+    `Status*` (Unset/OK/Error) con valores numéricos OTLP.
+  - `ContextWithSpan(ctx, span)` / `SpanFromContext(ctx)` para integraciones
+    custom; `SpanParent` admite `Traceparent` W3C, `TraceID/SpanID`, o
+    `ForceRoot: true` para romper la herencia.
+- **Auto-correlación logs ↔ trazas**: `client.LogContext(ctx, ...)` (alias
+  `InfoContext / WarnContext / ErrorContext`) lee el span activo del `ctx`
+  y adjunta `trace_id` + `span_id` automáticamente.
+- Pipeline de spans con worker dedicado + canal `spansCh` (separado de logs
+  y events) → batching cada `FlushInterval` y POST OTLP/JSON a `/v1/traces`.
+  Mismo `MaxBatchSize` / `MaxQueueSize` / retry-on-5xx que las otras colas.
+- Subpaquete `sdks/go/ginfaro` (go.mod aparte) con `ginfaro.Tracing()`
+  middleware para Gin: crea span SERVER por request, hereda W3C `traceparent`
+  entrante, propaga al response, registra status/errors. Lo separamos en
+  su propio módulo para que el SDK core siga zero-dep.
+- 9 tests de tracing con `httptest.NewServer` separando `/v1/traces` y
+  `/api/v1/ingest/logs`: emisión OTLP shape, parent contextual, `WithSpan`
+  con error, `ForceRoot`, traceparent parent, auto-correlación, formato W3C,
+  `RecordException`, idempotencia de `End()`.
+
+### Added — v0.1.x
 - Alias `Warning()` además de `Warn()` (paridad cross-SDK con `WARNING`).
 - Auto-redacción: opciones `ScrubFields`, `DisableHeaderScrub`,
   `ScrubPatterns`. Defaults: lista común de campos sensibles +

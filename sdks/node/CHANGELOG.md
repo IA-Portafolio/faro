@@ -6,7 +6,40 @@ empujando un tag `sdk-node-v<semver>`.
 
 ## [Unreleased]
 
+### Breaking
+- **El tracing ahora está respaldado por `@opentelemetry/sdk-trace-node` + `auto-instrumentations-node`.**
+  La API pública (`startSpan` / `withSpan` / `activeSpan` / `Span` / `traceparent()`)
+  se mantiene compat, pero por dentro envuelve `@opentelemetry/api`. Esto añade
+  spans **automáticos** para http, fetch, express, fastify, koa, pg, mongodb,
+  redis, ioredis, grpc, kafka, … sin instrumentar manualmente — Service Map
+  y la pestaña Trazas se llenan solas en `faro.iaportafolio.com`.
+- **Nuevas dependencias runtime** (~50 paquetes OTel): `@opentelemetry/api`,
+  `sdk-trace-node`, `auto-instrumentations-node`, `exporter-trace-otlp-http`,
+  `instrumentation`, `resources`, `semantic-conventions`. Si necesitás opt-out,
+  usá `enableTracing: false` en `init(...)` — el SDK funciona como antes (solo
+  logs/errores/events).
+- **Auto-instrumentación requiere init temprano.** En Node, OTel debe
+  inicializarse antes de que se importen las librerías a instrumentar. Camino
+  recomendado: `node --import @iaportafolio/node/instrument server.js` (lee
+  `FARO_ENDPOINT` / `FARO_INGEST_TOKEN` / `OTEL_SERVICE_NAME` del entorno).
+  Inline también funciona pero el `faro.init(...)` o `initTracing(...)` debe
+  ser la primera línea del entrypoint.
+- **La cola interna de spans (`spansQueue`) y el emisor OTLP/JSON propio
+  desaparecen.** El BatchSpanProcessor de OTel se encarga del batching y la
+  exportación a `/v1/traces`. `c.flush()` ahora hace `forceFlush()` del
+  provider y drena en milisegundos.
+- **`@opentelemetry/api` pasa de optional peer a dependency directa** — ya no
+  hace falta instalarlo aparte.
+
 ### Added
+- Subimport `@iaportafolio/node/instrument` — pre-loader para `--import` que
+  inicializa el tracing desde env vars antes de tu primera línea de código.
+- Subimport `@iaportafolio/node/tracing` — exporta `initTracing`,
+  `shutdownTracing`, `flushTracing`, `getTracer` para usar OTel directamente.
+- Opciones `enableTracing` (default `true`), `tracesEndpoint`,
+  `resourceAttributes`, `disabledInstrumentations` en `FaroOptions`.
+- `service.version` y `deployment.environment[.name]` se emiten en el Resource
+  OTel y por lo tanto aparecen en cada span exportado.
 - Alias `warning()` (paridad con `logging.WARNING` de Python y otros loggers).
 - Auto-redacción: `scrubFields` (default: password/token/secret/authorization/
   cookie/set-cookie/api_key/apikey), `scrubHeaders` (default `true`),

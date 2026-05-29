@@ -1,6 +1,6 @@
 [project]
 name = "faro-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Faro SDK for Python — send logs and captured exceptions to a Faro instance."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -16,6 +16,17 @@ classifiers = [
 ]
 dependencies = [
     "requests>=2.31",
+    # OTel — tracing respaldado por @opentelemetry/sdk. El exporter lo escribimos
+    # nosotros (FaroJsonSpanExporter en _tracing.py) para hablar OTLP/HTTP/JSON
+    # contra /v1/traces del backend Faro, así que no necesitamos
+    # opentelemetry-exporter-otlp-proto-http (que sólo es protobuf).
+    "opentelemetry-api>=1.34",
+    "opentelemetry-sdk>=1.34",
+    # Instrumentaciones más comunes — se auto-descubren si están instaladas.
+    # Las del resto las añade el user con `pip install opentelemetry-instrumentation-<x>`.
+    "opentelemetry-instrumentation>=0.55b0",
+    "opentelemetry-instrumentation-requests>=0.55b0",
+    "opentelemetry-instrumentation-urllib3>=0.55b0",
 ]
 
 [project.urls]
@@ -24,6 +35,35 @@ Issues = "https://github.com/IA-Portafolio/faro/issues"
 Documentation = "https://github.com/IA-Portafolio/faro/tree/main/sdks/python#readme"
 
 [project.optional-dependencies]
+# Extras de instrumentación — el user los activa con `pip install faro-sdk[fastapi]`.
+fastapi = ["opentelemetry-instrumentation-fastapi>=0.55b0"]
+flask = ["opentelemetry-instrumentation-flask>=0.55b0"]
+django = ["opentelemetry-instrumentation-django>=0.55b0"]
+postgres = [
+    "opentelemetry-instrumentation-psycopg2>=0.55b0",
+    "opentelemetry-instrumentation-psycopg>=0.55b0",
+]
+mongo = ["opentelemetry-instrumentation-pymongo>=0.55b0"]
+redis = ["opentelemetry-instrumentation-redis>=0.55b0"]
+sqlalchemy = ["opentelemetry-instrumentation-sqlalchemy>=0.55b0"]
+celery = ["opentelemetry-instrumentation-celery>=0.55b0"]
+httpx = ["opentelemetry-instrumentation-httpx>=0.55b0"]
+aiohttp = ["opentelemetry-instrumentation-aiohttp-client>=0.55b0"]
+starlette = ["opentelemetry-instrumentation-starlette>=0.55b0"]
+all-instrumentations = [
+    "opentelemetry-instrumentation-fastapi>=0.55b0",
+    "opentelemetry-instrumentation-flask>=0.55b0",
+    "opentelemetry-instrumentation-django>=0.55b0",
+    "opentelemetry-instrumentation-psycopg2>=0.55b0",
+    "opentelemetry-instrumentation-psycopg>=0.55b0",
+    "opentelemetry-instrumentation-pymongo>=0.55b0",
+    "opentelemetry-instrumentation-redis>=0.55b0",
+    "opentelemetry-instrumentation-sqlalchemy>=0.55b0",
+    "opentelemetry-instrumentation-celery>=0.55b0",
+    "opentelemetry-instrumentation-httpx>=0.55b0",
+    "opentelemetry-instrumentation-aiohttp-client>=0.55b0",
+    "opentelemetry-instrumentation-starlette>=0.55b0",
+]
 dev = [
     "pytest>=7",
     "ruff>=0.4",

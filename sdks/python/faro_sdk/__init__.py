@@ -11,6 +11,13 @@ Uso:
     except Exception as exc:
         faro.capture_exception(exc, tags={"job": "nightly"})
         raise
+
+v0.2.0: el tracing pasa a estar respaldado por OpenTelemetry. La API pública
+(`start_span` / `use_span` / `active_span` / `Span`) se conserva, pero por
+dentro envuelve `opentelemetry.trace.Span`. Esto desbloquea auto-instrumentación
+de requests/urllib3/httpx/psycopg/pymongo/redis/sqlalchemy/aiohttp/celery/starlette
+si esos paquetes están instalados — Service Map y la pestaña Trazas en el
+dashboard se llenan sin instrumentar manualmente.
 """
 
 from __future__ import annotations
@@ -25,11 +32,20 @@ import sys
 import threading
 import time
 import traceback
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Iterator
 
 import requests
+
+from ._tracing import (
+    flush_tracing as _flush_tracing,
+    get_current_otel_span as _get_current_otel_span,
+    get_tracer as _get_tracer,
+    init_tracing as _init_tracing,
+    shutdown_tracing as _shutdown_tracing,
+)
 
 __all__ = [
     "init",
@@ -42,9 +58,20 @@ __all__ = [
     "track",
     "identify",
     "alias",
+    "start_span",
+    "use_span",
+    "active_span",
+    "Span",
+    "SpanKind",
+    "SpanStatus",
     "flush",
     "close",
     "FaroHandler",
+    # OTel-passthrough
+    "init_tracing",
+    "shutdown_tracing",
+    "flush_tracing",
+    "get_tracer",
 ]
 
 _SEVERITIES = {"TRACE", "DEBUG", "INFO", "WARN", "ERROR", "FATAL"}
@@ -71,6 +98,166 @@ _TRACEPARENT_RE = re.compile(
 )
 
 TraceContextProvider = Callable[[], dict[str, Any] | str | None]
+
+# --- Tracing primitives (mapeo Faro→OTel) ---
+
+# OTLP SpanKind por nombre.
+SpanKind = str  # "INTERNAL" | "SERVER" | "CLIENT" | "PRODUCER" | "CONSUMER"
+
+# OTLP StatusCode por nombre.
+SpanStatus = str  # "UNSET" | "OK" | "ERROR"
+
+# OTel mappings — los importamos lazy para no romper si OTel SDK no se instaló.
+def _otel_span_kind(name: SpanKind) -> Any:
+    try:
+        from opentelemetry.trace import SpanKind as OtelSpanKind
+        return {
+            "INTERNAL": OtelSpanKind.INTERNAL,
+            "SERVER": OtelSpanKind.SERVER,
+            "CLIENT": OtelSpanKind.CLIENT,
+            "PRODUCER": OtelSpanKind.PRODUCER,
+            "CONSUMER": OtelSpanKind.CONSUMER,
+        }.get(name, OtelSpanKind.INTERNAL)
+    except ImportError:
+        return None
+
+
+def _otel_status_code(name: SpanStatus) -> Any:
+    try:
+        from opentelemetry.trace import StatusCode
+        return {"UNSET": StatusCode.UNSET, "OK": StatusCode.OK, "ERROR": StatusCode.ERROR}.get(
+            name, StatusCode.UNSET
+        )
+    except ImportError:
+        return None
+
+
+def _stringify_attr(v: Any) -> str:
+    if isinstance(v, str):
+        return v
+    if v is None:
+        return ""
+    if isinstance(v, (int, float, bool)):
+        return str(v)
+    try:
+        return json.dumps(v, default=str)
+    except Exception:
+        return str(v)
+
+
+class Span:
+    """Span público respaldado por `opentelemetry.trace.Span`.
+
+    La API es la misma que en v0.1.x (set_attribute / add_event / set_status /
+    record_exception / end / traceparent / span_context) — el cambio interno
+    es que ahora la exportación, batching, y propagación de contexto las maneja
+    OTel, lo que habilita correlación con spans auto-instrumentados.
+    """
+
+    def __init__(self, otel_span: Any, *, ctx_token: Any = None) -> None:
+        self._otel = otel_span
+        self._ctx_token = ctx_token  # token de attach() para detach en end()
+        self._ended = False
+
+    @property
+    def trace_id(self) -> str:
+        sc = self._otel.get_span_context()
+        return format(sc.trace_id, "032x")
+
+    @property
+    def span_id(self) -> str:
+        sc = self._otel.get_span_context()
+        return format(sc.span_id, "016x")
+
+    @property
+    def ended(self) -> bool:
+        return self._ended
+
+    def span_context(self) -> dict[str, str]:
+        return {"trace_id": self.trace_id, "span_id": self.span_id}
+
+    def traceparent(self) -> str:
+        sc = self._otel.get_span_context()
+        flags = "01" if (sc.trace_flags & 1) else "00"
+        return f"00-{format(sc.trace_id, '032x')}-{format(sc.span_id, '016x')}-{flags}"
+
+    def set_attribute(self, key: str, value: Any) -> None:
+        if self._ended:
+            return
+        try:
+            self._otel.set_attribute(key, _stringify_attr(value))
+        except Exception:
+            pass
+
+    def set_attributes(self, attrs: dict[str, Any]) -> None:
+        if self._ended:
+            return
+        for k, v in attrs.items():
+            self.set_attribute(k, v)
+
+    def add_event(
+        self,
+        name: str,
+        attributes: dict[str, Any] | None = None,
+        timestamp: datetime | None = None,
+    ) -> None:
+        if self._ended:
+            return
+        attrs: dict[str, str] = {}
+        if attributes:
+            for k, v in attributes.items():
+                attrs[k] = _stringify_attr(v)
+        try:
+            ts = int(timestamp.timestamp() * 1e9) if timestamp else None
+            self._otel.add_event(name, attributes=attrs, timestamp=ts)
+        except Exception:
+            pass
+
+    def set_status(self, code: SpanStatus, message: str = "") -> None:
+        if self._ended:
+            return
+        try:
+            from opentelemetry.trace import Status
+            otel_code = _otel_status_code(code)
+            if otel_code is None:
+                return
+            self._otel.set_status(Status(otel_code, description=message or None))
+        except Exception:
+            pass
+
+    def record_exception(self, exc: BaseException) -> None:
+        # Set status manually first to match cross-SDK behavior, then add exception attrs.
+        self.set_status("ERROR", str(exc))
+        self.set_attribute("exception.type", type(exc).__name__)
+        self.set_attribute("exception.message", str(exc))
+        self.set_attribute(
+            "exception.stacktrace",
+            "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+        )
+        # OTel también tiene record_exception(); lo llamamos por las dudas, pero
+        # los attrs custom de arriba son los que aseguran la wire shape.
+        try:
+            self._otel.record_exception(exc)
+        except Exception:
+            pass
+
+    def end(self, end_time: datetime | None = None) -> None:
+        if self._ended:
+            return
+        self._ended = True
+        try:
+            ts = int(end_time.timestamp() * 1e9) if end_time else None
+            self._otel.end(end_time=ts)
+        except Exception:
+            pass
+        # Si el span fue activado vía use_span(), liberamos el token del contextvar.
+        if self._ctx_token is not None:
+            try:
+                from opentelemetry import context
+                context.detach(self._ctx_token)
+            except Exception:
+                pass
+            self._ctx_token = None
 
 
 def _scrub_string(s: str, regexes: list[re.Pattern[str]]) -> str:
@@ -133,22 +320,52 @@ def _normalize_trace_context(value: dict[str, Any] | str | None) -> dict[str, st
     return out
 
 
-def _otel_current_trace_context() -> dict[str, str] | None:
-    try:
-        from opentelemetry import trace  # type: ignore
-    except Exception:
+def _otel_trace_context_from_active_span() -> dict[str, str] | None:
+    span = _get_current_otel_span()
+    if span is None:
         return None
+    sc = span.get_span_context()
+    return {
+        "trace_id": format(sc.trace_id, "032x"),
+        "span_id": format(sc.span_id, "016x"),
+    }
+
+
+def _make_parent_context(parent: Any) -> Any:
+    """Resuelve el `parent=` de start_span/use_span a un Context OTel.
+
+    - `parent is ...` (default): None → hereda el current active context.
+    - `parent is None`: fuerza root (Context vacío).
+    - `parent` Span/dict/str: lo desenvolvemos al SpanContext + lo ponemos en Context.
+    """
+    if parent is ...:
+        return None  # OTel toma el current active si no pasamos context
     try:
-        span = trace.get_current_span()
-        span_context = span.get_span_context()
-        if not getattr(span_context, "is_valid", False):
-            return None
-        return {
-            "trace_id": format(span_context.trace_id, "032x"),
-            "span_id": format(span_context.span_id, "016x"),
-        }
-    except Exception:
+        from opentelemetry import context, trace
+        from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+    except ImportError:
         return None
+    if parent is None:
+        # Context vacío → root span
+        return context.Context()
+    if isinstance(parent, Span):
+        sc = parent._otel.get_span_context()
+        return trace.set_span_in_context(NonRecordingSpan(sc), context.Context())
+    if isinstance(parent, str):
+        tc = _parse_traceparent(parent)
+    elif isinstance(parent, dict):
+        tc = _normalize_trace_context(parent)
+    else:
+        tc = None
+    if not tc or not tc.get("trace_id") or not tc.get("span_id"):
+        return context.Context()
+    sc = SpanContext(
+        trace_id=int(tc["trace_id"], 16),
+        span_id=int(tc["span_id"], 16),
+        is_remote=True,
+        trace_flags=TraceFlags(TraceFlags.SAMPLED),
+    )
+    return trace.set_span_in_context(NonRecordingSpan(sc), context.Context())
 
 
 @dataclass
@@ -171,6 +388,11 @@ class _Options:
     scrub_patterns: tuple[str, ...] = ("jwt", "api-key")
     before_send: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
     trace_context: TraceContextProvider | None = None
+    # OTel tracing (v0.2.0+).
+    enable_tracing: bool = True
+    traces_endpoint: str | None = None
+    resource_attributes: dict[str, str] | None = None
+    disabled_instrumentations: tuple[str, ...] = ()
 
 
 class _Client:
@@ -185,23 +407,30 @@ class _Client:
             _SCRUB_REGEXES[p] for p in opts.scrub_patterns if p in _SCRUB_REGEXES
         ]
         self._queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=opts.max_queue_size)
-        # Cola paralela para product events. Mismo modelo que `_queue` pero su
-        # worker postea a `/ingest/events` en vez de `/ingest/logs`.
         self._events_queue: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=opts.max_queue_size)
-        # Estado de identidad para los product events. `_distinct_id` se setea
-        # con `identify()`; mientras esté vacío, los eventos se atribuyen al
-        # `_anonymous_id` generado en el boot del cliente.
+        # Estado de identidad para los product events.
         self._distinct_id: str = ""
         self._anonymous_id: str = f"anon_{os.urandom(8).hex()}"
         self._user_properties: dict[str, Any] = {}
         self._closed = threading.Event()
         self._session = requests.Session()
+
+        # OTel tracing bootstrap. Es idempotente: si fue inicializado vía
+        # `opentelemetry-instrument` o vía init_tracing() previo, esto es no-op.
+        if opts.enable_tracing:
+            _init_tracing(
+                endpoint=opts.endpoint,
+                token=opts.token,
+                service=opts.service,
+                traces_endpoint=opts.traces_endpoint,
+                environment=opts.environment,
+                release=opts.release,
+                resource_attributes=opts.resource_attributes,
+                disabled_instrumentations=opts.disabled_instrumentations,
+            )
+
         self._worker = threading.Thread(target=self._run, daemon=True, name="faro-flush")
         self._worker.start()
-        # Worker separado para events: misma cadencia de flush, mismo backoff,
-        # pero contra `/ingest/events`. Mantenerlos separados evita que un batch
-        # de logs grande retrase los events (y viceversa) en la misma sección
-        # crítica.
         self._events_worker = threading.Thread(
             target=self._run_events, daemon=True, name="faro-flush-events"
         )
@@ -241,6 +470,14 @@ class _Client:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "attributes": attrs,
         }
+        # Auto-correlación: si el caller no pasó trace_id, leemos el span activo
+        # del context manager de OTel. Esto cubre tanto spans Faro (vía use_span)
+        # como cualquier span auto-instrumentado (requests, psycopg, fastapi, …).
+        if not trace_id:
+            tc = self._current_trace_context()
+            if tc:
+                trace_id = tc.get("trace_id")
+                span_id = tc.get("span_id")
         if trace_id:
             entry["trace_id"] = trace_id
         if span_id:
@@ -283,11 +520,9 @@ class _Client:
     # ---------- Product events API (Segment/PostHog-like) ----------
 
     def track(self, event_name: str, properties: dict[str, Any] | None = None) -> None:
-        """Envía un evento custom de producto. Equivalente a `analytics.track()`."""
         self._enqueue_event(type_="track", name=event_name, properties=properties or {})
 
     def identify(self, user_id: str, traits: dict[str, Any] | None = None) -> None:
-        """Setea el `distinct_id` para los eventos siguientes y emite `$identify`."""
         if not user_id:
             return
         self._distinct_id = user_id
@@ -301,7 +536,6 @@ class _Client:
         )
 
     def alias(self, prev_id: str, new_id: str) -> None:
-        """Fusiona una sesión pre-login (`prev_id`) con un usuario post-login (`new_id`)."""
         if not prev_id or not new_id:
             return
         self._distinct_id = new_id
@@ -343,9 +577,9 @@ class _Client:
             "context": ctx,
             "source": "backend",
         }
-        trace = self._current_trace_context()
-        if trace:
-            event.update(trace)
+        tc = self._current_trace_context()
+        if tc:
+            event.update(tc)
         try:
             self._events_queue.put_nowait(event)
         except queue.Full:
@@ -359,38 +593,95 @@ class _Client:
                 explicit = None
             if explicit:
                 return explicit
-        return _otel_current_trace_context()
+        return _otel_trace_context_from_active_span()
+
+    # ---------- Tracing API (respaldada por OTel) ----------
+
+    def start_span(
+        self,
+        name: str,
+        kind: SpanKind = "INTERNAL",
+        attributes: dict[str, Any] | None = None,
+        parent: Any = ...,
+        start_time: datetime | None = None,
+    ) -> Span:
+        """Crea un span (sin activarlo). Para auto-activar, usá use_span."""
+        tracer = _get_tracer()
+        attrs: dict[str, str] = {}
+        if attributes:
+            for k, v in attributes.items():
+                attrs[k] = _stringify_attr(v)
+        ctx = _make_parent_context(parent)
+        otel_kind = _otel_span_kind(kind)
+        kwargs: dict[str, Any] = {"attributes": attrs}
+        if otel_kind is not None:
+            kwargs["kind"] = otel_kind
+        if start_time is not None:
+            kwargs["start_time"] = int(start_time.timestamp() * 1e9)
+        if ctx is not None:
+            kwargs["context"] = ctx
+        otel_span = tracer.start_span(name, **kwargs)
+        return Span(otel_span)
+
+    @contextmanager
+    def use_span(
+        self,
+        name: str,
+        kind: SpanKind = "INTERNAL",
+        attributes: dict[str, Any] | None = None,
+        parent: Any = ...,
+    ) -> Iterator[Span]:
+        """Context manager: crea, activa (via OTel context), cierra. Si el bloque
+        lanza, marca status=ERROR + record_exception. Re-lanza siempre."""
+        from opentelemetry import context as otel_context
+        from opentelemetry import trace as otel_trace
+
+        span = self.start_span(name=name, kind=kind, attributes=attributes, parent=parent)
+        # Activar el span en el context — esto hace que subsiguientes start_span
+        # (sin parent= explícito) lo tomen como padre.
+        ctx = otel_trace.set_span_in_context(span._otel)
+        token = otel_context.attach(ctx)
+        span._ctx_token = token
+        try:
+            yield span
+        except BaseException as e:
+            span.record_exception(e)
+            raise
+        finally:
+            if not span.ended:
+                span.end()
+
+    def active_span(self) -> Span | None:
+        otel_span = _get_current_otel_span()
+        if otel_span is None:
+            return None
+        return Span(otel_span)
 
     def flush(self, timeout: float = 5.0) -> None:
-        # Despierta a ambos workers; si alguno ya no está corriendo, lo de él
-        # se queda en la cola hasta el próximo init (rare en práctica). Damos
-        # mitad del presupuesto a cada cola — log() suele ser el más volumoso.
+        # Despierta a los workers de logs/events; espera a que se vacíen.
         deadline = time.monotonic() + timeout
-        while (not self._queue.empty() or not self._events_queue.empty()) and time.monotonic() < deadline:
+        while (
+            not self._queue.empty() or not self._events_queue.empty()
+        ) and time.monotonic() < deadline:
             time.sleep(0.05)
+        # Drena el batch processor de OTel.
+        remaining = max(0.0, deadline - time.monotonic())
+        _flush_tracing(timeout_ms=int(remaining * 1000) or 1)
 
     def close(self, timeout: float = 5.0) -> None:
-        """Cierra el SDK, drenando la cola y esperando a que el worker termine.
-
-        El parámetro `timeout` acota tanto el drenado de la cola como el join
-        del thread worker — porque es daemon, sin join podría quedar truncado
-        a mitad de HTTP request si el proceso muere justo después.
-        """
+        """Cierra el SDK drenando colas + apagando OTel."""
         if self._closed.is_set():
             return
         self._closed.set()
-        # Reparto: la mitad del presupuesto al drenado, la otra al join (en el peor caso
-        # _send() está bloqueado en HTTP justo cuando llamamos close).
-        half = max(0.5, timeout / 2)
-        self.flush(timeout=half)
-        # Espera explícita a que ambos workers drenen el batch en vuelo y terminen.
-        # Sin join, los daemon threads quedarían truncados al salir el proceso
-        # (en mitad de POST). Repartimos el presupuesto restante entre los dos.
-        join_each = max(0.25, half / 2)
+        # Repartimos el presupuesto: drenado + join + tracing shutdown.
+        third = max(0.5, timeout / 3)
+        self.flush(timeout=third)
+        join_each = max(0.25, third / 2)
         self._worker.join(timeout=join_each)
         self._events_worker.join(timeout=join_each)
+        _shutdown_tracing(timeout_ms=int(third * 1000))
 
-    # ---------- Worker (en segundo plano) ----------
+    # ---------- Workers (en segundo plano) ----------
 
     def _run(self) -> None:
         batch: list[dict[str, Any]] = []
@@ -409,13 +700,10 @@ class _Client:
             if ready or (self._closed.is_set() and batch):
                 ok = self._send(batch)
                 if not ok:
-                    # 5xx / red caída → reintentamos el batch en la próxima iteración.
-                    # Reinsertamos delante para mantener orden aproximado.
                     for item in batch:
                         try:
                             self._queue.put_nowait(item)
                         except queue.Full:
-                            # cola llena → caemos en la misma regla que log(): descartar.
                             sys.stderr.write("[faro] cola llena al reintentar, evento descartado\n")
                 batch = []
                 last_flush = time.monotonic()
@@ -423,7 +711,6 @@ class _Client:
                 return
 
     def _run_events(self) -> None:
-        """Worker análogo a `_run` pero contra la cola de events y `/ingest/events`."""
         batch: list[dict[str, Any]] = []
         last_flush = time.monotonic()
         while True:
@@ -468,8 +755,6 @@ class _Client:
             return False
 
     def _send(self, batch: Iterable[dict[str, Any]]) -> bool:
-        """Devuelve True si el batch se aceptó (2xx/4xx — 4xx descartamos, no reintenta).
-        False si hubo 5xx o error de red → el caller re-encola."""
         payload = {"service": self.opts.service, "logs": list(batch)}
         try:
             r = self._session.post(
@@ -480,8 +765,6 @@ class _Client:
             )
             if r.status_code >= 400:
                 sys.stderr.write(f"[faro] ingest HTTP {r.status_code}: {r.text[:200]}\n")
-                # 4xx → batch malformado / auth inválida; reintentar acumularía basura.
-                # 5xx → caller reintenta.
                 return r.status_code < 500
             return True
         except requests.RequestException as e:
@@ -491,7 +774,6 @@ class _Client:
     # ---------- Auto-captura ----------
 
     def _install_handlers(self) -> None:
-        # sys.excepthook se dispara ante excepciones no manejadas en el thread principal.
         prev_excepthook = sys.excepthook
 
         def hook(exc_type, exc, tb):
@@ -503,7 +785,6 @@ class _Client:
 
         sys.excepthook = hook
 
-        # threading.excepthook (3.8+) para crashes en threads worker.
         if hasattr(threading, "excepthook"):
             prev_thread = threading.excepthook
 
@@ -541,13 +822,19 @@ def init(
     scrub_patterns: tuple[str, ...] | list[str] = ("jwt", "api-key"),
     before_send: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None,
     trace_context: TraceContextProvider | None = None,
+    enable_tracing: bool = True,
+    traces_endpoint: str | None = None,
+    resource_attributes: dict[str, str] | None = None,
+    disabled_instrumentations: tuple[str, ...] | list[str] = (),
 ) -> _Client:
     """Inicializa el SDK. Si no se pasan, endpoint y token caen en las env vars FARO_ENDPOINT / FARO_TOKEN."""
     global _client
     endpoint = endpoint or os.environ.get("FARO_ENDPOINT")
-    token = token or os.environ.get("FARO_TOKEN")
+    token = token or os.environ.get("FARO_TOKEN") or os.environ.get("FARO_INGEST_TOKEN")
     if not endpoint or not token:
-        raise ValueError("faro.init: 'endpoint' y 'token' son obligatorios (o define FARO_ENDPOINT/FARO_TOKEN)")
+        raise ValueError(
+            "faro.init: 'endpoint' y 'token' son obligatorios (o define FARO_ENDPOINT/FARO_TOKEN)"
+        )
     if _client is not None:
         _client.close()
     _client = _Client(
@@ -568,6 +855,10 @@ def init(
             scrub_patterns=tuple(scrub_patterns),
             before_send=before_send,
             trace_context=trace_context,
+            enable_tracing=enable_tracing,
+            traces_endpoint=traces_endpoint,
+            resource_attributes=resource_attributes,
+            disabled_instrumentations=tuple(disabled_instrumentations),
         )
     )
     return _client
@@ -591,7 +882,6 @@ def warn(message: str, **attrs: Any) -> None:
     _need().log(level="WARN", message=message, attributes=attrs)
 
 
-# Alias para encajar con el nombre del módulo `logging` estándar (WARNING).
 def warning(message: str, **attrs: Any) -> None:
     _need().log(level="WARN", message=message, attributes=attrs)
 
@@ -620,6 +910,33 @@ def alias(prev_id: str, new_id: str) -> None:
     _need().alias(prev_id, new_id)
 
 
+def start_span(
+    name: str,
+    kind: SpanKind = "INTERNAL",
+    attributes: dict[str, Any] | None = None,
+    parent: Any = ...,
+    start_time: datetime | None = None,
+) -> Span:
+    return _need().start_span(
+        name=name, kind=kind, attributes=attributes, parent=parent, start_time=start_time
+    )
+
+
+def use_span(
+    name: str,
+    kind: SpanKind = "INTERNAL",
+    attributes: dict[str, Any] | None = None,
+    parent: Any = ...,
+):
+    return _need().use_span(name=name, kind=kind, attributes=attributes, parent=parent)
+
+
+def active_span() -> Span | None:
+    if _client is None:
+        return None
+    return _client.active_span()
+
+
 def flush(timeout: float = 5.0) -> None:
     if _client is not None:
         _client.flush(timeout=timeout)
@@ -630,6 +947,25 @@ def close(timeout: float = 5.0) -> None:
     if _client is not None:
         _client.close(timeout=timeout)
         _client = None
+
+
+# Re-exports OTel passthrough — para users que quieran control fino del tracing
+# sin pasar por la inicialización del cliente Faro.
+
+def init_tracing(*args: Any, **kwargs: Any) -> bool:
+    return _init_tracing(*args, **kwargs)
+
+
+def shutdown_tracing(timeout_ms: int = 5000) -> None:
+    _shutdown_tracing(timeout_ms=timeout_ms)
+
+
+def flush_tracing(timeout_ms: int = 5000) -> None:
+    _flush_tracing(timeout_ms=timeout_ms)
+
+
+def get_tracer() -> Any:
+    return _get_tracer()
 
 
 class FaroHandler(logging.Handler):
@@ -646,7 +982,6 @@ class FaroHandler(logging.Handler):
             "module": record.module,
             "lineno": record.lineno,
         }
-        # Expone la info de excepción cuando se usa log.exception() / exc_info=True.
         if record.exc_info:
             etype, evalue, tb = record.exc_info
             attrs["exception.type"] = etype.__name__ if etype else "Exception"

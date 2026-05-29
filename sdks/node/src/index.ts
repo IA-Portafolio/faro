@@ -1,12 +1,65 @@
 /**
  * SDK de Faro para Node.js / TypeScript.
  *
- * Un único archivo, sin dependencias en runtime. Usa globalThis.fetch (Node 18+ lo incluye).
+ * v0.2.0: el tracing pasa a estar respaldado por `@opentelemetry/sdk-node` +
+ * `@opentelemetry/auto-instrumentations-node`. La API pública de spans
+ * (`startSpan` / `withSpan` / `activeSpan` / `Span`) se conserva intacta pero
+ * por dentro envuelve `@opentelemetry/api`. Esto desbloquea Service Map y la
+ * pestaña Trazas para servicios que no instrumentaban manualmente: con sólo
+ * llamar a `faro.init(...)` se obtienen spans de http, express, fastify, koa,
+ * pg, mongodb, redis, ioredis, grpc, kafka, …
+ *
+ * Para que la auto-instrumentación funcione en Node, OTel debe inicializarse
+ * antes de que se importen las librerías a instrumentar. El camino recomendado
+ * es `node --import @iaportafolio/node/instrument server.js` (lee FARO_*
+ * env-vars). Si el user llama a `faro.init(...)` en código, debe hacerlo en
+ * la primera línea del entrypoint.
+ *
+ * Logs / errores / product events siguen viajando por HTTP nativo a
+ * `/api/v1/ingest/*` — esa parte no cambia. Lo que cambia es que ahora trae
+ * trace_id y span_id correlacionados con los spans OTel automáticos.
  */
 
-import { createRequire } from 'node:module';
+import {
+  trace,
+  context as otelContext,
+  SpanKind as OtelSpanKind,
+  SpanStatusCode as OtelStatusCode,
+  type Span as OtelSpan,
+  type Context as OtelContext,
+} from '@opentelemetry/api';
+
+import {
+  initTracing,
+  shutdownTracing,
+  flushTracing,
+  getTracer,
+} from './tracing.js';
+
+export { initTracing, shutdownTracing, flushTracing, getTracer } from './tracing.js';
 
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
+
+/** Tipo de span según OTLP. INTERNAL es el default — para operaciones in-process.
+ *  SERVER/CLIENT son para bordes RPC/HTTP. PRODUCER/CONSUMER para colas. */
+export type SpanKind = 'INTERNAL' | 'SERVER' | 'CLIENT' | 'PRODUCER' | 'CONSUMER';
+
+/** Estado de un span según OTLP. UNSET es el default; setStatus('OK'/'ERROR') lo cambia. */
+export type SpanStatusCode = 'UNSET' | 'OK' | 'ERROR';
+
+const OTEL_SPAN_KIND: Record<SpanKind, OtelSpanKind> = {
+  INTERNAL: OtelSpanKind.INTERNAL,
+  SERVER: OtelSpanKind.SERVER,
+  CLIENT: OtelSpanKind.CLIENT,
+  PRODUCER: OtelSpanKind.PRODUCER,
+  CONSUMER: OtelSpanKind.CONSUMER,
+};
+
+const OTEL_STATUS_CODE: Record<SpanStatusCode, OtelStatusCode> = {
+  UNSET: OtelStatusCode.UNSET,
+  OK: OtelStatusCode.OK,
+  ERROR: OtelStatusCode.ERROR,
+};
 
 export type ScrubPreset = 'email' | 'jwt' | 'credit-card' | 'api-key';
 
@@ -23,7 +76,7 @@ export interface FaroOptions {
   endpoint: string;
   /** Token de ingesta del proyecto (desde la página /projects del dashboard de Faro) */
   token: string;
-  /** service.name de OTel adjuntado a cada evento */
+  /** service.name de OTel adjuntado a cada evento y span */
   service: string;
   /** p. ej. "production" / "staging" — se añade como atributo `deployment.environment` */
   environment?: string;
@@ -31,7 +84,7 @@ export interface FaroOptions {
   release?: string;
   /** Atributos por defecto que se mezclan en cada evento */
   attributes?: Record<string, string | number | boolean>;
-  /** Cadencia de flush en ms (por defecto 750) */
+  /** Cadencia de flush en ms para LOGS y EVENTS (por defecto 750). Spans usan el batch processor de OTel. */
   flushIntervalMs?: number;
   /** Máximo de eventos por lote HTTP (por defecto 200) */
   maxBatchSize?: number;
@@ -50,10 +103,66 @@ export interface FaroOptions {
   scrubPatterns?: ScrubPreset[];
   /** Hook para muestrear/transformar/redactar tras el scrubbing. Devolver null descarta el evento. */
   beforeSend?: (entry: Wire) => Wire | null;
-  /** Proveedor explícito para auto-correlación W3C tracecontext en product events. */
+  /** Proveedor explícito para auto-correlación W3C tracecontext en logs/events. */
   traceContext?: TraceContextProvider;
   /** Cadencia de refresh de feature flags en ms (por defecto 30_000). */
   featureFlagRefreshIntervalMs?: number;
+  /** Inicializa OpenTelemetry + auto-instrumentación al boot. Default: true.
+   *  Cuando es true, los spans de HTTP/Express/Fastify/Koa/pg/mongo/redis/grpc/kafka… se exportan
+   *  por OTLP a `${endpoint}/v1/traces` y Service Map se llena solo.
+   *  Si OTel ya fue inicializado via `--import @iaportafolio/node/instrument`, esta llamada es no-op. */
+  enableTracing?: boolean;
+  /** Override del endpoint completo de traces. Default: `${endpoint}/v1/traces`. */
+  tracesEndpoint?: string;
+  /** Atributos extra para el Resource OTel (se mergean con service.name/version/environment). */
+  resourceAttributes?: Record<string, string>;
+  /** Nombres exactos de paquetes de instrumentación a desactivar.
+   *  Por defecto el SDK desactiva fs/dns/net (ruidosos). */
+  disabledInstrumentations?: string[];
+}
+
+// ---------- Tracing API ----------
+
+export interface SpanOptions {
+  /** Kind del span. Default 'INTERNAL'. */
+  kind?: SpanKind;
+  /** Atributos iniciales del span. */
+  attributes?: Record<string, unknown>;
+  /** Contexto padre explícito. Si se omite, se toma del current span en
+   *  el ContextManager de OTel (AsyncHooks). Pasar `null` fuerza root span. */
+  parent?: TraceContext | string | null;
+  /** Timestamp de inicio. Default `new Date()`. */
+  startTime?: Date;
+}
+
+export interface SpanEventInput {
+  attributes?: Record<string, unknown>;
+  timestamp?: Date;
+}
+
+export interface SpanEndOptions {
+  /** Atributos a mezclar antes de cerrar. */
+  attributes?: Record<string, unknown>;
+  /** Timestamp de fin. Default `new Date()`. */
+  endTime?: Date;
+}
+
+/** Handle público devuelto por `startSpan`. */
+export interface Span {
+  /** trace_id (32 hex) + span_id (16 hex) — usar para propagación o correlación de logs. */
+  spanContext(): { trace_id: string; span_id: string };
+  /** W3C traceparent header listo para propagar a HTTP outbound. */
+  traceparent(): string;
+  setAttribute(key: string, value: unknown): void;
+  setAttributes(attrs: Record<string, unknown>): void;
+  addEvent(name: string, opts?: SpanEventInput): void;
+  setStatus(code: SpanStatusCode, message?: string): void;
+  /** Marca status=ERROR y añade attrs `exception.*`. No re-lanza. */
+  recordException(err: unknown): void;
+  /** Cierra el span. La exportación la maneja el BatchSpanProcessor de OTel. Idempotente. */
+  end(opts?: SpanEndOptions): void;
+  /** True si end() ya se llamó. */
+  readonly ended: boolean;
 }
 
 export interface LogEntry {
@@ -128,9 +237,6 @@ const SCRUB_REGEXES: Record<ScrubPreset, RegExp> = {
   'api-key': /\b(?:sk-|ghp_|ghs_|gho_|github_pat_|xoxb-|xoxp-|xoxs-|AKIA|ASIA|AIza)[\w-]{12,}\b/g,
 };
 
-const requireOptional = createRequire(`${process.cwd()}/faro-sdk.js`);
-let otelApi: unknown | null | undefined;
-
 function scrubString(s: string, regexes: RegExp[]): string {
   let out = s;
   for (const re of regexes) out = out.replace(re, REDACTED);
@@ -182,39 +288,119 @@ function normalizeHex(value: unknown, len: number): string | undefined {
   return trimmed;
 }
 
+/** Lee el trace context activo en OTel (`@opentelemetry/api`). Cualquier span
+ *  Faro o auto-instrumentado entra acá — son lo mismo desde v0.2.0. */
 function currentOpenTelemetryTraceContext(): TraceContext | null {
-  const api = loadOpenTelemetryApi();
-  if (!api || typeof api !== 'object') return null;
-  const maybeApi = api as {
-    context?: { active?: () => unknown };
-    trace?: { getSpan?: (ctx: unknown) => { spanContext?: () => unknown } | undefined };
-  };
   try {
-    const active = maybeApi.context?.active?.();
-    const span = maybeApi.trace?.getSpan?.(active);
-    const spanContext = span?.spanContext?.() as { traceId?: unknown; spanId?: unknown; isRemote?: unknown } | undefined;
+    const span = trace.getActiveSpan();
+    if (!span) return null;
+    const sc = span.spanContext();
+    if (!sc || !sc.traceId) return null;
     return normalizeTraceContext({
-      trace_id: typeof spanContext?.traceId === 'string' ? spanContext.traceId : undefined,
-      span_id: typeof spanContext?.spanId === 'string' ? spanContext.spanId : undefined,
+      trace_id: sc.traceId,
+      span_id: sc.spanId,
     });
   } catch {
     return null;
   }
 }
 
-function loadOpenTelemetryApi(): unknown | null {
-  if (otelApi !== undefined) return otelApi;
-  try {
-    otelApi = requireOptional('@opentelemetry/api');
-  } catch {
-    otelApi = null;
+/** Adapter que expone la interfaz Span de Faro respaldada por un `@opentelemetry/api` Span.
+ *  El BatchSpanProcessor de OTel se encarga del batching y la exportación a `/v1/traces`. */
+class SpanImpl implements Span {
+  public ended = false;
+  constructor(private readonly otel: OtelSpan) {}
+
+  spanContext(): { trace_id: string; span_id: string } {
+    const sc = this.otel.spanContext();
+    return { trace_id: sc.traceId, span_id: sc.spanId };
   }
-  return otelApi;
+
+  traceparent(): string {
+    const sc = this.otel.spanContext();
+    // bit 0 de traceFlags = sampled. Si el span es no-op (traceId=000...), igual
+    // devolvemos un traceparent válido — quien lo reciba puede tomarlo o no.
+    const flags = (sc.traceFlags & 1) ? '01' : '00';
+    return `00-${sc.traceId}-${sc.spanId}-${flags}`;
+  }
+
+  setAttribute(key: string, value: unknown): void {
+    if (this.ended) return;
+    this.otel.setAttribute(key, stringifyAttr(value));
+  }
+
+  setAttributes(attrs: Record<string, unknown>): void {
+    if (this.ended) return;
+    for (const [k, v] of Object.entries(attrs)) {
+      this.otel.setAttribute(k, stringifyAttr(v));
+    }
+  }
+
+  addEvent(name: string, opts: SpanEventInput = {}): void {
+    if (this.ended) return;
+    const stringified: Record<string, string> = {};
+    if (opts.attributes) {
+      for (const [k, v] of Object.entries(opts.attributes)) stringified[k] = stringifyAttr(v);
+    }
+    this.otel.addEvent(name, stringified, opts.timestamp ?? new Date());
+  }
+
+  setStatus(code: SpanStatusCode, message?: string): void {
+    if (this.ended) return;
+    this.otel.setStatus({ code: OTEL_STATUS_CODE[code], ...(message ? { message } : {}) });
+  }
+
+  recordException(err: unknown): void {
+    const e = toError(err);
+    this.setStatus('ERROR', e.message);
+    this.setAttribute('exception.type', e.name);
+    this.setAttribute('exception.message', e.message);
+    if (e.stack) this.setAttribute('exception.stacktrace', e.stack);
+    // OTel también tiene recordException() — mantenemos los attrs custom por
+    // paridad cross-SDK con Python/Go que escriben directamente esos attrs.
+    try {
+      this.otel.recordException(e);
+    } catch {
+      // best-effort
+    }
+  }
+
+  end(opts: SpanEndOptions = {}): void {
+    if (this.ended) return;
+    this.ended = true;
+    if (opts.attributes) this.setAttributes(opts.attributes);
+    this.otel.end(opts.endTime ?? new Date());
+  }
+}
+
+/** Convierte cualquier valor a string para uso en attributes (OTLP los quiere así). */
+function stringifyAttr(v: unknown): string {
+  if (typeof v === 'string') return v;
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
+function resolveParentContext(parent: SpanOptions['parent']): OtelContext | undefined {
+  if (parent === undefined) return undefined; // hereda current active context
+  if (parent === null) return trace.deleteSpan(otelContext.active()); // fuerza root
+  const ctx = normalizeTraceContext(parent);
+  if (!ctx?.trace_id || !ctx?.span_id) return undefined;
+  return trace.setSpanContext(otelContext.active(), {
+    traceId: ctx.trace_id,
+    spanId: ctx.span_id,
+    traceFlags: 1, // SAMPLED
+    isRemote: true,
+  });
 }
 
 class FaroClient {
-  private opts: Required<Omit<FaroOptions, 'attributes' | 'environment' | 'release' | 'diag' | 'beforeSend' | 'traceContext'>> &
-    Pick<FaroOptions, 'attributes' | 'environment' | 'release' | 'diag' | 'beforeSend' | 'traceContext'>;
+  private opts: Required<Omit<FaroOptions, 'attributes' | 'environment' | 'release' | 'diag' | 'beforeSend' | 'traceContext' | 'tracesEndpoint' | 'resourceAttributes' | 'disabledInstrumentations'>> &
+    Pick<FaroOptions, 'attributes' | 'environment' | 'release' | 'diag' | 'beforeSend' | 'traceContext' | 'tracesEndpoint' | 'resourceAttributes' | 'disabledInstrumentations'>;
   private queue: Wire[] = [];
   private eventsQueue: ProductEventWire[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -268,14 +454,34 @@ class FaroClient {
       maxQueueSize: opts.maxQueueSize ?? 10_000,
       installGlobalHandlers: opts.installGlobalHandlers ?? true,
       featureFlagRefreshIntervalMs: opts.featureFlagRefreshIntervalMs ?? 30_000,
+      enableTracing: opts.enableTracing ?? true,
       diag: opts.diag,
       scrubFields,
       scrubHeaders,
       scrubPatterns,
       beforeSend: opts.beforeSend,
       traceContext: opts.traceContext,
+      tracesEndpoint: opts.tracesEndpoint,
+      resourceAttributes: opts.resourceAttributes,
+      disabledInstrumentations: opts.disabledInstrumentations,
     };
     this.anonymousId = randomId();
+
+    // Bootstrap OTel tracing si no fue inicializado todavía via `--import …/instrument`.
+    if (this.opts.enableTracing) {
+      initTracing({
+        endpoint: this.opts.endpoint,
+        token: this.opts.token,
+        service: this.opts.service,
+        tracesEndpoint: this.opts.tracesEndpoint,
+        environment: this.opts.environment,
+        release: this.opts.release,
+        resourceAttributes: this.opts.resourceAttributes,
+        disabledInstrumentations: this.opts.disabledInstrumentations,
+        diag: this.opts.diag,
+      });
+    }
+
     this.timer = setInterval(() => void this.flush(), this.opts.flushIntervalMs);
     // Permite a Node salir aunque el timer sea lo único que quede.
     if (typeof (this.timer as { unref?: () => void }).unref === 'function') {
@@ -304,12 +510,24 @@ class FaroClient {
         attrs[k] = typeof v === 'string' ? v : JSON.stringify(v);
       }
     }
+    // Auto-correlación: si el caller no pasó trace/span_id, leemos el span activo
+    // del context manager de OTel. Esto cubre tanto spans Faro como cualquier
+    // span auto-instrumentado (express, http, pg, …).
+    let traceId = entry.trace_id;
+    let spanId = entry.span_id;
+    if (!traceId) {
+      const ctx = this.currentTraceContext();
+      if (ctx?.trace_id) {
+        traceId = ctx.trace_id;
+        if (ctx.span_id) spanId = ctx.span_id;
+      }
+    }
     const wire: Wire = {
       level: entry.level ?? 'INFO',
       message: entry.message,
       timestamp: (entry.timestamp ?? new Date()).toISOString(),
-      trace_id: entry.trace_id,
-      span_id: entry.span_id,
+      trace_id: traceId,
+      span_id: spanId,
       attributes: attrs,
     };
     scrubWire(wire, this.scrubNeedles, this.scrubRegexes);
@@ -455,10 +673,73 @@ class FaroClient {
     });
   }
 
+  // ---------- Tracing (respaldado por OTel) ----------
+
+  /** Crea un span nuevo (sin entrar en su contexto). Llamar `end()` para encolar.
+   *  Para auto-activarlo + cerrarlo, ver `withSpan`. */
+  startSpan(name: string, opts: SpanOptions = {}): Span {
+    const tracer = getTracer();
+    const otelAttrs: Record<string, string> = {};
+    if (opts.attributes) {
+      for (const [k, v] of Object.entries(opts.attributes)) otelAttrs[k] = stringifyAttr(v);
+    }
+    const parentCtx = resolveParentContext(opts.parent);
+    const otelSpan = tracer.startSpan(
+      name,
+      {
+        kind: OTEL_SPAN_KIND[opts.kind ?? 'INTERNAL'],
+        attributes: otelAttrs,
+        ...(opts.startTime ? { startTime: opts.startTime } : {}),
+      },
+      parentCtx,
+    );
+    return new SpanImpl(otelSpan);
+  }
+
+  /** Ejecuta `fn` con `span` activo en el ContextManager. El span se cierra
+   *  automáticamente al terminar (con `setStatus('ERROR')` y `recordException`
+   *  si `fn` lanza). Pensado para envolver handlers o bloques async. */
+  withSpan<T>(name: string, fn: (span: Span) => Promise<T> | T, opts: SpanOptions = {}): Promise<T> {
+    const tracer = getTracer();
+    const otelAttrs: Record<string, string> = {};
+    if (opts.attributes) {
+      for (const [k, v] of Object.entries(opts.attributes)) otelAttrs[k] = stringifyAttr(v);
+    }
+    const spanOpts = {
+      kind: OTEL_SPAN_KIND[opts.kind ?? 'INTERNAL'],
+      attributes: otelAttrs,
+      ...(opts.startTime ? { startTime: opts.startTime } : {}),
+    };
+    const parentCtx = resolveParentContext(opts.parent) ?? otelContext.active();
+
+    return new Promise<T>((resolve, reject) => {
+      tracer.startActiveSpan(name, spanOpts, parentCtx, async (otelSpan) => {
+        const span = new SpanImpl(otelSpan);
+        try {
+          const r = await fn(span);
+          if (!span.ended) span.end();
+          resolve(r);
+        } catch (e) {
+          span.recordException(e);
+          if (!span.ended) span.end();
+          reject(e);
+        }
+      });
+    });
+  }
+
+  /** Devuelve el span activo del ContextManager o null. Ojo: el wrapper es
+   *  efímero; si lo guardás y el span ya terminó, los setters son no-op. */
+  activeSpan(): Span | null {
+    const otelSpan = trace.getActiveSpan();
+    if (!otelSpan) return null;
+    return new SpanImpl(otelSpan);
+  }
+
   async flush(): Promise<void> {
-    // Flusheamos las dos colas en paralelo. Cada una tiene su endpoint y su
-    // tabla de destino; comparten el HTTP client y los retry-rules.
-    await Promise.all([this.flushLogs(), this.flushEvents()]);
+    // Flusheamos logs + events propios y los pending spans del BatchSpanProcessor
+    // de OTel en paralelo. Spans van por una pipeline aparte (OTLP/HTTP).
+    await Promise.all([this.flushLogs(), this.flushEvents(), flushTracing(2000)]);
   }
 
   private async flushLogs(): Promise<void> {
@@ -542,9 +823,9 @@ class FaroClient {
       context: ctx,
       source: 'backend',
     };
-    const trace = this.currentTraceContext();
-    if (trace?.trace_id) event.trace_id = trace.trace_id;
-    if (trace?.span_id) event.span_id = trace.span_id;
+    const tc = this.currentTraceContext();
+    if (tc?.trace_id) event.trace_id = tc.trace_id;
+    if (tc?.span_id) event.span_id = tc.span_id;
     this.eventsQueue.push(event);
   }
 
@@ -555,9 +836,10 @@ class FaroClient {
   }
 
   /**
-   * Drena la cola y cierra. Pensado para envolver en hooks `SIGTERM`/`SIGINT`
+   * Drena las colas y cierra. Pensado para envolver en hooks `SIGTERM`/`SIGINT`
    * del usuario: `process.on('SIGTERM', () => faro.close().finally(() => process.exit(0)))`.
    * El `timeoutMs` acota el peor caso (red caída + cola llena).
+   * También apaga el NodeSDK de OTel para drenar los spans pending.
    */
   async close(timeoutMs = 5000): Promise<void> {
     if (this.closed) return;
@@ -568,14 +850,20 @@ class FaroClient {
     this.featureFlagsTimer = null;
     for (const off of this.installedHandlers) off();
     this.installedHandlers = [];
-    // Un último intento de flush — drena ambas colas (logs + events) con cota dura.
+    // Drena nuestras colas con cota dura.
     const deadline = Date.now() + timeoutMs;
-    while ((this.queue.length > 0 || this.eventsQueue.length > 0) && Date.now() < deadline) {
+    while (
+      (this.queue.length > 0 || this.eventsQueue.length > 0) &&
+      Date.now() < deadline
+    ) {
       const before = this.queue.length + this.eventsQueue.length;
-      await this.flush();
+      await Promise.all([this.flushLogs(), this.flushEvents()]);
       const after = this.queue.length + this.eventsQueue.length;
       if (after >= before) break; // probablemente la red esté caída; rendirse
     }
+    // Cierra OTel — drena el BatchSpanProcessor con su propio timeout interno.
+    const remaining = Math.max(500, deadline - Date.now());
+    await shutdownTracing(remaining);
   }
 
   private installHandlers(): void {
@@ -690,5 +978,12 @@ export function refreshFeatureFlags(): Promise<void> { return getClient().refres
 export function isFeatureEnabled(key: string, context?: FeatureFlagContext): boolean {
   return getClient().isFeatureEnabled(key, context);
 }
+export function startSpan(name: string, opts?: SpanOptions): Span {
+  return getClient().startSpan(name, opts);
+}
+export function withSpan<T>(name: string, fn: (span: Span) => Promise<T> | T, opts?: SpanOptions): Promise<T> {
+  return getClient().withSpan(name, fn, opts);
+}
+export function activeSpan(): Span | null { return getClient().activeSpan(); }
 export function flush(): Promise<void> { return getClient().flush(); }
 export function close(timeoutMs?: number): Promise<void> { return getClient().close(timeoutMs); }
