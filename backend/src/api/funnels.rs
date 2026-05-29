@@ -56,7 +56,7 @@ async fn list_events(
     let (proj_clause, proj_value) = range.project_clause("");
 
     let sql = format!(
-        "SELECT event_name AS name, toUInt64(sum(countMerge(count))) AS count \
+        "SELECT event_name AS name, toUInt64(countMerge(count)) AS count \
          FROM faro.product_events_per_day \
          WHERE day >= toDate(toDateTime64({{from:DateTime64(9)}}, 9)) \
            AND day <= toDate(toDateTime64({{to:DateTime64(9)}}, 9)){proj_clause} \
