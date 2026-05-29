@@ -8,7 +8,11 @@ plugins {
     kotlin("plugin.serialization") version "2.3.0"
     `maven-publish`
     signing
-    id("com.gradleup.nmcp") version "0.0.9"
+    // 1.x adopta la API actual de central.sonatype.com (User Token Bearer
+    // auth). 0.0.9 enviaba el Basic Auth en un formato que el portal nuevo
+    // ya no acepta — daba 401 "Invalid token" aunque las credentials fueran
+    // válidas (curl directo con esas mismas confirma 200/500, no 401).
+    id("com.gradleup.nmcp") version "1.0.4"
 }
 
 group = "com.iaportafolio"
