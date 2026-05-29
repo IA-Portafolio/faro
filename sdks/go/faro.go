@@ -159,7 +159,6 @@ type Client struct {
 	opts         Options
 	ch           chan Entry
 	eventsCh     chan ProductEvent
-	spansCh      chan *Span
 	wg           sync.WaitGroup
 	closed       chan struct{}
 	once         sync.Once
@@ -240,17 +239,31 @@ func New(opts Options) (*Client, error) {
 		opts:           opts,
 		ch:             make(chan Entry, opts.MaxQueueSize),
 		eventsCh:       make(chan ProductEvent, opts.MaxQueueSize),
-		spansCh:        make(chan *Span, opts.MaxQueueSize),
 		closed:         make(chan struct{}),
 		scrubNeedles:   needles,
 		scrubRegexes:   regexes,
 		anonymousID:    fmt.Sprintf("anon_%d_%d", time.Now().UnixNano(), rand63()),
 		userProperties: map[string]any{},
 	}
-	c.wg.Add(3)
+
+	// Bootstrap OTel tracing — idempotente, no-op si ya fue inicializado.
+	// Los spans se exportan via el BatchSpanProcessor del NodeTracerProvider
+	// hacia ${Endpoint}/v1/traces con el bearer token del proyecto.
+	if _, err := InitTracing(TracingOptions{
+		Endpoint:        opts.Endpoint,
+		Token:           opts.Token,
+		Service:         opts.Service,
+		Environment:     opts.Environment,
+		Release:         opts.Release,
+		HTTPClient:      opts.HTTPClient,
+		OnInternalError: opts.OnInternalError,
+	}); err != nil {
+		opts.OnInternalError(fmt.Errorf("faro: InitTracing falló: %w", err))
+	}
+
+	c.wg.Add(2)
 	go c.loop()
 	go c.eventsLoop()
-	go c.spansLoop()
 	return c, nil
 }
 
@@ -356,10 +369,10 @@ func (c *Client) LogContext(ctx context.Context, level Severity, msg string, att
 		Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
 		Attributes: merged,
 	}
-	// Auto-correlación con el span activo en ctx.
+	// Auto-correlación con el span activo en ctx (Faro o auto-instrumentado).
 	if span := SpanFromContext(ctx); span != nil {
-		entry.TraceID = span.traceID
-		entry.SpanID = span.spanID
+		entry.TraceID = span.TraceID()
+		entry.SpanID = span.SpanID()
 	} else if c.opts.TraceContext != nil {
 		tc := normalizeTraceContext(c.opts.TraceContext(ctx))
 		if tc.TraceID != "" {
@@ -550,19 +563,25 @@ func (c *Client) Recover(tags map[string]string) {
 	}
 }
 
-// Flush bloquea hasta que las tres colas (logs + events + spans) se vacíen o se cumpla el deadline.
+// Flush bloquea hasta que las colas (logs + events) se vacíen y los spans pending
+// del BatchSpanProcessor de OTel se drenen, o se cumpla el deadline.
 func (c *Client) Flush(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) && (len(c.ch) > 0 || len(c.eventsCh) > 0 || len(c.spansCh) > 0) {
+	for time.Now().Before(deadline) && (len(c.ch) > 0 || len(c.eventsCh) > 0) {
 		time.Sleep(50 * time.Millisecond)
 	}
-	if len(c.ch) > 0 || len(c.eventsCh) > 0 || len(c.spansCh) > 0 {
-		return fmt.Errorf("timeout de flush con %d logs, %d events y %d spans pendientes", len(c.ch), len(c.eventsCh), len(c.spansCh))
+	// Drena los spans pending. Le pasamos el remaining como deadline al ctx.
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	_ = FlushTracing(ctx)
+	if len(c.ch) > 0 || len(c.eventsCh) > 0 {
+		return fmt.Errorf("timeout de flush con %d logs y %d events pendientes", len(c.ch), len(c.eventsCh))
 	}
 	return nil
 }
 
-// Close detiene el flusher en segundo plano. Es seguro llamarlo varias veces.
+// Close detiene el flusher en segundo plano y apaga el provider de OTel.
+// Es seguro llamarlo varias veces.
 func (c *Client) Close(ctx context.Context) error {
 	if c == nil {
 		return nil
@@ -577,8 +596,10 @@ func (c *Client) Close(ctx context.Context) error {
 	}()
 	select {
 	case <-done:
-		return nil
+		// Apagar el provider de OTel para drenar spans pending + cerrar exporter.
+		return ShutdownTracing(ctx)
 	case <-ctx.Done():
+		_ = ShutdownTracing(context.Background())
 		return ctx.Err()
 	}
 }

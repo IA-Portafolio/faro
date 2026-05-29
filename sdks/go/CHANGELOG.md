@@ -7,9 +7,34 @@ cuando se empuja un tag `sdk-go-v<semver>` al repo.
 
 ## [Unreleased]
 
+### Breaking — v0.2.0 (re-tracing sobre OTel)
+- **El tracing ahora está respaldado por `go.opentelemetry.io/otel/sdk`.**
+  API pública (`StartSpan` / `WithSpan` / `Span` / `ContextWithSpan` /
+  `SpanFromContext` / `Traceparent`) se mantiene compat, pero por dentro
+  envuelve `go.opentelemetry.io/otel/trace.Span`. Esto permite combinar
+  instrumentación manual con las auto-instrumentaciones OTel estándar
+  (`otelhttp`, `otelgrpc`, `otelsql`, `otelpgx`) en un solo pipeline.
+- **Nuevas deps runtime**: `go.opentelemetry.io/otel`, `otel/sdk`, `otel/trace`,
+  `otel/semconv/v1.26.0`. ~6MB de impacto en `go.sum`.
+- **`Client.spansCh`, `spansLoop`, `buildSpansPayload`, `sendSpans`
+  eliminados** — el BatchSpanProcessor de OTel + nuestro
+  `faroJSONSpanExporter` se encargan de batching y export a `/v1/traces`.
+  `Client.Flush` ahora llama a `provider.ForceFlush()`.
+- **`Client.Close` también apaga el provider** vía `ShutdownTracing(ctx)`.
+
 ### Added — v0.2.0 (tracing)
-- **Tracing nativo OTLP/HTTP/JSON**, sin deps. API paridad cross-SDK con
-  `@iaportafolio/node` y `faro_sdk` (Python):
+- Funciones públicas `InitTracing`, `ShutdownTracing`, `FlushTracing`,
+  `GetTracer` — para users que prefieren control fino del tracing sin
+  pasar por `faro.Init()` (apps que ya tienen OTel configurado, tests, etc.).
+- **Cómo usar otelhttp con Faro** (HTTP server + client auto-instrumentado):
+  ```go
+  import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+  client := &http.Client{Transport: otelhttp.NewTransport(http.DefaultTransport)}
+  handler = otelhttp.NewHandler(handler, "myapp")
+  ```
+  Cada request entrante/saliente genera un span auto-emitido por Faro.
+- Tracing nativo OTLP/HTTP/JSON. API paridad cross-SDK con `@iaportafolio/node`
+  y `faro_sdk` (Python):
   - `client.StartSpan(ctx, name, faro.SpanOptions{Kind, Attributes, Parent}) → (ctx, *Span)`
   - `client.WithSpan(ctx, name, func(ctx, span) error, opts) → error` con
     auto-close + `RecordException` en error.
