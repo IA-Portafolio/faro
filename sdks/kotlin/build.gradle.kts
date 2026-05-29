@@ -95,11 +95,14 @@ signing {
 // (s01.oss.sonatype.org) ya no acepta uploads para namespaces nuevos.
 // Las credenciales son el "User Token" generado en central.sonatype.com/account.
 nmcp {
-    publishAllPublications {
-        username = providers.gradleProperty("ossrhUsername").orElse("")
-        password = providers.gradleProperty("ossrhPassword").orElse("")
+    // nmcp 1.x cambió la API: ahora es `publishAllPublicationsToCentralPortal`
+    // recibe un Action<CentralPortalOptions> con `.set()` sobre Properties.
+    // Ojo: la prop se llama `publishingType` (no `publicationType` como en 0.0.x).
+    publishAllPublicationsToCentralPortal {
+        username.set(providers.gradleProperty("ossrhUsername").orElse(""))
+        password.set(providers.gradleProperty("ossrhPassword").orElse(""))
         // AUTOMATIC: tras validación, se publica solo. USER_MANAGED queda
         // en staging para aprobación manual desde el portal.
-        publicationType = "AUTOMATIC"
+        publishingType.set("AUTOMATIC")
     }
 }
