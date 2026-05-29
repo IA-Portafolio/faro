@@ -6,6 +6,32 @@ empujando un tag `sdk-node-v<semver>`.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-29
+
+### Added
+- **API nativa de métricas** — `counter(name) / upDownCounter(name) / gauge(name) /
+  histogram(name)` devuelven instrumentos con `.add() / .set() / .record()`.
+  Cada llamada encola un data point que se manda en batch al endpoint nuevo
+  `POST /api/v1/ingest/metrics`. Es el camino corto para no instalar OTel SDK
+  cuando lo único que quieres es un contador o una métrica de negocio:
+  ```ts
+  const httpHits = faro.counter('http.requests.total', { unit: '1' });
+  httpHits.add(1, { route: '/api/foo', status: '200' });
+  faro.gauge('queue.depth').set(42);
+  faro.histogram('http.request.duration_ms', { unit: 'ms' }).record(123);
+  ```
+  Histogramas: el SDK no agrega cliente-side; cada `record()` envía un data point
+  individual (count=1, sum=min=max=value). Para agregación con buckets explícitos,
+  seguir usando OpenTelemetry SDK + OTLP.
+- Top-level helpers `faro.counter / upDownCounter / gauge / histogram` para no
+  pasar el cliente.
+- Tests unitarios (6 tests) para la nueva API de métricas.
+
+### Changed
+- `flush()` ahora drena también la cola de métricas en paralelo con logs/events/spans.
+
+## [0.2.0] — 2026-05-28
+
 ### Breaking
 - **El tracing ahora está respaldado por `@opentelemetry/sdk-trace-node` + `auto-instrumentations-node`.**
   La API pública (`startSpan` / `withSpan` / `activeSpan` / `Span` / `traceparent()`)

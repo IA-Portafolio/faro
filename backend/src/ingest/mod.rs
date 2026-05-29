@@ -8,11 +8,13 @@ use crate::storage::{LogRow, SpanRow};
 
 pub mod events;
 pub mod logs;
+pub mod metrics;
 pub mod otlp;
 pub mod otlp_grpc;
 pub mod otlp_types;
 pub mod rate_limit;
 pub mod replay;
+pub mod spans;
 
 /// Endpoints HTTP compatibles con OTLP, servidos en un puerto dedicado (por defecto 4318)
 /// para poder exponerlos de forma independiente de la API del dashboard.

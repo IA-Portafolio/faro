@@ -174,6 +174,52 @@ export interface LogEntry {
   timestamp?: Date;
 }
 
+// ---------- Metrics API ----------
+
+export type MetricKind = 'counter' | 'sum' | 'gauge' | 'histogram';
+export type MetricAttrs = Record<string, string | number | boolean>;
+
+export interface MetricInstrumentOptions {
+  /** Unidad p.ej. `ms`, `By`, `1`. Se guarda como `metric_unit` y sirve al frontend para formatear. */
+  unit?: string;
+}
+
+/** Contador monotónico (sólo sube). Lo típico para "request count", "errors total", "bytes processed". */
+export interface Counter {
+  add(value: number, attributes?: MetricAttrs): void;
+}
+
+/** Contador no monotónico — `add()` puede ser negativo. Para "conexiones abiertas", "items en cola". */
+export interface UpDownCounter {
+  add(value: number, attributes?: MetricAttrs): void;
+}
+
+/** Gauge: valor puntual. Cada `set()` reemplaza, no acumula. */
+export interface Gauge {
+  set(value: number, attributes?: MetricAttrs): void;
+}
+
+/** Histograma: cada `record()` envía un data point individual al backend. El SDK NO agrega
+ *  bucket counts en cliente — para eso usar OpenTelemetry SDK + OTLP. */
+export interface Histogram {
+  record(value: number, attributes?: MetricAttrs): void;
+}
+
+/** Payload wire para `POST /api/v1/ingest/metrics`. */
+export interface MetricWire {
+  name: string;
+  kind: MetricKind;
+  unit?: string;
+  timestamp: string;
+  service?: string;
+  value?: number;
+  count?: number;
+  sum?: number;
+  min?: number;
+  max?: number;
+  attributes: Record<string, string>;
+}
+
 /** Tipo de evento product (API tipo Segment/PostHog). */
 export type ProductEventType = 'track' | 'identify' | 'page' | 'screen' | 'alias';
 
@@ -403,6 +449,7 @@ class FaroClient {
     Pick<FaroOptions, 'attributes' | 'environment' | 'release' | 'diag' | 'beforeSend' | 'traceContext' | 'tracesEndpoint' | 'resourceAttributes' | 'disabledInstrumentations'>;
   private queue: Wire[] = [];
   private eventsQueue: ProductEventWire[] = [];
+  private metricsQueue: MetricWire[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
   private featureFlagsTimer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
@@ -736,10 +783,91 @@ class FaroClient {
     return new SpanImpl(otelSpan);
   }
 
+  // ---------- Métricas ----------
+
+  /** Counter monotónico. Cada `add(value, attrs)` añade un data point al batch. */
+  counter(name: string, opts: MetricInstrumentOptions = {}): Counter {
+    return {
+      add: (value, attributes) => this.recordMetric(name, 'counter', value, opts.unit, attributes),
+    };
+  }
+
+  /** Counter no monotónico (delta puede ser negativo). */
+  upDownCounter(name: string, opts: MetricInstrumentOptions = {}): UpDownCounter {
+    return {
+      add: (value, attributes) => this.recordMetric(name, 'sum', value, opts.unit, attributes),
+    };
+  }
+
+  /** Gauge: cada `set(value)` reemplaza. */
+  gauge(name: string, opts: MetricInstrumentOptions = {}): Gauge {
+    return {
+      set: (value, attributes) => this.recordMetric(name, 'gauge', value, opts.unit, attributes),
+    };
+  }
+
+  /** Histograma: cada `record(value)` envía un data point individual (count=1,
+   *  sum=min=max=value). El backend agrega; el SDK no — para agregación
+   *  cliente-side con buckets explícitos, usar el SDK OTel. */
+  histogram(name: string, opts: MetricInstrumentOptions = {}): Histogram {
+    return {
+      record: (value, attributes) =>
+        this.recordMetric(name, 'histogram', value, opts.unit, attributes),
+    };
+  }
+
+  private recordMetric(
+    name: string,
+    kind: MetricKind,
+    value: number,
+    unit: string | undefined,
+    attributes: MetricAttrs | undefined,
+  ): void {
+    if (this.closed) return;
+    if (!name || typeof name !== 'string') return;
+    if (!Number.isFinite(value)) return;
+    if (this.metricsQueue.length >= this.opts.maxQueueSize) return;
+
+    const attrs: Record<string, string> = {};
+    if (this.opts.attributes) {
+      for (const [k, v] of Object.entries(this.opts.attributes)) attrs[k] = String(v);
+    }
+    if (this.opts.environment) attrs['deployment.environment'] = this.opts.environment;
+    if (this.opts.release) attrs['service.version'] = this.opts.release;
+    if (attributes) {
+      for (const [k, v] of Object.entries(attributes)) attrs[k] = String(v);
+    }
+
+    const wire: MetricWire = {
+      name,
+      kind,
+      timestamp: new Date().toISOString(),
+      service: this.opts.service,
+      attributes: attrs,
+    };
+    if (unit) wire.unit = unit;
+    if (kind === 'histogram') {
+      // SDK no agrega: un data point por record(), count=1 sum=min=max=value.
+      wire.count = 1;
+      wire.sum = value;
+      wire.min = value;
+      wire.max = value;
+    } else {
+      wire.value = value;
+    }
+    this.metricsQueue.push(wire);
+  }
+
   async flush(): Promise<void> {
-    // Flusheamos logs + events propios y los pending spans del BatchSpanProcessor
-    // de OTel en paralelo. Spans van por una pipeline aparte (OTLP/HTTP).
-    await Promise.all([this.flushLogs(), this.flushEvents(), flushTracing(2000)]);
+    // Flusheamos logs + events + métricas propios y los pending spans del
+    // BatchSpanProcessor de OTel en paralelo. Spans van por una pipeline
+    // aparte (OTLP/HTTP).
+    await Promise.all([
+      this.flushLogs(),
+      this.flushEvents(),
+      this.flushMetrics(),
+      flushTracing(2000),
+    ]);
   }
 
   private async flushLogs(): Promise<void> {
@@ -788,6 +916,29 @@ class FaroClient {
     } catch (e) {
       this.eventsQueue.unshift(...batch);
       this.diagLog('falló el flush de events', e);
+    }
+  }
+
+  private async flushMetrics(): Promise<void> {
+    if (this.metricsQueue.length === 0) return;
+    const batch = this.metricsQueue.splice(0, this.opts.maxBatchSize);
+    try {
+      const res = await fetch(`${this.opts.endpoint}/api/v1/ingest/metrics`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.opts.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ service: this.opts.service, metrics: batch }),
+      });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        this.diagLog(`ingest metrics HTTP ${res.status}: ${txt.slice(0, 200)}`);
+        if (res.status >= 500) this.metricsQueue.unshift(...batch);
+      }
+    } catch (e) {
+      this.metricsQueue.unshift(...batch);
+      this.diagLog('falló el flush de metrics', e);
     }
   }
 
@@ -985,5 +1136,17 @@ export function withSpan<T>(name: string, fn: (span: Span) => Promise<T> | T, op
   return getClient().withSpan(name, fn, opts);
 }
 export function activeSpan(): Span | null { return getClient().activeSpan(); }
+export function counter(name: string, opts?: MetricInstrumentOptions): Counter {
+  return getClient().counter(name, opts);
+}
+export function upDownCounter(name: string, opts?: MetricInstrumentOptions): UpDownCounter {
+  return getClient().upDownCounter(name, opts);
+}
+export function gauge(name: string, opts?: MetricInstrumentOptions): Gauge {
+  return getClient().gauge(name, opts);
+}
+export function histogram(name: string, opts?: MetricInstrumentOptions): Histogram {
+  return getClient().histogram(name, opts);
+}
 export function flush(): Promise<void> { return getClient().flush(); }
 export function close(timeoutMs?: number): Promise<void> { return getClient().close(timeoutMs); }

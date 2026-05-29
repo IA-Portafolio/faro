@@ -106,6 +106,8 @@ pub fn router(state: SharedState) -> Router {
     let ingest: Router<SharedState> = Router::new().nest(
         "/api/v1/ingest",
         crate::ingest::logs::router()
+            .merge(crate::ingest::metrics::router())
+            .merge(crate::ingest::spans::router())
             .merge(crate::ingest::events::router())
             .merge(crate::ingest::replay::router())
             .merge(feature_flags::router()),

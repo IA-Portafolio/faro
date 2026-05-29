@@ -18,7 +18,7 @@ use crate::storage::{LogRow, MetricRow, SpanRow};
 /// Rechaza el batch entero si el proyecto excedió su cuota. Mantenerlo así
 /// (vs `partialSuccess`) es lo que esperan los SDKs OTel — reintentan con
 /// backoff respetando `Retry-After`.
-fn enforce_limit(
+pub(super) fn enforce_limit(
     state: &SharedState,
     project: &str,
     signal: &'static str,
@@ -55,7 +55,7 @@ fn enforce_limit(
 }
 
 /// Counter helper para records aceptados. Se llama al final de cada handler.
-fn record_accepted(project: &str, signal: &'static str, accepted: u64) {
+pub(super) fn record_accepted(project: &str, signal: &'static str, accepted: u64) {
     if accepted == 0 {
         return;
     }

@@ -106,28 +106,29 @@ export function otlpSnippetsFor(p: Project, signal: OtlpSignal): Snippet[] {
   if (signal === 'metrics') {
     return [
       {
-        id: 'otel-node',
-        label: 'Node.js (OTel)',
+        id: 'native-node',
+        label: 'Node.js',
         group: 'backend',
-        install:
-          'npm i @opentelemetry/sdk-metrics @opentelemetry/exporter-metrics-otlp-http @opentelemetry/resources',
-        code: `import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
-import { OTLPMetricExporter } from '@opentelemetry/exporter-metrics-otlp-http';
-import { Resource } from '@opentelemetry/resources';
+        install: 'npm install @iaportafolio/node',
+        code: `import * as faro from '@iaportafolio/node';
 
-const exporter = new OTLPMetricExporter({
-  url: '${base}/v1/metrics',
-  headers: { Authorization: 'Bearer ${t}' },
+faro.init({
+  endpoint: '${base}',
+  token: process.env.FARO_TOKEN!,           // ${t.slice(0, 6)}…${t.slice(-4)}
+  service: 'mi-servicio',
+  environment: 'production',
 });
 
-const provider = new MeterProvider({
-  resource: new Resource({ 'service.name': 'mi-servicio' }),
-  readers: [new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 10_000 })],
-});
+// Counter monotónico (request count, errors total, bytes processed…)
+const httpHits = faro.counter('http.requests.total', { unit: '1' });
+httpHits.add(1, { route: '/api/foo', status: '200' });
 
-const meter = provider.getMeter('mi-app');
-const requests = meter.createCounter('http.requests.total');
-requests.add(1, { route: '/api/foo', status: '200' });`
+// Gauge: valor puntual (depth de cola, memoria, conexiones abiertas…)
+faro.gauge('queue.depth').set(42, { worker: 'a' });
+
+// Histograma: distribución de latencias / tamaños
+const reqLatency = faro.histogram('http.request.duration_ms', { unit: 'ms' });
+reqLatency.record(123, { route: '/api/foo' });`
       },
       {
         id: 'otel-python',

@@ -40,12 +40,14 @@
   /** Override manual del proyecto activo desde el dropdown del propio empty state. */
   let manualSlug = '';
 
-  /** Métricas y trazas SOLO entran por OTLP — los SDKs `@iaportafolio/*`
-   *  no las cubren. En el resto de signals usamos los snippets nativos. */
+  /** Métricas: Node ya tiene API nativa (`faro.counter/gauge/histogram`); Python/Go
+   *  todavía van por OTel hasta que esos SDKs ganen la misma API.
+   *  Trazas: el SDK Node ya manda OTLP automáticamente (auto-instrumentación),
+   *  pero el snippet de onboarding muestra OTel genérico para Python/Go. */
   $: useOtlp = kind === 'metrics' || kind === 'traces';
   /** El tab por defecto cambia según el set de snippets activo. */
   let activeTab = 'node';
-  $: activeTab = useOtlp ? 'otel-node' : 'node';
+  $: activeTab = kind === 'metrics' ? 'native-node' : kind === 'traces' ? 'otel-node' : 'node';
 
   onMount(async () => {
     try {
@@ -107,9 +109,9 @@
   };
   const blurbs: Record<EmptyKind, string> = {
     logs:    'Envía tu primer log desde cualquier servicio en menos de un minuto.',
-    traces:  'Las trazas entran por OTLP — los SDKs `@iaportafolio/*` sólo envían logs y errores. Usa el SDK oficial de OpenTelemetry de tu lenguaje y apúntalo a `/v1/traces`.',
+    traces:  'El SDK Node ya envía trazas automáticamente (auto-instrumentación de Express/Fastify/HTTP/pg/redis…). Si no las ves, asegurate de instalar v0.2+ y dejar `enableTracing: true` (default). Para Python/Go usa OpenTelemetry mientras estos SDKs ganan la misma API.',
     errors:  'Llama a `captureException(err)` desde tu SDK para que se agrupe aquí por fingerprint.',
-    metrics: 'Las métricas entran por OTLP — los SDKs `@iaportafolio/*` sólo envían logs y errores. Usa el SDK oficial de OpenTelemetry de tu lenguaje y apúntalo a `/v1/metrics`.',
+    metrics: 'El SDK Node tiene API nativa (`faro.counter / gauge / histogram` desde v0.3.0). Para Python/Go usa OpenTelemetry mientras estos SDKs ganan la misma API.',
     events:  'Llama a `track(eventName, properties)` desde el SDK para registrar acciones del usuario.',
     summary: 'Empieza enviando tu primer log: el resumen se llena en cuanto llegue algo.'
   };
@@ -158,10 +160,8 @@
       <!-- ▸ SDK snippets -->
       <div class="oe-card">
         <div class="oe-card-head">
-          <h3>1. {useOtlp ? 'Instrumenta con OpenTelemetry' : 'Instala el SDK'}</h3>
-          {#if !useOtlp}
-            <a class="oe-link" href="/settings/projects">Ver todos los lenguajes →</a>
-          {/if}
+          <h3>1. Instala el SDK</h3>
+          <a class="oe-link" href="/settings/projects">Ver todos los lenguajes →</a>
         </div>
         <div class="oe-tabs" role="tablist">
           {#each groupOrder as g}

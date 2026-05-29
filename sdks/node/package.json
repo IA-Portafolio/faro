@@ -1,6 +1,6 @@
 {
   "name": "@iaportafolio/node",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Faro SDK for Node.js and TypeScript — logs, errors, product events and auto-instrumented OTLP traces",
   "license": "MIT",
   "type": "module",
