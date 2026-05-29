@@ -14,9 +14,9 @@
   type Option = { value: ThemeChoice; label: string; icon: string; description: string };
 
   const themeOptions: Option[] = [
-    { value: 'light', label: 'Claro', icon: '☀', description: 'Pensado para entornos bien iluminados.' },
-    { value: 'dark', label: 'Oscuro', icon: '☾', description: 'Reduce la fatiga ocular en sesiones largas o nocturnas.' },
-    { value: 'system', label: 'Sistema', icon: '◐', description: 'Sigue automáticamente la preferencia de tu sistema operativo.' }
+    { value: 'light', label: 'Claro', icon: '☀', description: 'Para entornos iluminados.' },
+    { value: 'dark', label: 'Oscuro', icon: '☾', description: 'Reduce la fatiga en sesiones largas.' },
+    { value: 'system', label: 'Sistema', icon: '◐', description: 'Sigue tu preferencia del SO.' }
   ];
 
   const rangeOptions: { value: TimeRangePref; label: string }[] = [
@@ -109,21 +109,22 @@
   <h1 class="page-title">Apariencia y defaults</h1>
 </div>
 
-<p class="muted" style="max-width: 720px; margin-bottom: 20px;">
+<p class="muted page-lede">
   Estas preferencias se guardan en tu cuenta y se aplican automáticamente al
   iniciar sesión en cualquier dispositivo. Un enlace con <code>?project=…</code>
   o <code>?range=…</code> siempre gana sobre el default para que los deep links
   no se vean alterados.
 </p>
 
-<section style="background: var(--bg-elev); border: 1px solid var(--border); border-radius: 6px; padding: 20px; max-width: 720px;">
-  <h2 style="margin: 0 0 6px; font-size: 16px;">Tema</h2>
-  <div class="muted" style="font-size: 12px; margin-bottom: 16px;">
-    Actualmente se aplica <strong>{$resolvedTheme === 'dark' ? 'oscuro' : 'claro'}</strong>
-    {#if $themeChoice === 'system'}(según tu sistema){/if}.
-  </div>
+<section class="card">
+  <header class="card-head">
+    <h2>Tema</h2>
+    <div class="muted small">
+      Actualmente <strong>{$resolvedTheme === 'dark' ? 'oscuro' : 'claro'}</strong>{#if $themeChoice === 'system'} (según tu sistema){/if}.
+    </div>
+  </header>
 
-  <div role="radiogroup" aria-label="Selección de tema" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+  <div role="radiogroup" aria-label="Selección de tema" class="theme-grid">
     {#each themeOptions as opt}
       <button
         type="button"
@@ -141,41 +142,43 @@
             <span class="badge ok" style="margin-left: auto;">Activo</span>
           {/if}
         </div>
-        <div class="muted" style="font-size: 12px; text-align: left;">{opt.description}</div>
+        <div class="muted small theme-card-desc">{opt.description}</div>
       </button>
     {/each}
   </div>
 </section>
 
-<section style="background: var(--bg-elev); border: 1px solid var(--border); border-radius: 6px; padding: 20px; max-width: 720px; margin-top: 16px;">
-  <h2 style="margin: 0 0 6px; font-size: 16px;">Defaults de exploración</h2>
-  <div class="muted" style="font-size: 12px; margin-bottom: 16px;">
-    Cuando entres a Faro sin parámetros en la URL, el panel arrancará con
-    estos valores. Si cambias el proyecto o el rango dentro de la app, el
-    cambio queda reflejado en el query string (no en estos defaults) hasta
-    que pulses "Guardar".
+<section class="card">
+  <header class="card-head">
+    <h2>Defaults de exploración</h2>
+    <div class="muted small">
+      Cuando entres a Faro sin parámetros en la URL, el panel arrancará con
+      estos valores. Cambios dentro de la app sólo se persisten al pulsar "Guardar".
+    </div>
+  </header>
+
+  <div class="defaults-grid">
+    <div class="field">
+      <label for="default-project">Proyecto por defecto</label>
+      <select id="default-project" bind:value={defaultProject}>
+        <option value="">Todos los proyectos</option>
+        {#each projects as p}
+          <option value={p.slug}>{p.name} ({p.slug})</option>
+        {/each}
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="default-range">Rango temporal por defecto</label>
+      <select id="default-range" bind:value={defaultRange}>
+        {#each rangeOptions as o}
+          <option value={o.value}>{o.label}</option>
+        {/each}
+      </select>
+    </div>
   </div>
 
-  <div class="field" style="max-width: 360px;">
-    <label for="default-project">Proyecto por defecto</label>
-    <select id="default-project" bind:value={defaultProject}>
-      <option value="">Todos los proyectos</option>
-      {#each projects as p}
-        <option value={p.slug}>{p.name} ({p.slug})</option>
-      {/each}
-    </select>
-  </div>
-
-  <div class="field" style="max-width: 360px;">
-    <label for="default-range">Rango temporal por defecto</label>
-    <select id="default-range" bind:value={defaultRange}>
-      {#each rangeOptions as o}
-        <option value={o.value}>{o.label}</option>
-      {/each}
-    </select>
-  </div>
-
-  <div class="flex gap-8 center">
+  <div class="flex gap-8 center" style="margin-top: 14px;">
     <button class="primary" on:click={saveDefaults} disabled={!defaultsDirty || saving}>
       {saving ? 'Guardando…' : 'Guardar defaults'}
     </button>
@@ -183,29 +186,58 @@
       Aplicar a esta sesión
     </button>
     {#if defaultsDirty}
-      <span class="muted" style="font-size: 12px;">· cambios sin guardar</span>
+      <span class="muted small">· cambios sin guardar</span>
     {/if}
   </div>
 </section>
 
 {#if saveError}
-  <div style="color: var(--danger); margin-top: 12px; max-width: 720px;">{saveError}</div>
+  <div class="error-msg">{saveError}</div>
 {:else if savedAt}
-  <div class="muted" style="margin-top: 12px; font-size: 12px; max-width: 720px;">
+  <div class="muted small saved-msg">
     ✓ Guardado a las {savedAt.toLocaleTimeString()}.
   </div>
 {/if}
 
 <style>
+  /* Constraint global del contenido — los lectores cansan a >900px de prosa. */
+  .page-lede { max-width: 760px; margin-bottom: 20px; }
+
+  .card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+  }
+  .card + .card { margin-top: 16px; }
+  .card-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .card-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+  .small { font-size: 12px; }
+
+  .theme-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+  @media (max-width: 720px) {
+    .theme-grid { grid-template-columns: 1fr; }
+  }
+
   .theme-card {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 14px;
+    padding: 12px 14px;
     cursor: pointer;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     text-align: left;
     transition: border-color 0.1s, background 0.1s;
   }
@@ -219,8 +251,22 @@
     align-items: center;
     gap: 10px;
   }
-  .theme-card-icon {
-    font-size: 16px;
-    width: 20px;
+  .theme-card-icon { font-size: 16px; width: 20px; }
+  .theme-card-desc { line-height: 1.35; }
+
+  .defaults-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+    max-width: 720px;
   }
+  @media (max-width: 600px) {
+    .defaults-grid { grid-template-columns: 1fr; }
+  }
+  /* El field global probablemente trae margin-bottom por defecto; en el grid
+     ya hay gap, evitamos doble espaciado. */
+  .defaults-grid .field { margin-bottom: 0; }
+
+  .error-msg { color: var(--danger); margin-top: 12px; }
+  .saved-msg { margin-top: 12px; }
 </style>

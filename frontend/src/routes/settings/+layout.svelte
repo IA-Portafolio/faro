@@ -1,26 +1,19 @@
 <script lang="ts">
   import { page } from '$app/stores';
 
-  type Item = { href: string; label: string; icon: string };
-  type Group = { title: string; items: Item[] };
+  type Item = { href: string; label: string; group: 'Personal' | 'Workspace' };
 
-  const groups: Group[] = [
-    {
-      title: 'Personal',
-      items: [
-        { href: '/settings/appearance', label: 'Apariencia', icon: '◐' },
-        { href: '/settings/security', label: 'Seguridad', icon: '⏾' }
-      ]
-    },
-    {
-      title: 'Workspace',
-      items: [
-        { href: '/settings/projects', label: 'Proyectos', icon: '⚙' },
-        { href: '/settings/users', label: 'Usuarios', icon: '👤' },
-        { href: '/settings/alerts', label: 'Alertas', icon: '⏰' },
-        { href: '/settings/integrations', label: 'Integraciones', icon: '⇆' }
-      ]
-    }
+  // Tabs horizontales agrupados visualmente con un separador entre Personal y
+  // Workspace. El grupo se mantiene como información secundaria — los labels
+  // de los grupos no se muestran como headers (eso volvería a vender el
+  // sub-sidebar viejo), pero el agrupamiento mantiene el orden lógico.
+  const items: Item[] = [
+    { href: '/settings/appearance', label: 'Apariencia', group: 'Personal' },
+    { href: '/settings/security', label: 'Seguridad', group: 'Personal' },
+    { href: '/settings/projects', label: 'Proyectos', group: 'Workspace' },
+    { href: '/settings/users', label: 'Usuarios', group: 'Workspace' },
+    { href: '/settings/alerts', label: 'Alertas', group: 'Workspace' },
+    { href: '/settings/integrations', label: 'Integraciones', group: 'Workspace' }
   ];
 
   $: current = $page.url.pathname;
@@ -29,20 +22,17 @@
   }
 </script>
 
-<div class="settings-layout">
-  <aside class="settings-nav" aria-label="Sub-navegación de configuración">
-    {#each groups as g}
-      <div class="group-title">{g.title}</div>
-      {#each g.items as it}
-        <a href={it.href} class:active={isActive(it.href)} data-sveltekit-preload-data="hover">
-          <span class="mono" style="width: 14px; opacity: 0.85;">{it.icon}</span>
-          <span>{it.label}</span>
-        </a>
-      {/each}
-    {/each}
-  </aside>
+<nav class="settings-tabs" aria-label="Sub-navegación de configuración">
+  {#each items as it, i (it.href)}
+    {#if i > 0 && it.group !== items[i - 1].group}
+      <span class="settings-tabs-divider" aria-hidden="true"></span>
+    {/if}
+    <a href={it.href} class:active={isActive(it.href)} data-sveltekit-preload-data="hover">
+      {it.label}
+    </a>
+  {/each}
+</nav>
 
-  <section style="min-width: 0;">
-    <slot />
-  </section>
-</div>
+<section class="settings-content">
+  <slot />
+</section>

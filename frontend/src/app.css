@@ -517,57 +517,50 @@ table tr:hover { background: var(--bg-elev); }
 .span-row .span-track { position: relative; height: 16px; background: var(--bg); border-radius: 2px; }
 .span-row .span-track .span-bar { position: absolute; top: 0; bottom: 0; }
 
-/* ---------- Settings layout ---------- */
-.settings-layout {
-  display: grid;
-  grid-template-columns: 220px 1fr;
-  gap: 24px;
-  align-items: start;
-}
-.settings-nav {
+/* ---------- Settings tabs ---------- */
+.settings-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 8px;
-  position: sticky;
-  top: 20px;
-}
-.settings-nav a {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border-radius: 4px;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 24px;
+  /* En pantallas anchas todo entra; el wrap se encarga del resto. Evitamos
+     overflow-x:auto porque Chromium/Edge en Windows lo combinan con un track
+     vertical fantasma encima de las tabs. */
+  overflow: hidden;
+}
+.settings-tabs a {
+  padding: 10px 14px;
+  color: var(--text-muted);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+  /* Solapa el borde con el borde inferior del contenedor para que la línea
+     activa visualmente "reemplace" la divisoria, no se le sume. */
+  margin-bottom: -1px;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color 0.1s, border-color 0.1s;
+}
+.settings-tabs a:hover {
   color: var(--text);
   text-decoration: none;
-  font-size: 13px;
 }
-.settings-nav a:hover { background: var(--bg-hover); text-decoration: none; }
-.settings-nav a.active {
-  background: var(--bg-hover);
+.settings-tabs a.active {
   color: var(--accent);
-  font-weight: 600;
+  border-bottom-color: var(--accent);
 }
-.settings-nav .group-title {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  padding: 10px 12px 4px;
+.settings-tabs-divider {
+  display: inline-block;
+  width: 1px;
+  height: 16px;
+  background: color-mix(in srgb, var(--text-muted) 50%, transparent);
+  margin: 0 10px;
+  flex-shrink: 0;
 }
-
-@media (max-width: 720px) {
-  .settings-layout {
-    grid-template-columns: 1fr;
-  }
-  .settings-nav {
-    position: static;
-    flex-direction: row;
-    overflow-x: auto;
-  }
+.settings-content {
+  min-width: 0;
 }
 
 /* ---------- Theme toggle ---------- */
