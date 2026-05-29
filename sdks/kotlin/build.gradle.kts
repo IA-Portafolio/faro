@@ -12,7 +12,7 @@ plugins {
     // auth). 0.0.9 enviaba el Basic Auth en un formato que el portal nuevo
     // ya no acepta — daba 401 "Invalid token" aunque las credentials fueran
     // válidas (curl directo con esas mismas confirma 200/500, no 401).
-    id("com.gradleup.nmcp") version "1.0.4"
+    id("com.gradleup.nmcp") version "1.2.0"
 }
 
 group = "com.iaportafolio"
