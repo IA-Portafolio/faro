@@ -232,6 +232,18 @@ table tr:hover { background: var(--bg-elev); }
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  /* Scrollbar fina y discreta — Firefox + Chromium. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent) transparent;
+}
+.sidebar nav::-webkit-scrollbar { width: 6px; }
+.sidebar nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar nav::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--text-muted) 30%, transparent);
+  border-radius: 3px;
+}
+.sidebar nav::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--text-muted) 60%, transparent);
 }
 
 .sidebar-footer {
