@@ -155,7 +155,7 @@
     {/each}
   </nav>
 
-  <div style="padding: 12px 16px; margin-top: auto; border-top: 1px solid var(--border);">
+  <div class="sidebar-footer">
     <div class="theme-toggle" role="radiogroup" aria-label="Tema del panel">
       {#each [
         { value: 'light' as ThemeChoice, icon: '☀', title: 'Tema claro' },
@@ -235,28 +235,38 @@
   .kbd-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 4px;
+    gap: 6px;
     margin-top: 8px;
   }
   .kbd-btn {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 6px;
+    gap: 5px;
     background: transparent;
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 6px 8px;
-    font-size: 11.5px;
+    padding: 5px 7px;
+    font-size: 11px;
     color: var(--text-muted);
     cursor: pointer;
+    /* Permite shrink debajo del intrinsic min-width para que la grid 1fr 1fr
+       no desborde el sidebar y dispare scroll horizontal. */
+    min-width: 0;
+    overflow: hidden;
+  }
+  .kbd-btn > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
   }
   .kbd-btn:hover { background: var(--bg-hover); color: var(--text); }
-  .kbd-keys { display: inline-flex; gap: 2px; }
+  .kbd-keys { display: inline-flex; gap: 1px; flex-shrink: 0; }
   .kbd-keys kbd {
-    font-size: 10px;
+    font-size: 9px;
     border: 1px solid var(--border);
-    padding: 0 4px;
+    padding: 0 3px;
     border-radius: 3px;
     background: var(--bg);
     color: var(--text-muted);
