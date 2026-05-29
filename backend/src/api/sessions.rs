@@ -156,7 +156,7 @@ async fn list_sessions(
                   ifNull(rs.replay_chunk_count, 0) AS replay_chunk_count, \
                   ps.trace_count AS trace_count, \
                   ps.source AS source \
-           FROM faro.product_sessions FINAL AS ps \
+           FROM faro.product_sessions AS ps FINAL \
            LEFT JOIN replay_sessions AS rs \
              ON rs.project_id = ps.project_id AND rs.session_id = ps.session_id \
            LEFT JOIN error_sessions AS es \
