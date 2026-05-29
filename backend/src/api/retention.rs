@@ -72,16 +72,28 @@ async fn retention(
 
     let from_s = ch_dt(from);
     let to_s = ch_dt(to);
+    // Techo del rango de eventos relevantes: el cohort más reciente posible es `to`,
+    // y necesitamos hasta D+30 sobre él, dejamos un día extra para que la desigualdad
+    // estricta `<` cubra cualquier borde.
+    let to_plus_31d_s = ch_dt(to + chrono::Duration::days(31));
     let event_name = q.event_name.unwrap_or_default();
     let (project_clause, project_value) = q.range.project_clause("");
+    // En el subquery de eventos de retorno, la columna se referencia sin prefijo de alias.
     let return_event_clause = if event_name.trim().is_empty() {
         ""
     } else {
-        " AND pe.event_name = {event_name:String}"
+        " AND event_name = {event_name:String}"
     };
 
     // Cohort clásico: usuarios cuya primera actividad histórica cae dentro del rango.
     // La retención se mide por actividad en el día calendario D+n.
+    //
+    // El subquery de pe acota el rango de timestamps a [from, to + 31d) y aplica
+    // event_name/project filters; el JOIN queda como equijoin puro por
+    // (project_id, distinct_id) — ClickHouse 24.8 con new analyzer rechaza
+    // condiciones ON que mezclen columnas de left y right en desigualdades
+    // (INVALID_JOIN_ON_EXPRESSION, 403). Los `uniqExactIf` ya filtran al día
+    // exacto, así que el resultado es semánticamente idéntico.
     let sql = format!(
         "WITH \
            first_touch AS ( \
@@ -101,16 +113,23 @@ async fn retention(
                 toUInt64(uniqExactIf(ft.distinct_id, toDate(pe.timestamp) = ft.cohort_date + 7)) AS d7_users, \
                 toUInt64(uniqExactIf(ft.distinct_id, toDate(pe.timestamp) = ft.cohort_date + 30)) AS d30_users \
          FROM first_touch AS ft \
-         LEFT JOIN faro.product_events AS pe \
+         LEFT JOIN ( \
+           SELECT project_id, distinct_id, timestamp \
+           FROM faro.product_events \
+           WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) \
+             AND timestamp <  toDateTime64({{to_plus_31d:DateTime64(9)}}, 9){project_clause}{return_event_clause} \
+         ) AS pe \
            ON pe.project_id = ft.project_id \
           AND pe.distinct_id = ft.distinct_id \
-          AND pe.timestamp >= toDateTime(ft.cohort_date) \
-          AND pe.timestamp <  toDateTime(ft.cohort_date + 31){return_event_clause} \
          GROUP BY ft.cohort_date \
          ORDER BY ft.cohort_date DESC"
     );
 
-    let mut params: Vec<(&str, &str)> = vec![("from", &from_s), ("to", &to_s)];
+    let mut params: Vec<(&str, &str)> = vec![
+        ("from", &from_s),
+        ("to", &to_s),
+        ("to_plus_31d", &to_plus_31d_s),
+    ];
     if let Some(project) = project_value {
         params.push(("project", project));
     }
