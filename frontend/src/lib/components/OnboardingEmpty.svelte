@@ -22,6 +22,8 @@
     curlProbe,
     groupLabels,
     groupOrder,
+    otlpCurlProbe,
+    otlpSnippetsFor,
     snippetsFor,
     type Snippet
   } from '$lib/sdk-snippets';
@@ -35,9 +37,15 @@
   let projects: Project[] = [];
   let loadingProjects = true;
   let loadError = '';
-  let activeTab = 'node';
   /** Override manual del proyecto activo desde el dropdown del propio empty state. */
   let manualSlug = '';
+
+  /** Métricas y trazas SOLO entran por OTLP — los SDKs `@iaportafolio/*`
+   *  no las cubren. En el resto de signals usamos los snippets nativos. */
+  $: useOtlp = kind === 'metrics' || kind === 'traces';
+  /** El tab por defecto cambia según el set de snippets activo. */
+  let activeTab = 'node';
+  $: activeTab = useOtlp ? 'otel-node' : 'node';
 
   onMount(async () => {
     try {
@@ -58,8 +66,16 @@
     return projects[0] ?? null;
   })();
 
-  $: snippets = focusProject ? snippetsFor(focusProject) : ([] as Snippet[]);
-  $: curl = focusProject ? curlProbe(focusProject) : '';
+  $: snippets = focusProject
+    ? useOtlp
+      ? otlpSnippetsFor(focusProject, kind as 'metrics' | 'traces')
+      : snippetsFor(focusProject)
+    : ([] as Snippet[]);
+  $: curl = focusProject
+    ? useOtlp
+      ? otlpCurlProbe(focusProject, kind as 'metrics' | 'traces')
+      : curlProbe(focusProject)
+    : '';
 
   // ---------- Copy helpers ----------
 
@@ -91,9 +107,9 @@
   };
   const blurbs: Record<EmptyKind, string> = {
     logs:    'Envía tu primer log desde cualquier servicio en menos de un minuto.',
-    traces:  'Las trazas aparecen cuando un SDK con tracing instrumenta una operación.',
+    traces:  'Las trazas entran por OTLP — los SDKs `@iaportafolio/*` sólo envían logs y errores. Usa el SDK oficial de OpenTelemetry de tu lenguaje y apúntalo a `/v1/traces`.',
     errors:  'Llama a `captureException(err)` desde tu SDK para que se agrupe aquí por fingerprint.',
-    metrics: 'Las métricas aparecen al instrumentar contadores/gauges/histogramas con tu SDK.',
+    metrics: 'Las métricas entran por OTLP — los SDKs `@iaportafolio/*` sólo envían logs y errores. Usa el SDK oficial de OpenTelemetry de tu lenguaje y apúntalo a `/v1/metrics`.',
     events:  'Llama a `track(eventName, properties)` desde el SDK para registrar acciones del usuario.',
     summary: 'Empieza enviando tu primer log: el resumen se llena en cuanto llegue algo.'
   };
@@ -142,8 +158,10 @@
       <!-- ▸ SDK snippets -->
       <div class="oe-card">
         <div class="oe-card-head">
-          <h3>1. Instala el SDK</h3>
-          <a class="oe-link" href="/settings/projects">Ver todos los lenguajes →</a>
+          <h3>1. {useOtlp ? 'Instrumenta con OpenTelemetry' : 'Instala el SDK'}</h3>
+          {#if !useOtlp}
+            <a class="oe-link" href="/settings/projects">Ver todos los lenguajes →</a>
+          {/if}
         </div>
         <div class="oe-tabs" role="tablist">
           {#each groupOrder as g}
