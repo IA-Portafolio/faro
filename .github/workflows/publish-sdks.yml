@@ -362,19 +362,12 @@ jobs:
           # quedan CRLF y BouncyCastle rechaza con "Could not read PGP
           # secret key" sin más detalle.
           FINAL=$(printf '%s' "$FINAL" | tr -d '\r')
-          # Diagnóstico (sin exponer la key): cuántas líneas tiene y headers.
-          LINE_COUNT=$(printf '%s' "$FINAL" | wc -l)
-          FIRST_LINE=$(printf '%s' "$FINAL" | head -1)
-          LAST_LINE=$(printf '%s' "$FINAL" | tail -1)
-          echo "diag: ${#FINAL} bytes, $LINE_COUNT líneas (\\n)"
-          echo "diag: first='$FIRST_LINE'"
-          echo "diag: last='$LAST_LINE'"
           # Si la key entera vino en UNA sola línea (GitHub UI a veces hace
           # eso), reconstruir newlines: BEGIN header, body en chunks de 64
-          # chars (formato armored estándar), END footer.
-          if [ "$LINE_COUNT" -le 2 ]; then
+          # chars (formato armored estándar), END footer. La heurística
+          # (sin imprimir nada derivado del secret) usa `wc -l`.
+          if [ "$(printf '%s' "$FINAL" | wc -l)" -le 2 ]; then
             echo "::warning::secret en una sola línea, reconstruyendo formato armored"
-            # Extraer body entre BEGIN y END headers
             BODY=$(printf '%s' "$FINAL" | sed -E 's|.*-----BEGIN PGP PRIVATE KEY BLOCK-----||; s|-----END PGP PRIVATE KEY BLOCK-----.*||')
             FINAL=$(printf '%s\n%s\n%s\n' \
               "-----BEGIN PGP PRIVATE KEY BLOCK-----" \
@@ -386,7 +379,7 @@ jobs:
             printf '%s\n' "$FINAL"
             echo "__END__"
           } >> "$GITHUB_ENV"
-          echo "armored key listo final ${#FINAL} bytes"
+          echo "armored key OK"
       - name: Publish to OSSRH (Central)
         working-directory: sdks/kotlin
         env:
@@ -402,7 +395,14 @@ jobs:
           if [ ! -f ./gradlew ]; then
             gradle wrapper --gradle-version 8.7
           fi
-          ./gradlew publish --no-daemon
+          # `./gradlew publish` deja el bundle en el staging local del plugin
+          # nmcp pero NO lo envía a Sonatype Central Portal — el deployment
+          # queda en limbo y el package nunca aparece como "published".
+          # `publishAllPublicationsToCentralPortal` es la task del plugin
+          # nmcp 0.0.9 que sí sube el bundle a https://central.sonatype.com/
+          # (con publicationType="AUTOMATIC" en build.gradle.kts, Sonatype
+          # valida y publica solo tras el upload).
+          ./gradlew publishAllPublicationsToCentralPortal --no-daemon
 
   github-release:
     needs: [ctx]
