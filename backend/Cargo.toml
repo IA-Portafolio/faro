@@ -75,7 +75,7 @@ time = "0.3"
 # no `utoipa-swagger-ui` — sacamos ese crate para eliminar el build.rs que
 # descargaba el bundle de Swagger via curl. Ver docs/adr/0006-openapi-utoipa.md.
 utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
-utoipa-axum = "0.1"
+utoipa-axum = "0.2"
 
 # Self-observability — opt-in vía FARO_SELF_OBSERVE=true. Emite traces,
 # logs y métricas del propio backend al endpoint OTLP local (`:4318`).
