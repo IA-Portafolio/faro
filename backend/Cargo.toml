@@ -115,7 +115,7 @@ governor = "0.7"
 # El test `tests/metrics_endpoint.rs` falla si el split reaparece. Para subir a
 # metrics 0.24 hay que subir axum-prometheus a una versión que use el exporter
 # 0.16+ (cambia la API de `install()`).
-axum-prometheus = "0.7"
+axum-prometheus = "0.10"
 metrics = "0.23"
 
 # 2FA TOTP (RFC 6238). `totp-rs` con `gen_secret` produce el secreto Base32 y
