@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Gráfico de líneas/área en SVG puro, sin librería externa.
+   *
+   * Recibe una serie temporal `points` ({ ts, value }) y la dibuja como un path
+   * con relleno, grilla horizontal y ticks de tiempo. Es el chart genérico
+   * reutilizable (p. ej. en métricas); el viewBox es fijo (800×`height`) y escala
+   * por CSS, así que no necesita medir el contenedor.
+   */
   export let points: { ts: string; value: number }[] = [];
   export let height = 200;
   export let label = '';

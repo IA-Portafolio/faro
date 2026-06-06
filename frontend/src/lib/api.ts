@@ -1,3 +1,13 @@
+/**
+ * Cliente HTTP único contra el backend de Faro y catálogo de tipos compartidos.
+ *
+ * `api<T>()` es el wrapper sobre `fetch`: resuelve la base URL (variable
+ * `PUBLIC_API_BASE`, o el host actual en el puerto 8080), manda la cookie de
+ * sesión (`credentials: 'include'`) y centraliza el manejo del 401 → redirige a
+ * `/login` salvo en rutas públicas (`/login`, `/docs`). Debajo viven los tipos
+ * de datos (`Dashboard`, `Issue`, `ProductEvent`, …) y las funciones
+ * `fetchX`/`saveX` que cada página usa para hablar con la API REST.
+ */
 import { env as publicEnv } from '$env/dynamic/public';
 
 function base(): string {
@@ -44,8 +54,13 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) }
   });
   if (res.status === 401) {
-    if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-      window.location.assign('/login?next=' + encodeURIComponent(window.location.pathname));
+    // En rutas públicas (login y la doc pública /docs) un 401 es esperado y
+    // NO debe forzar el redirect a /login: la página se renderiza en modo
+    // anónimo y cada caller maneja el fallo (p. ej. el sidebar muestra vacío).
+    const p = typeof window !== 'undefined' ? window.location.pathname : '';
+    const onPublic = p.startsWith('/login') || p === '/docs' || p.startsWith('/docs/');
+    if (typeof window !== 'undefined' && !onPublic) {
+      window.location.assign('/login?next=' + encodeURIComponent(p));
     }
     throw new UnauthorizedError();
   }

@@ -1,3 +1,12 @@
+/**
+ * Gestión del tema claro/oscuro de la interfaz.
+ *
+ * `themeChoice` guarda la preferencia del usuario ('light' | 'dark' | 'system');
+ * 'system' delega en `prefers-color-scheme` del SO. `resolvedTheme` es el valor
+ * efectivo que se aplica al `<html>` (atributos `data-theme` y `color-scheme`).
+ * Se persiste en localStorage y, si hay sesión, también en el backend
+ * (`savePreferences`) para que el tema viaje entre dispositivos.
+ */
 import { writable, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { savePreferences, type ThemePref } from './api';

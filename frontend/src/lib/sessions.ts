@@ -1,3 +1,11 @@
+/**
+ * Helpers de la vista de sesiones (session analytics y session replay).
+ *
+ * Modela una fila de sesión (duración, pageviews, errores, si tiene replay…) y
+ * `SessionHealth` la clasifica en 'error' | 'replay' | 'plain'. Construye los
+ * href para saltar al replay grabado (`/replays/<session_id>`), a los eventos de
+ * la sesión, a sus trazas (`/sessions/<session_id>/traces`) o al usuario dueño.
+ */
 import type { RangePreset } from './stores';
 
 export type SessionHealth = 'error' | 'replay' | 'plain';

@@ -1,3 +1,7 @@
+//! Endpoint del dashboard de Resumen:
+//!   GET /dashboard → contadores agregados del proyecto/rango: logs, errores,
+//!   servicios, trazas, issues abiertos, incidentes activos y monitores.
+
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};

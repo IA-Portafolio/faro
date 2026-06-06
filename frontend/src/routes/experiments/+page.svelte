@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/experiments` — análisis de experimentos A/B sobre feature flags.
+   *
+   * Dado un `flagKey` (la feature flag que reparte variantes) y un evento de
+   * conversión, llama a `analyzeExperiment` y muestra el resultado por variante
+   * (conversión, uplift y significancia). El catálogo de eventos candidatos se
+   * precarga con `fetchFunnelEvents`.
+   */
   import { onMount } from 'svelte';
 
   import {

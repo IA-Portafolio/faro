@@ -30,6 +30,8 @@ export interface FaroExpoOptions {
   maxBatchSize?: number;
   maxQueueSize?: number;
   installGlobalHandlers?: boolean;
+  /** Cadencia de refresh de feature flags en ms (por defecto 30_000). */
+  featureFlagRefreshIntervalMs?: number;
   /** Substrings case-insensitive: cualquier atributo cuya clave los contenga se redacta. Default: lista común de campos sensibles. */
   scrubFields?: string[];
   /** Si true, suma headers comunes (authorization, cookie, set-cookie) a scrubFields. Default: true. */
@@ -76,6 +78,26 @@ export interface ProductEventWire {
   source: string;
 }
 
+// ---------- Feature flags ----------
+
+export interface FeatureFlagContext {
+  distinct_id?: string;
+  properties?: Record<string, unknown>;
+}
+
+export interface FeatureFlagWire {
+  key: string;
+  rollout_percentage: number;
+  conditions?: {
+    properties?: Record<string, unknown>;
+  } & Record<string, unknown>;
+}
+
+interface FeatureFlagsResponse {
+  project?: string;
+  flags?: FeatureFlagWire[];
+}
+
 const DEFAULT_SCRUB_FIELDS = [
   'password', 'token', 'secret', 'authorization', 'cookie', 'set-cookie', 'api_key', 'apikey',
 ];
@@ -106,6 +128,36 @@ function scrubWire(wire: Wire, needles: string[], regexes: RegExp[]): void {
     }
   }
   if (regexes.length > 0) wire.message = scrubString(wire.message, regexes);
+}
+
+// ---- Feature flags: helpers (port idéntico al SDK Node) ----
+
+function clampRollout(value: unknown): number {
+  const n = typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+function normalizeConditions(value: FeatureFlagWire['conditions']): FeatureFlagWire['conditions'] {
+  return value && typeof value === 'object' ? value : {};
+}
+
+function matchesFeatureConditions(flag: FeatureFlagWire, context: FeatureFlagContext): boolean {
+  const required = flag.conditions?.properties;
+  if (!required || typeof required !== 'object') return true;
+  const props = context.properties ?? {};
+  for (const [key, expected] of Object.entries(required)) {
+    if (props[key] !== expected) return false;
+  }
+  return true;
+}
+
+function stickyBucket(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0) % 100;
 }
 
 // ---- Persistencia en AsyncStorage ----
@@ -219,6 +271,7 @@ class FaroExpoClient {
   private queue: Wire[] = [];
   private eventsQueue: ProductEventWire[] = [];
   private timer: ReturnType<typeof setInterval> | null = null;
+  private featureFlagsTimer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
   private prevHandler: ((err: Error, isFatal?: boolean) => void) | null = null;
   private scrubNeedles: string[];
@@ -233,6 +286,11 @@ class FaroExpoClient {
   /** anonymous_id estable. En Expo no hay localStorage; lo generamos en boot. */
   private anonymousId = `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   private userProperties: Record<string, unknown> = {};
+  /** userId del último identify/alias. Si está seteado, los logs llevan `user.id`. */
+  private currentUserId = '';
+  private featureFlags = new Map<string, FeatureFlagWire>();
+  private featureFlagsProject = '';
+  private featureExposureSeen = new Set<string>();
 
   constructor(private opts: ResolvedOptions) {
     this.scrubNeedles = Array.from(new Set([
@@ -256,6 +314,13 @@ class FaroExpoClient {
     if (typeof (this.timer as { unref?: () => void }).unref === 'function') {
       (this.timer as { unref: () => void }).unref();
     }
+    // Refresh periódico de feature flags. A diferencia del SDK Node NO llamamos
+    // unref (el timer de RN no lo implementa) ni hacemos un fetch inicial — la
+    // primera evaluación tras boot usa el snapshot vacío hasta el primer tick.
+    this.featureFlagsTimer = setInterval(
+      () => void this.refreshFeatureFlags(),
+      this.opts.featureFlagRefreshIntervalMs,
+    );
     if (this.opts.installGlobalHandlers) this.installHandlers();
   }
 
@@ -286,6 +351,12 @@ class FaroExpoClient {
         attrs[k] = typeof v === 'string' ? v : JSON.stringify(v);
       }
     }
+    // identify(userId) enriquece los logs siguientes con user.id (contrato
+    // sdks/README.md). El valor explícito del caller gana: solo lo seteamos
+    // si aún no vino en attrs.
+    if (this.currentUserId && !('user.id' in attrs)) {
+      attrs['user.id'] = this.currentUserId;
+    }
     const wire: Wire = {
       level: entry.level ?? 'INFO',
       message: entry.message,
@@ -314,6 +385,7 @@ class FaroExpoClient {
   identify(userId: string, traits: Record<string, unknown> = {}): void {
     if (!userId) return;
     this.distinctId = userId;
+    this.currentUserId = userId;
     this.userProperties = { ...this.userProperties, ...traits };
     this.enqueueEvent({
       type: 'identify',
@@ -331,6 +403,7 @@ class FaroExpoClient {
   alias(prevId: string, newId: string): void {
     if (!prevId || !newId) return;
     this.distinctId = newId;
+    this.currentUserId = newId;
     this.enqueueEvent({
       type: 'alias',
       name: '$alias',
@@ -345,6 +418,8 @@ class FaroExpoClient {
     properties: Record<string, unknown>;
     userPropertiesOverride?: Record<string, unknown>;
     anonymousIdOverride?: string;
+    /** Sobrescribe `distinct_id` (lo usa feature exposure con context.distinct_id). */
+    distinctIdOverride?: string;
   }): void {
     if (this.closed) return;
     if (this.eventsQueue.length >= this.opts.maxQueueSize) return;
@@ -356,13 +431,71 @@ class FaroExpoClient {
       type: input.type,
       name: input.name,
       timestamp: new Date().toISOString(),
-      distinct_id: this.distinctId || this.anonymousId,
+      distinct_id: input.distinctIdOverride ?? (this.distinctId || this.anonymousId),
       anonymous_id: input.anonymousIdOverride ?? this.anonymousId,
       session_id: '',
       properties: input.properties,
       user_properties: input.userPropertiesOverride ?? this.userProperties,
       context: ctx,
       source: 'mobile',
+    });
+  }
+
+  // ---------- Feature flags (port idéntico al SDK Node) ----------
+
+  async refreshFeatureFlags(): Promise<void> {
+    if (this.closed) return;
+    try {
+      const res = await fetch(`${this.opts.endpoint}/api/v1/ingest/feature-flags`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${this.opts.token}` },
+      });
+      if (!res.ok) return;
+      const body = (await res.json()) as FeatureFlagsResponse;
+      if (!Array.isArray(body.flags)) return;
+      const next = new Map<string, FeatureFlagWire>();
+      for (const flag of body.flags) {
+        if (!flag || typeof flag.key !== 'string' || flag.key.length === 0) continue;
+        next.set(flag.key, {
+          key: flag.key,
+          rollout_percentage: clampRollout(flag.rollout_percentage),
+          conditions: normalizeConditions(flag.conditions),
+        });
+      }
+      this.featureFlags = next;
+      this.featureFlagsProject = typeof body.project === 'string' ? body.project : '';
+    } catch (_e) {
+      /* fallo de red — reintenta en el próximo tick */
+    }
+  }
+
+  isFeatureEnabled(key: string, context: FeatureFlagContext = {}): boolean {
+    const flag = this.featureFlags.get(key);
+    if (!flag) return false;
+    if (!matchesFeatureConditions(flag, context)) return false;
+    const rollout = clampRollout(flag.rollout_percentage);
+    const id = context.distinct_id || this.distinctId || this.anonymousId;
+    const enabled = rollout >= 100
+      ? true
+      : rollout > 0 && stickyBucket(`${this.featureFlagsProject}:${key}:${id}`) < rollout;
+    this.trackFeatureExposure(key, id, enabled);
+    return enabled;
+  }
+
+  private trackFeatureExposure(flagKey: string, distinctId: string, enabled: boolean): void {
+    const variant = enabled ? 'B' : 'A';
+    const key = `${this.featureFlagsProject}:${flagKey}:${distinctId}:${variant}`;
+    if (this.featureExposureSeen.has(key)) return;
+    this.featureExposureSeen.add(key);
+    this.enqueueEvent({
+      type: 'track',
+      name: '$feature_exposure',
+      distinctIdOverride: distinctId,
+      properties: {
+        flag_key: flagKey,
+        variant,
+        enabled,
+      },
     });
   }
 
@@ -421,10 +554,19 @@ class FaroExpoClient {
     }
   }
 
-  async close(): Promise<void> {
+  /**
+   * Drena las colas y cierra. El `timeoutMs` acota el peor caso (red caída +
+   * cola llena): el loop de drenado rompe si vence el deadline o si la cola no
+   * progresa entre flushes. Limpia TODOS los timers (flush + feature flags) y
+   * desinstala los handlers (ErrorUtils/AppState).
+   */
+  async close(timeoutMs = 5000): Promise<void> {
     if (this.closed) return;
     this.closed = true;
     if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    if (this.featureFlagsTimer) clearInterval(this.featureFlagsTimer);
+    this.featureFlagsTimer = null;
     if (this.prevHandler && typeof ErrorUtils !== 'undefined') {
       ErrorUtils.setGlobalHandler(this.prevHandler);
     }
@@ -436,7 +578,25 @@ class FaroExpoClient {
     if (this.restorePromise) {
       try { await this.restorePromise; } catch { /* noop */ }
     }
-    await this.flush();
+    // Drena nuestras colas con cota dura — igual que el SDK Node, pero RN no
+    // siempre soporta AbortController en fetch, así que cada iteración corre
+    // contra el tiempo restante con un Promise.race para que un fetch colgado
+    // no bloquee el close más allá del deadline.
+    const deadline = Date.now() + timeoutMs;
+    while (
+      (this.queue.length > 0 || this.eventsQueue.length > 0) &&
+      Date.now() < deadline
+    ) {
+      const before = this.queue.length + this.eventsQueue.length;
+      const remaining = Math.max(0, deadline - Date.now());
+      const flushed = await Promise.race([
+        Promise.all([this.flushLogs(), this.flushEvents()]).then(() => true),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), remaining)),
+      ]);
+      if (!flushed) break; // venció el deadline con un flush en vuelo
+      const after = this.queue.length + this.eventsQueue.length;
+      if (after >= before) break; // probablemente la red esté caída; rendirse
+    }
     // Lo que quede sin enviar (red caída, server 5xx) se persiste para el próximo arranque.
     if (this.persistence) {
       await this.persistence.save(this.queue);
@@ -526,6 +686,7 @@ export function init(opts: FaroExpoOptions): FaroExpoClient {
     maxBatchSize: opts.maxBatchSize ?? 80,
     maxQueueSize: opts.maxQueueSize ?? 2000,
     installGlobalHandlers: opts.installGlobalHandlers ?? true,
+    featureFlagRefreshIntervalMs: opts.featureFlagRefreshIntervalMs ?? 30_000,
     scrubFields: opts.scrubFields ?? DEFAULT_SCRUB_FIELDS,
     scrubHeaders: opts.scrubHeaders ?? true,
     scrubPatterns: opts.scrubPatterns ?? (['jwt', 'api-key'] as ScrubPreset[]),
@@ -555,5 +716,8 @@ export const identify = (userId: string, traits?: Record<string, unknown>) =>
 export const screen = (name: string, properties?: Record<string, unknown>) =>
   need().screen(name, properties);
 export const alias = (prevId: string, newId: string) => need().alias(prevId, newId);
+export const refreshFeatureFlags = (): Promise<void> => need().refreshFeatureFlags();
+export const isFeatureEnabled = (key: string, context?: FeatureFlagContext): boolean =>
+  need().isFeatureEnabled(key, context);
 export const flush = () => need().flush();
-export const close = () => need().close();
+export const close = (timeoutMs?: number) => need().close(timeoutMs);

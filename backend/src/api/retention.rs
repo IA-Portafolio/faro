@@ -1,3 +1,7 @@
+//! Endpoint de retención por cohortes:
+//!   GET /retention → para un evento ancla, % de usuarios que vuelven a D1/D7/D30,
+//!   agrupados por cohorte (el día de su primera aparición).
+
 use std::time::Instant;
 
 use axum::extract::State;

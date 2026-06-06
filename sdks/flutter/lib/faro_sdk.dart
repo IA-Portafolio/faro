@@ -87,6 +87,9 @@ class FaroOptions {
   final bool scrubHeaders;
   final List<String> scrubPatterns;
   final WireEntry? Function(WireEntry entry)? beforeSend;
+  /// Cadencia de refresh de feature flags (por defecto 30s). Port del
+  /// `featureFlagRefreshIntervalMs` de Node.
+  final Duration featureFlagRefreshInterval;
 
   const FaroOptions({
     required this.endpoint,
@@ -105,6 +108,7 @@ class FaroOptions {
     this.scrubHeaders = true,
     this.scrubPatterns = const ['jwt', 'api-key'],
     this.beforeSend,
+    this.featureFlagRefreshInterval = const Duration(seconds: 30),
   });
 }
 
@@ -151,6 +155,19 @@ class ProductEventWire {
       };
 }
 
+/// Definición interna de un feature flag tal como llega del backend
+/// (`GET /api/v1/ingest/feature-flags`). Port 1:1 del `FeatureFlagWire` de Node.
+class _FlagDef {
+  final String key;
+  final int rolloutPercentage;
+  final Map<String, Object?> conditions;
+  const _FlagDef({
+    required this.key,
+    required this.rolloutPercentage,
+    required this.conditions,
+  });
+}
+
 class Faro {
   static Faro? _instance;
   static Faro get instance =>
@@ -160,6 +177,10 @@ class Faro {
   final List<WireEntry> _queue = [];
   final List<ProductEventWire> _eventsQueue = [];
   Timer? _timer;
+  Timer? _featureFlagsTimer;
+  Map<String, _FlagDef> _featureFlags = {};
+  String _featureFlagsProject = '';
+  final Set<String> _featureExposureSeen = {};
   bool _closed = false;
   late final List<String> _scrubNeedles;
   late final List<RegExp> _scrubRegexesActive;
@@ -325,6 +346,7 @@ class Faro {
     Map<String, dynamic> properties, {
     Map<String, dynamic>? userPropertiesOverride,
     String? anonymousIdOverride,
+    String? distinctIdOverride,
   }) {
     if (_closed) return;
     if (_eventsQueue.length >= options.maxQueueSize) return;
@@ -336,7 +358,7 @@ class Faro {
       type: type,
       name: name,
       timestamp: DateTime.now().toUtc().toIso8601String(),
-      distinctId: _distinctId.isNotEmpty ? _distinctId : _anonymousId,
+      distinctId: distinctIdOverride ?? (_distinctId.isNotEmpty ? _distinctId : _anonymousId),
       anonymousId: anonymousIdOverride ?? _anonymousId,
       sessionId: '',
       properties: properties,
@@ -350,6 +372,114 @@ class Faro {
   static String _randSuffix() {
     final n = DateTime.now().microsecondsSinceEpoch ^ identityHashCode(Object());
     return n.abs().toRadixString(36).padLeft(8, '0').substring(0, 8);
+  }
+
+  // ---------- Feature flags (port 1:1 del SDK de Node) ----------
+
+  /// Refresca la tabla de feature flags desde
+  /// `GET {endpoint}/api/v1/ingest/feature-flags`. Nunca lanza hacia el usuario:
+  /// ante cualquier error de red/parsing deja un diag log y conserva los flags
+  /// actuales. Lo invoca un `Timer.periodic` arrancado en [_start].
+  Future<void> refreshFeatureFlags() async {
+    if (_closed) return;
+    try {
+      final res = await http
+          .get(
+            Uri.parse('${_normalize(options.endpoint)}/api/v1/ingest/feature-flags'),
+            headers: {'Authorization': 'Bearer ${options.token}'},
+          )
+          .timeout(options.httpTimeout);
+      if (res.statusCode >= 400) {
+        developer.log(
+          'feature flags HTTP ${res.statusCode}: ${res.body}',
+          name: 'faro',
+        );
+        return;
+      }
+      final dynamic body = jsonDecode(res.body);
+      if (body is! Map || body['flags'] is! List) {
+        developer.log('feature flags response inválida', name: 'faro');
+        return;
+      }
+      final next = <String, _FlagDef>{};
+      for (final dynamic raw in body['flags'] as List) {
+        if (raw is! Map) continue;
+        final key = raw['key'];
+        if (key is! String || key.isEmpty) continue;
+        final conditions = raw['conditions'];
+        next[key] = _FlagDef(
+          key: key,
+          rolloutPercentage: _clamp(_asInt(raw['rollout_percentage'])),
+          conditions: conditions is Map
+              ? conditions.map((k, v) => MapEntry(k.toString(), v))
+              : <String, Object?>{},
+        );
+      }
+      _featureFlags = next;
+      _featureFlagsProject = body['project'] is String ? body['project'] as String : '';
+    } catch (e) {
+      developer.log('falló el refresh de feature flags: $e', name: 'faro');
+    }
+  }
+
+  /// Evalúa un feature flag de forma determinista (sticky bucketing FNV-1a).
+  /// Emite a lo sumo un `$feature_exposure` por (flag, distinct_id, variante).
+  bool isFeatureEnabled(
+    String key, {
+    String? distinctId,
+    Map<String, Object?>? properties,
+  }) {
+    final flag = _featureFlags[key];
+    if (flag == null) return false;
+    if (!_matchesConditions(flag, properties)) return false;
+    final rollout = _clamp(flag.rolloutPercentage);
+    final id = distinctId ?? (_distinctId.isNotEmpty ? _distinctId : _anonymousId);
+    final enabled = rollout >= 100 ||
+        (rollout > 0 && _stickyBucket('$_featureFlagsProject:$key:$id') < rollout);
+    _trackFeatureExposure(key, id, enabled);
+    return enabled;
+  }
+
+  bool _matchesConditions(_FlagDef flag, Map<String, Object?>? properties) {
+    final required = flag.conditions['properties'];
+    if (required is! Map) return true;
+    final props = properties ?? const <String, Object?>{};
+    for (final entry in required.entries) {
+      if (props[entry.key.toString()] != entry.value) return false;
+    }
+    return true;
+  }
+
+  void _trackFeatureExposure(String flagKey, String distinctId, bool enabled) {
+    final variant = enabled ? 'B' : 'A';
+    final dedup = '$_featureFlagsProject:$flagKey:$distinctId:$variant';
+    if (!_featureExposureSeen.add(dedup)) return;
+    _enqueueEvent(
+      'track',
+      r'$feature_exposure',
+      {'flag_key': flagKey, 'variant': variant, 'enabled': enabled},
+      distinctIdOverride: distinctId,
+    );
+  }
+
+  int _clamp(int n) => n.clamp(0, 100);
+
+  static int _asInt(Object? v) {
+    if (v is int) return v;
+    if (v is double) return v.truncate();
+    if (v is num) return v.toInt();
+    return 0;
+  }
+
+  /// FNV-1a 32-bit. Itera sobre `codeUnits` (UTF-16) y enmascara a 32-bit en cada
+  /// paso para que el resultado sea idéntico en VM (int 64-bit) y en web (int 53-bit).
+  int _stickyBucket(String s) {
+    int h = 0x811c9dc5;
+    for (final c in s.codeUnits) {
+      h = (h ^ c) & 0xFFFFFFFF;
+      h = (h * 0x01000193) & 0xFFFFFFFF;
+    }
+    return h % 100;
   }
 
   void info(String message, [Map<String, dynamic>? attrs]) =>
@@ -444,23 +574,47 @@ class Faro {
     }
   }
 
-  Future<void> close() async {
+  /// Drena las colas y cierra. El [timeout] acota el peor caso (red caída + cola
+  /// llena): si vence, se corta el drenado y se pierde a lo sumo lo que quede en
+  /// cola (un batch incompleto), como documenta `sdks/README.md`. Cancela los
+  /// timers (flush + feature flags) y restaura los handlers de lifecycle.
+  Future<void> close({Duration timeout = const Duration(seconds: 5)}) async {
     if (_closed) return;
     _closed = true;
     _timer?.cancel();
+    _featureFlagsTimer?.cancel();
     if (_lifecycleObserver != null) {
       WidgetsBinding.instance.removeObserver(_lifecycleObserver!);
       _lifecycleObserver = null;
     }
+    final deadline = DateTime.now().add(timeout);
     while (_queue.isNotEmpty || _eventsQueue.isNotEmpty) {
+      if (!DateTime.now().isBefore(deadline)) break;
       final before = _queue.length + _eventsQueue.length;
-      await flush();
+      // Acota cada flush al tiempo restante: si la red cuelga, no bloquea más
+      // allá del deadline global.
+      final remaining = deadline.difference(DateTime.now());
+      if (remaining <= Duration.zero) break;
+      var timedOut = false;
+      await Future.any<void>([
+        flush(),
+        Future<void>.delayed(remaining).then((_) => timedOut = true),
+      ]);
+      if (timedOut) break;
+      // Red caída → la cola no se reduce: no insistir (paridad con Node).
       if (_queue.length + _eventsQueue.length >= before) break;
     }
   }
 
   void _start() {
     _timer = Timer.periodic(options.flushInterval, (_) => flush());
+    // Refresh periódico de feature flags. Sin fetch inicial inmediato (paridad Node):
+    // el primer refresh ocurre tras `featureFlagRefreshInterval`. Quien necesite
+    // los flags al arrancar puede llamar a `refreshFeatureFlags()` manualmente.
+    _featureFlagsTimer = Timer.periodic(
+      options.featureFlagRefreshInterval,
+      (_) => refreshFeatureFlags(),
+    );
   }
 
   void _installFlutterHandlers() {

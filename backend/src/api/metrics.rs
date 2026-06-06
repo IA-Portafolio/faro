@@ -1,3 +1,9 @@
+//! Endpoints de métricas (series temporales):
+//!   GET /metrics/series → puntos de una métrica (filtro por servicio + agregación)
+//!   GET /metrics/names  → catálogo de métricas disponibles
+//!
+//! Las métricas con prefijo `events.` y sufijo `.count` se derivan de product events.
+
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};

@@ -1,3 +1,9 @@
+//! Worker que ejecuta los monitores (checks HTTP de disponibilidad).
+//!
+//! Hace polling de la tabla de monitores y lanza cada chequeo HTTP en su propio
+//! intervalo, reutilizando un único cliente reqwest (connection pooling). Cada
+//! resultado se encola como `MonitorResultRow` y alimenta el uptime y las alertas.
+
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 

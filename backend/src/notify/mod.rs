@@ -303,4 +303,77 @@ mod tests {
         assert!(parse_target("tg://").is_none());
         assert!(parse_target("channel://").is_none());
     }
+
+    #[test]
+    fn build_from_kind_rejects_unknown_kind() {
+        // `Box<dyn Notifier>` no es Debug, así que usamos `.err()` en vez de
+        // `.unwrap_err()` (que necesitaría formatear el valor Ok).
+        let err = build_from_kind("no-such-kind", "{}")
+            .err()
+            .expect("un kind desconocido debe devolver Err");
+        assert!(err.to_string().contains("desconocido"));
+    }
+
+    #[test]
+    fn build_from_kind_slack_validates_webhook_url() {
+        assert!(build_from_kind(
+            "slack",
+            r#"{"webhook_url":"https://hooks.slack.com/services/x"}"#
+        )
+        .is_ok());
+        // webhook_url vacío → error (pero NO "desconocido": el kind sí existe).
+        let err = build_from_kind("slack", r#"{"webhook_url":""}"#)
+            .err()
+            .expect("webhook_url vacío debe devolver Err");
+        assert!(!err.to_string().contains("desconocido"));
+        // JSON inválido → error de parseo.
+        assert!(build_from_kind("slack", "no json").is_err());
+    }
+
+    #[test]
+    fn every_supported_kind_is_routable() {
+        // Un kind anunciado en SUPPORTED_KINDS (lo usa el dropdown del frontend)
+        // que `build_from_kind` no reconozca sería un bug silencioso. Config "{}"
+        // puede fallar por campos requeridos, pero nunca como "kind desconocido".
+        for kind in SUPPORTED_KINDS {
+            if let Err(e) = build_from_kind(kind, "{}") {
+                assert!(
+                    !e.to_string().contains("desconocido"),
+                    "kind '{kind}' está en SUPPORTED_KINDS pero build_from_kind lo rechaza como desconocido"
+                );
+            }
+        }
+    }
+
+    fn sample_incident(status: &str) -> crate::storage::AlertIncidentRow {
+        crate::storage::AlertIncidentRow {
+            id: uuid::Uuid::nil(),
+            project_id: "proj-1".into(),
+            rule_id: uuid::Uuid::nil(),
+            rule_name: "Errores 5xx".into(),
+            started_at: chrono::Utc::now(),
+            resolved_at: None,
+            value: 42.0,
+            threshold: 10.0,
+            severity: "error".into(),
+            status: status.into(),
+            note: String::new(),
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn plain_text_firing_mentions_rule_severity_and_direction() {
+        let txt = plain_text::plain_text(&sample_incident("firing"));
+        assert!(txt.contains("Errores 5xx"));
+        assert!(txt.contains("ERROR")); // severidad en mayúsculas
+        assert!(txt.contains("firing"));
+        assert!(txt.contains("por encima del umbral"));
+    }
+
+    #[test]
+    fn plain_text_resolved_reads_back_to_normal() {
+        let txt = plain_text::plain_text(&sample_incident("resolved"));
+        assert!(txt.contains("vuelta a la normalidad"));
+    }
 }

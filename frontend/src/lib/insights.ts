@@ -1,3 +1,13 @@
+/**
+ * Lógica de presentación de los "insights" (hallazgos automáticos) de la vista
+ * `/insights`: formateo de conteos/porcentajes/latencias y resumen en texto.
+ *
+ * Un insight combinado cruza un funnel (embudo `funnel_from → funnel_to`) con
+ * los errores linkeados y la latencia p95 del span asociado, y le asigna una
+ * severidad (ok/warn/danger) según cuántas sesiones fallidas tengan error
+ * linkeado. También arma los `href` para saltar al error agrupado
+ * (`/errors/<fingerprint>`), a eventos o a trazas.
+ */
 export type InsightSeverity = 'ok' | 'warn' | 'danger';
 
 export type CombinedInsightLike = {

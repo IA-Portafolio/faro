@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Layout de Configuración: las pestañas horizontales de `/settings/*`.
+   *
+   * Renderiza la sub-navegación (Apariencia, Seguridad, Proyectos, Usuarios,
+   * Alertas, Integraciones), agrupada lógicamente en Personal vs Workspace, y
+   * resalta la pestaña activa según `$page`. El contenido de cada pestaña vive en
+   * su propio `+page.svelte`.
+   */
   import { page } from '$app/stores';
 
   type Item = { href: string; label: string; group: 'Personal' | 'Workspace' };

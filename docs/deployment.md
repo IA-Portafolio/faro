@@ -28,7 +28,8 @@ sudo mkdir -p /opt/faro && sudo chown $USER /opt/faro
 cd /opt/faro
 git clone https://github.com/IA-Portafolio/faro .
 cp .env.prod.template .env.prod
-# Edita .env.prod y define CLICKHOUSE_PASSWORD y FARO_INGEST_TOKEN
+# Edita .env.prod y define CLICKHOUSE_PASSWORD y FARO_BOOTSTRAP_INGEST_TOKEN
+# (es el token de ingesta que el backend acepta; los SDKs envían ese mismo valor)
 nano .env.prod
 docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 ```
@@ -70,9 +71,16 @@ primer deploy (el resto tiene un default razonable):
 | Variable                  | Cómo generarlo            |
 | ------------------------- | ------------------------- |
 | `CLICKHOUSE_PASSWORD`     | `openssl rand -base64 32` |
-| `FARO_INGEST_TOKEN`       | `openssl rand -hex 32`    |
+| `FARO_BOOTSTRAP_INGEST_TOKEN` | `openssl rand -hex 32` — token de ingesta del proyecto seed; lo lee el backend |
+| `FARO_BOOTSTRAP_ADMIN_EMAIL` / `FARO_BOOTSTRAP_ADMIN_PASSWORD` | Credenciales del primer login del dashboard |
 | `FRONTEND_ORIGIN`         | URL pública del dashboard |
 | `PUBLIC_API_BASE`         | URL pública del backend   |
+
+> El backend **no** lee `FARO_INGEST_TOKEN`; autentica la ingesta matcheando
+> el token recibido contra el `ingest_token` de cada proyecto. En los SDKs,
+> `FARO_INGEST_TOKEN` es el valor que el cliente envía — debe coincidir con
+> `FARO_BOOTSTRAP_INGEST_TOKEN` (o con el token de un proyecto creado vía
+> `POST /api/v1/projects`).
 
 ### Notificaciones de Telegram
 

@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/integrations` — canales de notificación.
+   *
+   * Configura la integración con Telegram (bot token, chat por defecto, envío de
+   * prueba) y el CRUD de canales de notificación (`NotificationChannel`) que luego
+   * usan las reglas de alerta para avisar cuando se dispara un incidente.
+   */
   import { onMount } from 'svelte';
   import {
     fetchTelegramIntegration,

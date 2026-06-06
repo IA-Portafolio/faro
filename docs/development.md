@@ -51,6 +51,10 @@ Variables que conviene tener exportadas (o usa `.env` con `direnv` /
 export CLICKHOUSE_URL=http://localhost:8123
 export CLICKHOUSE_USER=faro
 export CLICKHOUSE_PASSWORD=faro
+# El backend crea el proyecto seed con este token en el primer arranque (BD vacía).
+# Es el token que el backend acepta en ingesta:
+export FARO_BOOTSTRAP_INGEST_TOKEN=dev-ingest-token
+# El que envían los SDKs (Node/Python lo leen). Debe coincidir con el de arriba:
 export FARO_INGEST_TOKEN=dev-ingest-token
 export RUST_LOG=info,faro=debug
 ```

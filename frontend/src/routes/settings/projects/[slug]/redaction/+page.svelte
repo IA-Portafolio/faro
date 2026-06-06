@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/projects/[slug]/redaction` — reglas de borrado de PII.
+   *
+   * `[slug]` es el proyecto. Configura la redacción de datos sensibles antes de
+   * almacenarlos: reglas "builtin" (email, tarjetas…) que se activan/desactivan y
+   * reglas `custom` propias (`fetchRedaction`/`saveRedaction`).
+   */
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import {

@@ -1,3 +1,12 @@
+/**
+ * Cálculo de retención por cohortes para la vista `/retention`.
+ *
+ * Cada fila es una cohorte (usuarios vistos por primera vez un día dado) y se
+ * mide cuántos volvieron a los D1/D7/D30. `weightedRetention` promedia la tasa
+ * ponderando por tamaño de cohorte e ignora las cohortes aún "inmaduras"
+ * (`isMature`: todavía no pasó el plazo de D días, así no contaminan la media).
+ * `heatColor`/`formatRetentionPct` dan el color y el texto del heatmap.
+ */
 export type RetentionDay = 1 | 7 | 30;
 
 export type RetentionLikeRow = {

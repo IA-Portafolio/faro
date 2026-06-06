@@ -1,4 +1,14 @@
 <script context="module" lang="ts">
+  /**
+   * Histograma de volumen de logs apilado por severidad, con drag-to-select de
+   * un sub-rango temporal.
+   *
+   * Pide el conteo por bucket a `/logs/stats` (`fetchLogStats`) y apila las barras
+   * de abajo (trace) a arriba (fatal). El bloque `context="module"` exporta la
+   * matemática de apilado (`cumulativeBelow`, `sliceTopY`) para poder testearla
+   * aislada. Es el gemelo "por severidad" de `EventVolumeHistogram`, que apila por
+   * `event_name`.
+   */
   type Sev = 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   const ORDER: Sev[] = ['trace', 'debug', 'info', 'warn', 'error', 'fatal'];
 

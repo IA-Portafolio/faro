@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página de inicio "/" — Resumen (dashboard).
+   *
+   * Carga los contadores globales (`fetchDashboard`: logs, errores, servicios,
+   * issues abiertos, incidentes en curso…), la lista de servicios y la serie de
+   * volumen de logs, respetando el proyecto y el rango activos, y se autorefresca
+   * por intervalo. Es la primera pantalla tras el login.
+   */
   import { onMount, onDestroy } from 'svelte';
   import { fetchDashboard, fetchServices, fetchLogStats, type Dashboard, type Service } from '$lib/api';
   import { timeRange, rangeMinutes, formatTimestamp, selectedProject } from '$lib/stores';

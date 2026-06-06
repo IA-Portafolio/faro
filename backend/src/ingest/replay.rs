@@ -1,4 +1,10 @@
-use axum::extract::{DefaultBodyLimit, State};
+//! Ingesta de session replays (grabaciones rrweb):
+//!   POST /replay → recibe los chunks de eventos rrweb de una sesión.
+//!
+//! Sube el límite de body a 16 MiB porque el snapshot inicial serializa el DOM
+//! completo; encola los chunks para almacenarlos asociados al `session_id`.
+
+use axum::extract::{DefaultBodyLimit, Query, State};
 use axum::http::HeaderMap;
 use axum::routing::post;
 use axum::{Json, Router};
@@ -65,9 +71,10 @@ fn rfc3339_millis<S: serde::Serializer>(t: &DateTime<Utc>, s: S) -> Result<S::Ok
 async fn ingest_replay(
     State(state): State<SharedState>,
     headers: HeaderMap,
+    Query(q): Query<super::IngestQuery>,
     Json(payload): Json<ReplayPayload>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let project = super::resolve_project(&state, &headers)?;
+    let project = super::resolve_project_with_query(&state, &headers, q.token.as_deref())?;
     // El replay SDK corre 100% en browser — la validación de Origin es lo más
     // relevante aquí. Server-side no debería postear a /replay nunca.
     super::check_origin(&state, &project, &headers)?;

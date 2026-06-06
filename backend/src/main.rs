@@ -1,3 +1,11 @@
+//! Binario del servidor Faro: arranca y orquesta todo el proceso.
+//!
+//! Inicializa logging/telemetría, carga la `Config` del entorno, conecta a
+//! ClickHouse, lanza los workers en segundo plano y sirve dos superficies: la API
+//! del dashboard (`:8080`) y los listeners de ingesta OTLP HTTP (`:4318`) y gRPC
+//! (`:4317`). Gestiona el apagado ordenado ante SIGTERM. La lógica reutilizable
+//! vive en la crate `faro` (`lib.rs`); esto es solo el `fn main`.
+
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -82,6 +90,10 @@ async fn main() -> Result<()> {
 
     // Workers en segundo plano.
     let bus = state.live_bus.clone();
+    // Gauge de ocupación de los canales de ingesta — leading indicator de
+    // saturación antes de que se descarten records. Arranca antes que el writer
+    // (sólo lee capacity() de los senders, no toca los receivers).
+    observability::spawn_channel_depth_sampler(state.clone());
     workers::start_ingest_writers(state.clone());
     workers::start_monitor_runner(state.clone());
     workers::start_alert_evaluator(state.clone());

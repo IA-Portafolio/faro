@@ -1,3 +1,9 @@
+//! Configuración del backend, leída del entorno (variables `FARO_*`, `CLICKHOUSE_*`).
+//!
+//! `Config` reúne las direcciones de escucha (API + OTLP HTTP/gRPC), la conexión a
+//! ClickHouse, los topes de pooling y de subscriptores SSE, los tokens y los
+//! parámetros de arranque (bootstrap). Cada campo documenta el porqué de su default.
+
 use anyhow::Result;
 
 #[derive(Clone, Debug)]

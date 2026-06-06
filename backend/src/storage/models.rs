@@ -1,3 +1,9 @@
+//! Modelos de fila (structs) que mapean las tablas `faro.*` de ClickHouse.
+//!
+//! Definen la (de)serialización de cada tipo de telemetría y los helpers de fecha:
+//! `de_dt` acepta tanto RFC3339 como el formato con espacio que devuelve
+//! `toString(DateTime64)` de ClickHouse. `AttrMap` es el mapa de atributos clave→valor.
+
 use std::collections::BTreeMap;
 
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};

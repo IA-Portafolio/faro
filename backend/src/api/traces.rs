@@ -1,3 +1,7 @@
+//! Endpoints de trazas (tracing distribuido):
+//!   GET /traces            → lista de trazas (filtro por servicio/estado/duración)
+//!   GET /traces/{trace_id} → todos los spans que componen una traza
+
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};

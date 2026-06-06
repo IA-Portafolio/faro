@@ -130,18 +130,22 @@ Each SDK has its own README in `sdks/<lang>/`.
 
 - **No multi-tenant isolation** (by design) — anyone with the ingest
   token can write, anyone with API access can read everything.
-- **OTLP/gRPC and OTLP/HTTP+protobuf** are not implemented; only
-  OTLP/HTTP+JSON. Most SDKs support JSON via
-  `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`. See
-  [ADR-0004](docs/adr/0004-otlp-http-json-ingest.md).
+- **OTLP ingest** supports HTTP/JSON (`:4318`) and gRPC/protobuf
+  (`:4317`). See
+  [ADR-0004](docs/adr/0004-otlp-http-json-ingest.md) and
+  [ADR-0010](docs/adr/0010-otlp-grpc-ingest.md).
 - **Alert query DSL** is raw ClickHouse SQL — flexible but unsafe;
   treat it as admin-only.
 - **No durable ingest buffer** — if the backend dies between channel
   push and ClickHouse flush, in-flight rows are lost. Redis is wired
   into the compose for a future Streams-backed buffer.
-- **No authentication on the dashboard API.** Put it behind an OAuth
-  proxy / reverse proxy if you expose it publicly. See
-  [ADR-0005](docs/adr/0005-no-native-auth.md).
+- **Dashboard auth** is native: Argon2id password hashing, cookie-based
+  sessions and optional TOTP 2FA, bootstrapped from `FARO_BOOTSTRAP_ADMIN_*`.
+  A reverse / auth proxy is still recommended as defense-in-depth when
+  exposed publicly. See
+  [ADR-0009](docs/adr/0009-security-hardening.md) (supersedes the original
+  "no native auth" decision in
+  [ADR-0005](docs/adr/0005-no-native-auth.md)).
 
 ## License
 

@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Página `/replays/[session_id]` — reproductor de session replay.
+   *
+   * `[session_id]` identifica la sesión a reproducir. Descarga los eventos grabados
+   * (`fetchReplay`) y los reproduce con rrweb-player, cargado desde CDN para no
+   * añadir dependencias al build del dashboard.
+   */
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { fetchReplay, type ReplayPayload } from '$lib/api';

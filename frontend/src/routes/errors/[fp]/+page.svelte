@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/errors/[fp]` — detalle de un Issue (grupo de errores).
+   *
+   * `[fp]` es el `fingerprint`: el hash que agrupa errores equivalentes en un
+   * mismo Issue. Carga el Issue (`fetchIssue`), sus últimos eventos de error y las
+   * sesiones afectadas, y permite cambiar su estado (abierto/resuelto/ignorado)
+   * con `updateIssueStatus`.
+   */
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import {

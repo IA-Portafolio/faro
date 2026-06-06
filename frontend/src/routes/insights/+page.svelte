@@ -1,4 +1,13 @@
 <script lang="ts">
+  /**
+   * Página `/insights` — hallazgos combinados por servicio.
+   *
+   * Para un servicio/span y un par de eventos de funnel, pide a
+   * `fetchServiceDashboardInsight` un resumen que cruza conversión, errores
+   * linkeados y latencia p95, y lo presenta con los helpers de `$lib/insights`
+   * (severidad ok/warn/danger, conteos, porcentajes) y enlaces directos a
+   * errores, eventos o trazas.
+   */
   import { onMount } from 'svelte';
 
   import {

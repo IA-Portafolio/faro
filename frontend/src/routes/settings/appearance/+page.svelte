@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/appearance` — preferencias personales de visualización.
+   *
+   * Permite elegir el tema (claro/oscuro/sistema) y el rango temporal por defecto,
+   * y los persiste como preferencias del usuario en el backend (`savePreferences`)
+   * para que viajen entre dispositivos.
+   */
   import { onMount } from 'svelte';
   import {
     fetchPreferences,

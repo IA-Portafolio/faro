@@ -340,6 +340,8 @@ impl LogsService for FaroLogsService {
                     let _ = self.state.live_bus.logs.send(row.clone());
                     if self.state.ingest.logs_tx.try_send(row).is_ok() {
                         accepted += 1;
+                    } else {
+                        crate::observability::record_ingest_drop("logs");
                     }
                 }
             }
@@ -433,6 +435,8 @@ impl TraceService for FaroTraceService {
                     super::redact_span(redaction_rules.as_ref(), &mut row);
                     if self.state.ingest.spans_tx.try_send(row).is_ok() {
                         accepted += 1;
+                    } else {
+                        crate::observability::record_ingest_drop("traces");
                     }
                 }
             }
@@ -530,6 +534,8 @@ impl MetricsService for FaroMetricsService {
                                 };
                                 if self.state.ingest.metrics_tx.try_send(row).is_ok() {
                                     accepted += 1;
+                                } else {
+                                    crate::observability::record_ingest_drop("metrics");
                                 }
                             }
                         }
@@ -564,6 +570,8 @@ impl MetricsService for FaroMetricsService {
                                 };
                                 if self.state.ingest.metrics_tx.try_send(row).is_ok() {
                                     accepted += 1;
+                                } else {
+                                    crate::observability::record_ingest_drop("metrics");
                                 }
                             }
                         }
@@ -617,5 +625,7 @@ fn push_number(
         hist_bucket_bounds: vec![],
         hist_bucket_counts: vec![],
     };
-    let _ = state.ingest.metrics_tx.try_send(row);
+    if state.ingest.metrics_tx.try_send(row).is_err() {
+        crate::observability::record_ingest_drop("metrics");
+    }
 }

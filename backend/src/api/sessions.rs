@@ -1,3 +1,7 @@
+//! Endpoints de sesiones de usuario (session analytics):
+//!   GET /sessions                     → lista de sesiones (duración, errores, replay…)
+//!   GET /sessions/{session_id}/traces → trazas generadas durante una sesión
+
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};

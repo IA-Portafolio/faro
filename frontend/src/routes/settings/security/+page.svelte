@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/security` — seguridad de la cuenta.
+   *
+   * Lista las sesiones activas (y permite revocar las demás) y gestiona el 2FA por
+   * TOTP: wizard de alta (secreto + verificación), desactivación y regeneración de
+   * códigos de recuperación (que el backend muestra una sola vez).
+   */
   import { onMount } from 'svelte';
   import { formatTimestamp } from '$lib/stores';
   import {

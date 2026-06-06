@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/service-map` — mapa de dependencias entre servicios.
+   *
+   * Pide el grafo (`fetchServiceMap`: nodos = servicios, aristas = llamadas entre
+   * ellos) y lo dibuja con una simulación de fuerzas propia en SVG. El grosor de
+   * cada arista refleja el volumen de llamadas y el color la tasa de error. El
+   * viewBox es fijo y se escala por CSS sin re-simular.
+   */
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import { fetchServiceMap, type ServiceMap, type ServiceMapEdge, type ServiceMapNode } from '$lib/api';

@@ -63,6 +63,7 @@ export function staticCommands(): Command[] {
     { id: 'nav.errors',   group: 'Navegar', icon: '⚠', label: 'Ir a Errores',       shortcut: 'g e', run: () => goto('/errors') },
     { id: 'nav.insights', group: 'Navegar', icon: '◈', label: 'Ir a Insights',       run: () => goto('/insights') },
     { id: 'nav.monitors', group: 'Navegar', icon: '◉', label: 'Ir a Monitores',     shortcut: 'g o', run: () => goto('/monitors') },
+    { id: 'nav.docs',     group: 'Navegar', icon: '⌗', label: 'Ir a SDKs & API',    run: () => goto('/docs') },
     { id: 'nav.settings', group: 'Navegar', icon: '⚙', label: 'Ir a Configuración', shortcut: 'g s', run: () => goto('/settings') },
     { id: 'nav.alerts',   group: 'Navegar', icon: '⏰', label: 'Ir a Alertas',       shortcut: 'g a', run: () => goto('/settings/alerts') },
     { id: 'nav.projects', group: 'Navegar', icon: '⚙', label: 'Ir a Proyectos',     shortcut: 'g p', run: () => goto('/settings/projects') },

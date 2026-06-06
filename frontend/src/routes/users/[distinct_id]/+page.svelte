@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/users/[distinct_id]` — detalle de un usuario de producto.
+   *
+   * `[distinct_id]` es el id estable del usuario final. Carga su perfil
+   * (`fetchProductUser`) y su historial de eventos (`fetchProductUserEvents`),
+   * agrupado en una timeline por sesión (`groupEventsBySession`/`timelineRows`),
+   * con un drawer de detalle de evento.
+   */
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import {

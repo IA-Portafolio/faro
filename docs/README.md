@@ -13,6 +13,7 @@ Documentación de Faro. Organizada en tres tipos:
 | Doc | Para qué |
 | --- | -------- |
 | [development.md](development.md) | Levantar el stack local, dev loop de backend/frontend/ClickHouse, migraciones, enviar tráfico de prueba. |
+| [testing.md](testing.md) | La red de regresión completa: qué cubre cada componente, cómo correr todo con [`scripts/test-all.sh`](../scripts/test-all.sh), y las reglas para que la cobertura no se degrade al sumar features. |
 | [deployment.md](deployment.md) | Topología productiva, primer despliegue, deploy continuo desde el self-hosted runner, persistencia, rollback, observabilidad. |
 | [anomaly-detection.md](anomaly-detection.md) | Cómo funciona el detector de anomalías por z-score (ventanas, baseline, fire/resolve, hysteresis). |
 | [feature-flags-experiments.md](feature-flags-experiments.md) | Feature flags, exposures, A/B testing y rollback recomendado cuando treatment sube errores. |

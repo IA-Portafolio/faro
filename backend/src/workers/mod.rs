@@ -1,3 +1,11 @@
+//! Workers en segundo plano: tareas tokio que corren fuera del ciclo request/response.
+//!
+//! Cada `start_*` lanza un bucle independiente: escritura por lotes a ClickHouse
+//! (`ingest_writer`), indexado de errores (`error_indexer`), evaluación de alertas
+//! (`alert_evaluator`), ejecución de monitores (`monitor_runner`), detección de
+//! anomalías y de rollback de feature flags, compactación de fingerprints,
+//! agregación de sesiones, detección de servicios "stale" y unificación de usuarios.
+
 pub mod alert_evaluator;
 pub mod anomaly_detector;
 pub mod error_indexer;

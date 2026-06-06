@@ -1,3 +1,11 @@
+//! Endpoints de reglas de alerta e incidentes:
+//!   GET/POST        /alerts/rules        → lista / crea reglas
+//!   GET/PUT/DELETE  /alerts/rules/{id}   → detalle / edita / borra una regla
+//!   GET             /alerts/incidents    → incidentes recientes
+//!
+//! Una regla evalúa una métrica o monitor y, al cumplirse su condición, abre un
+//! incidente y notifica por los canales configurados.
+
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
@@ -83,6 +91,10 @@ async fn create_rule(
     State(state): State<SharedState>,
     Json(input): Json<RuleInput>,
 ) -> ApiResult<Json<AlertRuleRow>> {
+    // Rechazar queries con table-functions de red/fichero (SSRF/RCE) antes de
+    // persistir la regla. Ver `crate::alert_query`.
+    crate::alert_query::validate_alert_query(&input.query)
+        .map_err(|e| crate::error::ApiError::BadRequest(e.to_string()))?;
     let now = Utc::now();
     let row = AlertRuleRow {
         id: Uuid::new_v4(),
@@ -136,6 +148,9 @@ async fn update_rule(
     Path(id): Path<Uuid>,
     Json(input): Json<RuleInput>,
 ) -> ApiResult<Json<AlertRuleRow>> {
+    // Mismo gate que en create: una edición no puede introducir una query insegura.
+    crate::alert_query::validate_alert_query(&input.query)
+        .map_err(|e| crate::error::ApiError::BadRequest(e.to_string()))?;
     let now = Utc::now();
     let id_s = id.to_string();
     let sql =

@@ -58,6 +58,8 @@ __all__ = [
     "track",
     "identify",
     "alias",
+    "refresh_feature_flags",
+    "is_feature_enabled",
     "start_span",
     "use_span",
     "active_span",
@@ -260,6 +262,61 @@ class Span:
             self._ctx_token = None
 
 
+def _clamp_rollout(value: Any) -> int:
+    """Trunca a int y acota a [0, 100]. No-numérico / no-finito → 0.
+
+    Paridad cross-SDK con node (`clampRollout`): bool no se trata como número
+    porque `isinstance(True, int)` es True en Python — lo descartamos explícito.
+    """
+    if isinstance(value, bool):
+        n = 0
+    elif isinstance(value, (int, float)):
+        try:
+            import math
+
+            n = int(value) if math.isfinite(value) else 0
+        except (ValueError, OverflowError):
+            n = 0
+    else:
+        n = 0
+    return max(0, min(100, n))
+
+
+def _normalize_conditions(value: Any) -> dict[str, Any]:
+    """conditions debe ser un dict; cualquier otra cosa → {}."""
+    return value if isinstance(value, dict) else {}
+
+
+def _matches_feature_conditions(
+    flag: dict[str, Any], properties: dict[str, Any] | None
+) -> bool:
+    """True si las propiedades requeridas en conditions.properties matchean.
+
+    Sin conditions.properties (o no es dict) → siempre matchea.
+    """
+    required = (flag.get("conditions") or {}).get("properties")
+    if not isinstance(required, dict):
+        return True
+    props = properties or {}
+    for key, expected in required.items():
+        if props.get(key) != expected:
+            return False
+    return True
+
+
+def _sticky_bucket(s: str) -> int:
+    """FNV-1a 32-bit → bucket determinista en [0, 99].
+
+    La máscara `& 0xFFFFFFFF` emula el overflow de 32 bits (en Python los ints
+    son ilimitados); equivale al `Math.imul` + `>>> 0` del SDK de node.
+    """
+    h = 0x811C9DC5
+    for ch in s:
+        h ^= ord(ch)
+        h = (h * 0x01000193) & 0xFFFFFFFF
+    return h % 100
+
+
 def _scrub_string(s: str, regexes: list[re.Pattern[str]]) -> str:
     for rx in regexes:
         s = rx.sub(_REDACTED, s)
@@ -382,6 +439,10 @@ class _Options:
     max_queue_size: int = 10_000
     install_global_handlers: bool = True
     timeout: float = 5.0
+    # Cadencia del refresh periódico de feature flags, en segundos (igual que
+    # flush_interval_s: snake_case + segundos). Default 30s, espejo del 30_000ms
+    # de node (featureFlagRefreshIntervalMs).
+    feature_flag_refresh_interval: float = 30.0
     # Scrubbing + beforeSend (ver sdks/README.md → Privacidad / hooks).
     scrub_fields: tuple[str, ...] = _DEFAULT_SCRUB_FIELDS
     scrub_headers: bool = True
@@ -412,6 +473,11 @@ class _Client:
         self._distinct_id: str = ""
         self._anonymous_id: str = f"anon_{os.urandom(8).hex()}"
         self._user_properties: dict[str, Any] = {}
+        # Estado de feature flags. key -> {"key","rollout_percentage","conditions"}.
+        self._feature_flags: dict[str, dict[str, Any]] = {}
+        self._feature_flags_project: str = ""
+        self._feature_exposure_seen: set[str] = set()
+        self._feature_flags_timer: threading.Timer | None = None
         self._closed = threading.Event()
         self._session = requests.Session()
 
@@ -435,6 +501,10 @@ class _Client:
             target=self._run_events, daemon=True, name="faro-flush-events"
         )
         self._events_worker.start()
+        # Refresh periódico de feature flags en su propio timer recurrente (NO en
+        # el loop de flush). Igual que node: NO hacemos un fetch inicial inmediato,
+        # sólo el periódico — el primer GET ocurre tras feature_flag_refresh_interval.
+        self._schedule_feature_flags_refresh()
         if opts.install_global_handlers:
             self._install_handlers()
         atexit.register(self.close)
@@ -546,6 +616,131 @@ class _Client:
             anonymous_id_override=prev_id,
         )
 
+    # ---------- Feature flags API ----------
+
+    def _schedule_feature_flags_refresh(self) -> None:
+        """Programa el próximo refresh con un threading.Timer recurrente (daemon).
+
+        Cada disparo re-agenda el siguiente, así emulamos un setInterval. No
+        corre de inmediato — el primer fetch ocurre tras el intervalo (paridad
+        con node, que no hace fetch inicial).
+        """
+        if self._closed.is_set():
+            return
+        interval = self.opts.feature_flag_refresh_interval
+
+        def _tick() -> None:
+            self.refresh_feature_flags()
+            self._schedule_feature_flags_refresh()
+
+        timer = threading.Timer(interval, _tick)
+        timer.daemon = True
+        timer.name = "faro-feature-flags"
+        self._feature_flags_timer = timer
+        timer.start()
+
+    def refresh_feature_flags(self) -> None:
+        """Hace GET de los feature flags y reemplaza el estado local.
+
+        Nunca lanza al usuario: ante cualquier error (HTTP no-OK, respuesta
+        inválida, excepción de red) loguea por diag y conserva los flags
+        actuales. Corre en background; no bloquea init().
+        """
+        if self._closed.is_set():
+            return
+        try:
+            r = self._session.get(
+                f"{self.opts.endpoint}/api/v1/ingest/feature-flags",
+                headers={"Authorization": f"Bearer {self.opts.token}"},
+                timeout=self.opts.timeout,
+            )
+            if r.status_code >= 400:
+                self._diag(f"feature flags HTTP {r.status_code}: {r.text[:200]}")
+                return
+            body = r.json()
+            flags = body.get("flags") if isinstance(body, dict) else None
+            if not isinstance(flags, list):
+                self._diag("feature flags response inválida")
+                return
+            next_flags: dict[str, dict[str, Any]] = {}
+            for flag in flags:
+                if not isinstance(flag, dict):
+                    continue
+                key = flag.get("key")
+                if not isinstance(key, str) or not key:
+                    continue
+                next_flags[key] = {
+                    "key": key,
+                    "rollout_percentage": _clamp_rollout(flag.get("rollout_percentage")),
+                    "conditions": _normalize_conditions(flag.get("conditions")),
+                }
+            self._feature_flags = next_flags
+            project = body.get("project") if isinstance(body, dict) else None
+            self._feature_flags_project = project if isinstance(project, str) else ""
+        except Exception as e:  # noqa: BLE001 — nunca propagar al usuario
+            self._diag(f"falló el refresh de feature flags: {e}")
+
+    def is_feature_enabled(
+        self,
+        key: str,
+        distinct_id: str | None = None,
+        properties: dict[str, Any] | None = None,
+    ) -> bool:
+        """Evalúa un feature flag para un usuario dado.
+
+        - `distinct_id`: id del usuario a evaluar. Si se omite, cae en el
+          distinct_id del SDK (post-identify) y luego en el anonymous_id.
+        - `properties`: propiedades del contexto para chequear conditions.
+
+        Por conveniencia, `distinct_id` también acepta un dict de contexto al
+        estilo node (`{"distinct_id": ..., "properties": ...}`); la forma
+        documentada es pasar `distinct_id` y `properties` como kwargs.
+
+        Emite (con dedupe) un evento `$feature_exposure` por cada combinación
+        única de (project, flag, distinct_id, variant).
+        """
+        # Conveniencia: aceptar un dict de contexto en la posición de distinct_id.
+        if isinstance(distinct_id, dict):
+            ctx = distinct_id
+            distinct_id = ctx.get("distinct_id")
+            if properties is None:
+                properties = ctx.get("properties")
+
+        flag = self._feature_flags.get(key)
+        if flag is None:
+            return False
+        if not _matches_feature_conditions(flag, properties):
+            return False
+        rollout = _clamp_rollout(flag["rollout_percentage"])
+        ident = distinct_id or self._distinct_id or self._anonymous_id
+        if rollout >= 100:
+            enabled = True
+        else:
+            enabled = rollout > 0 and _sticky_bucket(
+                f"{self._feature_flags_project}:{key}:{ident}"
+            ) < rollout
+        self._track_feature_exposure(key, ident, enabled)
+        return enabled
+
+    def _track_feature_exposure(
+        self, flag_key: str, distinct_id: str, enabled: bool
+    ) -> None:
+        variant = "B" if enabled else "A"
+        dedup = f"{self._feature_flags_project}:{flag_key}:{distinct_id}:{variant}"
+        if dedup in self._feature_exposure_seen:
+            return
+        self._feature_exposure_seen.add(dedup)
+        self._enqueue_event(
+            type_="track",
+            name="$feature_exposure",
+            properties={"flag_key": flag_key, "variant": variant, "enabled": enabled},
+            distinct_id_override=distinct_id,
+        )
+
+    def _diag(self, msg: str) -> None:
+        """Log interno del SDK. Espejo del diagLog de node (acá a stderr)."""
+        sys.stderr.write(f"[faro] {msg}\n")
+
     def _enqueue_event(
         self,
         type_: str,
@@ -553,6 +748,7 @@ class _Client:
         properties: dict[str, Any],
         user_properties_override: dict[str, Any] | None = None,
         anonymous_id_override: str | None = None,
+        distinct_id_override: str | None = None,
     ) -> None:
         if self._closed.is_set():
             return
@@ -567,7 +763,9 @@ class _Client:
             "type": type_,
             "name": name,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "distinct_id": self._distinct_id or self._anonymous_id,
+            "distinct_id": distinct_id_override
+            if distinct_id_override is not None
+            else (self._distinct_id or self._anonymous_id),
             "anonymous_id": anonymous_id_override or self._anonymous_id,
             "session_id": "",
             "properties": properties,
@@ -673,6 +871,10 @@ class _Client:
         if self._closed.is_set():
             return
         self._closed.set()
+        # Cancela el timer recurrente de feature flags antes de drenar.
+        if self._feature_flags_timer is not None:
+            self._feature_flags_timer.cancel()
+            self._feature_flags_timer = None
         # Repartimos el presupuesto: drenado + join + tracing shutdown.
         third = max(0.5, timeout / 3)
         self.flush(timeout=third)
@@ -817,6 +1019,7 @@ def init(
     max_queue_size: int = 10_000,
     install_global_handlers: bool = True,
     timeout: float = 5.0,
+    feature_flag_refresh_interval: float = 30.0,
     scrub_fields: tuple[str, ...] | list[str] = _DEFAULT_SCRUB_FIELDS,
     scrub_headers: bool = True,
     scrub_patterns: tuple[str, ...] | list[str] = ("jwt", "api-key"),
@@ -850,6 +1053,7 @@ def init(
             max_queue_size=max_queue_size,
             install_global_handlers=install_global_handlers,
             timeout=timeout,
+            feature_flag_refresh_interval=feature_flag_refresh_interval,
             scrub_fields=tuple(scrub_fields),
             scrub_headers=scrub_headers,
             scrub_patterns=tuple(scrub_patterns),
@@ -908,6 +1112,18 @@ def identify(user_id: str, traits: dict[str, Any] | None = None) -> None:
 
 def alias(prev_id: str, new_id: str) -> None:
     _need().alias(prev_id, new_id)
+
+
+def refresh_feature_flags() -> None:
+    _need().refresh_feature_flags()
+
+
+def is_feature_enabled(
+    key: str,
+    distinct_id: str | None = None,
+    properties: dict[str, Any] | None = None,
+) -> bool:
+    return _need().is_feature_enabled(key, distinct_id=distinct_id, properties=properties)
 
 
 def start_span(

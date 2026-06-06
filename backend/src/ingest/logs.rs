@@ -1,4 +1,10 @@
-use axum::extract::State;
+//! Ingesta de logs en el formato nativo de Faro:
+//!   POST /logs → recibe un lote de logs (JSON) y los encola para escritura.
+//!
+//! Resuelve el proyecto por token, aplica la redacción de PII y empuja cada `LogRow`
+//! al canal de ingesta que el writer drena hacia ClickHouse.
+
+use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::routing::post;
 use axum::{Json, Router};
@@ -45,9 +51,10 @@ fn default_level() -> String {
 async fn ingest_logs(
     State(state): State<SharedState>,
     headers: HeaderMap,
+    Query(q): Query<super::IngestQuery>,
     Json(payload): Json<IngestPayload>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let project = super::resolve_project(&state, &headers)?;
+    let project = super::resolve_project_with_query(&state, &headers, q.token.as_deref())?;
     // Si el request trae `Origin`, validar contra la whitelist del proyecto.
     // Server-side SDKs no envían Origin y pasan sin chequeo (el bearer alcanza).
     super::check_origin(&state, &project, &headers)?;
@@ -121,6 +128,7 @@ async fn ingest_logs(
         if state.ingest.logs_tx.try_send(row).is_ok() {
             accepted += 1;
         } else {
+            crate::observability::record_ingest_drop("logs");
             tracing::warn!("log ingest channel full, dropping record");
         }
     }

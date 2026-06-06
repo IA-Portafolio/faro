@@ -1,3 +1,7 @@
+//! Endpoints de servicios:
+//!   GET /services     → lista de servicios con conteos de logs y errores
+//!   GET /services/map → grafo de dependencias entre servicios (service map)
+
 use axum::extract::State;
 use axum::routing::get;
 use axum::{Json, Router};

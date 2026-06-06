@@ -1,3 +1,9 @@
+//! Router raíz de la API REST (`/api/v1/*`).
+//!
+//! Agrega los sub-routers de cada recurso (logs, traces, errors, events, …),
+//! aplica el middleware de autenticación y compresión, y sirve la referencia
+//! OpenAPI interactiva (Scalar) leyendo el spec de `/api/v1/openapi.json`.
+
 use axum::middleware::from_fn_with_state;
 use axum::response::Html;
 use axum::routing::get;

@@ -1,3 +1,8 @@
+//! Endpoints de session replays y de sesiones afectadas por un error:
+//!   GET /replays                       → lista de sesiones con grabación
+//!   GET /replays/{session_id}          → payload del replay (eventos rrweb)
+//!   GET /errors/{fingerprint}/sessions → sesiones donde ocurrió un Issue
+
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};

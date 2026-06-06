@@ -1,4 +1,10 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/users` — gestión de usuarios del workspace.
+   *
+   * CRUD de los usuarios de la cuenta (no confundir con los "product users" de
+   * `/users`): crear, editar rol, borrar y cambiar contraseña (`changeUserPassword`).
+   */
   import { onMount } from 'svelte';
   import {
     fetchUsers,

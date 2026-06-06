@@ -70,7 +70,7 @@
   "scripts": {
     "build": "tsup src/index.ts src/instrument.ts src/tracing.ts src/pino.ts src/winston.ts src/express.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts src/instrument.ts src/tracing.ts src/pino.ts src/winston.ts src/express.ts --format esm --dts --watch",
-    "test": "npm run build && node --test test/client.test.mjs test/tracing.test.mjs"
+    "test": "npm run build && node --test --test-force-exit test/*.test.mjs"
   },
   "engines": {
     "node": ">=18"

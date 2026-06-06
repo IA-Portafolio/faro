@@ -192,6 +192,8 @@ async fn ingest_logs(
                 let _ = state.live_bus.logs.send(row.clone());
                 if state.ingest.logs_tx.try_send(row).is_ok() {
                     accepted += 1;
+                } else {
+                    crate::observability::record_ingest_drop("logs");
                 }
             }
         }
@@ -289,6 +291,8 @@ async fn ingest_traces(
                 super::redact_span(redaction_rules.as_ref(), &mut row);
                 if state.ingest.spans_tx.try_send(row).is_ok() {
                     accepted += 1;
+                } else {
+                    crate::observability::record_ingest_drop("traces");
                 }
             }
         }
@@ -382,6 +386,8 @@ async fn ingest_metrics(
                         };
                         if state.ingest.metrics_tx.try_send(row).is_ok() {
                             accepted += 1;
+                        } else {
+                            crate::observability::record_ingest_drop("metrics");
                         }
                     }
                 }
@@ -414,6 +420,8 @@ async fn ingest_metrics(
                         };
                         if state.ingest.metrics_tx.try_send(row).is_ok() {
                             accepted += 1;
+                        } else {
+                            crate::observability::record_ingest_drop("metrics");
                         }
                     }
                 }
@@ -465,5 +473,7 @@ async fn push_number(
         hist_bucket_bounds: vec![],
         hist_bucket_counts: vec![],
     };
-    let _ = state.ingest.metrics_tx.try_send(row);
+    if state.ingest.metrics_tx.try_send(row).is_err() {
+        crate::observability::record_ingest_drop("metrics");
+    }
 }

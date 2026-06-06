@@ -1,3 +1,10 @@
+//! Endpoints de errores agrupados en "Issues":
+//!   GET  /errors                      → lista de Issues (agrupados por fingerprint)
+//!   GET  /errors/{fingerprint}        → detalle de un Issue y sus eventos
+//!   POST /errors/{fingerprint}/status → cambia el estado (abierto/resuelto/ignorado)
+//!
+//! El `fingerprint` es el hash que agrupa errores equivalentes en un mismo Issue.
+
 use axum::extract::{Path, State};
 use axum::routing::{get, post};
 use axum::{Json, Router};

@@ -1,4 +1,10 @@
 <script lang="ts">
+  /**
+   * Ruta `/projects`: alias histórico que redirige a `/settings/projects`.
+   *
+   * Sin contenido propio; conserva la URL antigua (cuando Proyectos era una página
+   * de primer nivel) para no romper bookmarks ni enlaces tras moverla a Configuración.
+   */
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
 

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
 	"regexp"
 	"runtime/debug"
 	"strings"
@@ -40,6 +41,11 @@ type Options struct {
 	HTTPTimeout     time.Duration     // por defecto 5s
 	HTTPClient      *http.Client      // inyectable
 	OnInternalError func(err error)   // se llama ante fallos en segundo plano; por defecto va a stderr
+
+	// FeatureFlagRefreshInterval es la cadencia con la que el SDK refresca las
+	// feature flags desde `GET /api/v1/ingest/feature-flags`. Por defecto 30s.
+	// El primer refresh ocurre tras el primer tick (no hay fetch inicial).
+	FeatureFlagRefreshInterval time.Duration
 
 	// Scrubbing + beforeSend (ver sdks/README.md → Privacidad / hooks).
 	// ScrubFields: claves cuyo valor se reemplaza por "[REDACTED]" (match case-insensitive por substring).
@@ -114,6 +120,33 @@ type TraceContext struct {
 	SpanID  string
 }
 
+// FlagContext son los inputs de evaluación de una feature flag. DistinctID
+// permite evaluar para un usuario concreto (cae a distinctID/anonymousID del
+// cliente si va vacío) y Properties alimenta el matching de condiciones.
+type FlagContext struct {
+	DistinctID string
+	Properties map[string]any
+}
+
+// flagDef es la representación interna (post-normalización) de una feature flag
+// recibida por la red. Rollout ya viene con clamp 0..100 y Conditions es el
+// objeto de condiciones o nil.
+type flagDef struct {
+	Key        string
+	Rollout    int
+	Conditions map[string]any
+}
+
+// featureFlagsResponse espeja el JSON de `GET /api/v1/ingest/feature-flags`.
+type featureFlagsResponse struct {
+	Project string `json:"project"`
+	Flags   []struct {
+		Key        string         `json:"key"`
+		Rollout    int            `json:"rollout_percentage"`
+		Conditions map[string]any `json:"conditions"`
+	} `json:"flags"`
+}
+
 type traceContextKey struct{}
 
 var traceparentRE = regexp.MustCompile(`^[\da-fA-F]{2}-([\da-fA-F]{32})-([\da-fA-F]{16})-[\da-fA-F]{2}(?:-.+)?$`)
@@ -172,6 +205,17 @@ type Client struct {
 	distinctID     string
 	anonymousID    string
 	userProperties map[string]any
+
+	// Estado de feature flags. Lo protegemos con un RWMutex porque
+	// `IsFeatureEnabled` (lecturas frecuentes desde request handlers) compite
+	// con `RefreshFeatureFlags` (escrituras periódicas del ticker en segundo
+	// plano). `featureExposureSeen` dedup-a la emisión de `$feature_exposure`.
+	flagsMu             sync.RWMutex
+	featureFlags        map[string]flagDef
+	featureFlagsProject string
+	featureExposureSeen map[string]struct{}
+	flagsStop           chan struct{}
+	flagsStopOnce       sync.Once
 }
 
 // New arranca un cliente de Faro y lo devuelve. También lanza un flusher en segundo plano.
@@ -197,6 +241,9 @@ func New(opts Options) (*Client, error) {
 	}
 	if opts.HTTPTimeout == 0 {
 		opts.HTTPTimeout = 5 * time.Second
+	}
+	if opts.FeatureFlagRefreshInterval == 0 {
+		opts.FeatureFlagRefreshInterval = 30 * time.Second
 	}
 	if opts.HTTPClient == nil {
 		opts.HTTPClient = &http.Client{Timeout: opts.HTTPTimeout}
@@ -244,6 +291,10 @@ func New(opts Options) (*Client, error) {
 		scrubRegexes:   regexes,
 		anonymousID:    fmt.Sprintf("anon_%d_%d", time.Now().UnixNano(), rand63()),
 		userProperties: map[string]any{},
+
+		featureFlags:        map[string]flagDef{},
+		featureExposureSeen: map[string]struct{}{},
+		flagsStop:           make(chan struct{}),
 	}
 
 	// Bootstrap OTel tracing — idempotente, no-op si ya fue inicializado.
@@ -261,10 +312,28 @@ func New(opts Options) (*Client, error) {
 		opts.OnInternalError(fmt.Errorf("faro: InitTracing falló: %w", err))
 	}
 
-	c.wg.Add(2)
+	c.wg.Add(3)
 	go c.loop()
 	go c.eventsLoop()
+	go c.featureFlagsLoop()
 	return c, nil
+}
+
+// featureFlagsLoop refresca las feature flags en cada tick. No hace fetch
+// inicial inmediato (igual que el SDK de Node): el primer refresh ocurre tras
+// el primer tick. Termina cuando se señaliza `flagsStop` (lo hace Close).
+func (c *Client) featureFlagsLoop() {
+	defer c.wg.Done()
+	ticker := time.NewTicker(c.opts.FeatureFlagRefreshInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.flagsStop:
+			return
+		case <-ticker.C:
+			c.RefreshFeatureFlags(context.Background())
+		}
+	}
 }
 
 // rand63 devuelve un int63 pseudo-aleatorio sin necesidad de math/rand para no
@@ -471,7 +540,17 @@ func (c *Client) enqueueEvent(typ, name string, properties, userPropsOverride ma
 	c.enqueueEventWithTrace(typ, name, properties, userPropsOverride, anonOverride, TraceContext{})
 }
 
+// enqueueEventWithDistinct encola un evento sobrescribiendo el `distinct_id`
+// (lo usa feature exposure con FlagContext.DistinctID o el id resuelto).
+func (c *Client) enqueueEventWithDistinct(typ, name string, properties map[string]any, distinctOverride string) {
+	c.enqueueEventFull(typ, name, properties, nil, "", distinctOverride, TraceContext{})
+}
+
 func (c *Client) enqueueEventWithTrace(typ, name string, properties, userPropsOverride map[string]any, anonOverride string, trace TraceContext) {
+	c.enqueueEventFull(typ, name, properties, userPropsOverride, anonOverride, "", trace)
+}
+
+func (c *Client) enqueueEventFull(typ, name string, properties, userPropsOverride map[string]any, anonOverride, distinctOverride string, trace TraceContext) {
 	if c == nil {
 		return
 	}
@@ -482,6 +561,9 @@ func (c *Client) enqueueEventWithTrace(typ, name string, properties, userPropsOv
 	c.identityMu.Unlock()
 	if distinct == "" {
 		distinct = anon
+	}
+	if distinctOverride != "" {
+		distinct = distinctOverride
 	}
 	if anonOverride != "" {
 		anon = anonOverride
@@ -547,6 +629,131 @@ func (c *Client) traceFromContext(ctx context.Context) TraceContext {
 	return TraceContext{}
 }
 
+// ---------- Feature flags ----------
+
+// RefreshFeatureFlags trae el set de feature flags desde
+// `GET /api/v1/ingest/feature-flags` y reemplaza el estado interno bajo lock.
+// NUNCA panica hacia el usuario: ante cualquier fallo (HTTP no-2xx, body
+// inválido, red caída) deja un diag log vía OnInternalError y conserva las
+// flags actuales. El parámetro ctx permite cancelación/timeout del request.
+func (c *Client) RefreshFeatureFlags(ctx context.Context) {
+	if c == nil {
+		return
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.opts.Endpoint+"/api/v1/ingest/feature-flags", nil)
+	if err != nil {
+		c.opts.OnInternalError(fmt.Errorf("feature flags: %w", err))
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+c.opts.Token)
+	resp, err := c.opts.HTTPClient.Do(req)
+	if err != nil {
+		c.opts.OnInternalError(fmt.Errorf("feature flags: %w", err))
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		c.opts.OnInternalError(fmt.Errorf("feature flags HTTP %d", resp.StatusCode))
+		return
+	}
+	var body featureFlagsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		c.opts.OnInternalError(fmt.Errorf("feature flags response inválida: %w", err))
+		return
+	}
+	next := make(map[string]flagDef, len(body.Flags))
+	for _, f := range body.Flags {
+		if f.Key == "" {
+			continue
+		}
+		next[f.Key] = flagDef{
+			Key:        f.Key,
+			Rollout:    clampRollout(f.Rollout),
+			Conditions: f.Conditions, // map o nil
+		}
+	}
+	c.flagsMu.Lock()
+	c.featureFlags = next
+	c.featureFlagsProject = body.Project
+	c.flagsMu.Unlock()
+}
+
+// IsFeatureEnabled evalúa una feature flag para el contexto dado. Devuelve
+// false si la flag no existe o si sus condiciones no se cumplen. El rollout es
+// "sticky" por (project, key, id): el mismo id cae siempre en el mismo bucket.
+// Emite un evento `$feature_exposure` (dedup-ado) por cada combinación nueva.
+func (c *Client) IsFeatureEnabled(key string, ctx FlagContext) bool {
+	if c == nil {
+		return false
+	}
+	c.flagsMu.RLock()
+	flag, ok := c.featureFlags[key]
+	project := c.featureFlagsProject
+	c.flagsMu.RUnlock()
+	if !ok {
+		return false
+	}
+	if !matchesConditions(flag, ctx) {
+		return false
+	}
+	rollout := clampRollout(flag.Rollout)
+	id := ctx.DistinctID
+	if id == "" {
+		c.identityMu.Lock()
+		id = c.distinctID
+		anon := c.anonymousID
+		c.identityMu.Unlock()
+		if id == "" {
+			id = anon
+		}
+	}
+	enabled := rollout >= 100 || (rollout > 0 && stickyBucket(fmt.Sprintf("%s:%s:%s", project, key, id)) < rollout)
+	c.trackFeatureExposure(project, key, id, enabled)
+	return enabled
+}
+
+// matchesConditions devuelve true si el contexto satisface conditions.properties
+// de la flag. Si no hay propiedades requeridas, siempre coincide. La igualdad es
+// por valor (reflect.DeepEqual); ojo que los números de JSON llegan como float64.
+func matchesConditions(flag flagDef, ctx FlagContext) bool {
+	required, _ := flag.Conditions["properties"].(map[string]any)
+	if required == nil {
+		return true
+	}
+	for k, expected := range required {
+		if !reflect.DeepEqual(ctx.Properties[k], expected) {
+			return false
+		}
+	}
+	return true
+}
+
+// trackFeatureExposure encola un evento de producto `$feature_exposure` la
+// primera vez que se ve una combinación (project, flag, distinctID, variant).
+// variant es "B" si la flag quedó habilitada y "A" si no.
+func (c *Client) trackFeatureExposure(project, flagKey, distinctID string, enabled bool) {
+	variant := "A"
+	if enabled {
+		variant = "B"
+	}
+	dedup := fmt.Sprintf("%s:%s:%s:%s", project, flagKey, distinctID, variant)
+	c.flagsMu.Lock()
+	if _, seen := c.featureExposureSeen[dedup]; seen {
+		c.flagsMu.Unlock()
+		return
+	}
+	c.featureExposureSeen[dedup] = struct{}{}
+	c.flagsMu.Unlock()
+	c.enqueueEventWithDistinct("track", "$feature_exposure", map[string]any{
+		"flag_key": flagKey,
+		"variant":  variant,
+		"enabled":  enabled,
+	}, distinctID)
+}
+
 // Recover debe ir con defer en los puntos de entrada de goroutines. Captura los panics,
 // los reporta a Faro y luego vuelve a lanzar el panic para mantener la semántica normal de Go.
 func (c *Client) Recover(tags map[string]string) {
@@ -588,6 +795,10 @@ func (c *Client) Close(ctx context.Context) error {
 	}
 	c.once.Do(func() {
 		close(c.closed)
+	})
+	// Señaliza al ticker de feature flags para que su goroutine termine.
+	c.flagsStopOnce.Do(func() {
+		close(c.flagsStop)
 	})
 	done := make(chan struct{})
 	go func() {
@@ -824,15 +1035,19 @@ func WarnContext(ctx context.Context, msg string, attrs map[string]any) {
 func ErrorContext(ctx context.Context, msg string, attrs map[string]any) {
 	defaultClient.ErrorContext(ctx, msg, attrs)
 }
-func CaptureException(err error, tags map[string]string)   { defaultClient.CaptureException(err, tags) }
-func Track(eventName string, properties map[string]any)    { defaultClient.Track(eventName, properties) }
+func CaptureException(err error, tags map[string]string) { defaultClient.CaptureException(err, tags) }
+func Track(eventName string, properties map[string]any)  { defaultClient.Track(eventName, properties) }
 func TrackContext(ctx context.Context, eventName string, properties map[string]any) {
 	defaultClient.TrackContext(ctx, eventName, properties)
 }
 func Identify(userID string, traits map[string]any) { defaultClient.Identify(userID, traits) }
 func Alias(prevID, newID string)                    { defaultClient.Alias(prevID, newID) }
-func Flush(timeout time.Duration) error             { return defaultClient.Flush(timeout) }
-func Close(ctx context.Context) error               { return defaultClient.Close(ctx) }
+func RefreshFeatureFlags(ctx context.Context)       { defaultClient.RefreshFeatureFlags(ctx) }
+func IsFeatureEnabled(key string, ctx FlagContext) bool {
+	return defaultClient.IsFeatureEnabled(key, ctx)
+}
+func Flush(timeout time.Duration) error { return defaultClient.Flush(timeout) }
+func Close(ctx context.Context) error   { return defaultClient.Close(ctx) }
 
 // ---------- helpers ----------
 
@@ -879,6 +1094,29 @@ func normalizeTraceID(value string, length int) string {
 		return ""
 	}
 	return value
+}
+
+// clampRollout acota n al rango [0, 100].
+func clampRollout(n int) int {
+	if n < 0 {
+		return 0
+	}
+	if n > 100 {
+		return 100
+	}
+	return n
+}
+
+// stickyBucket mapea s a un bucket [0, 100) de forma determinista usando
+// FNV-1a de 32 bits (mismo algoritmo que el SDK de Node). Para inputs ASCII
+// el resultado es idéntico entre runtimes.
+func stickyBucket(s string) int {
+	var h uint32 = 0x811c9dc5
+	for _, r := range s {
+		h ^= uint32(r)
+		h *= 0x01000193
+	}
+	return int(h % 100)
 }
 
 func typeName(err error) string {

@@ -52,6 +52,90 @@ pub mod names {
     /// así que esta métrica es el canario de "estamos perdiendo datos".
     /// Labels: `table`, `operation`.
     pub const CH_ERRORS: &str = "faro_clickhouse_errors_total";
+
+    /// Counter — records DESCARTADOS por la ingesta antes de llegar a ClickHouse,
+    /// porque el canal mpsc del writer estaba lleno (backpressure: ClickHouse no
+    /// drena al ritmo de ingesta). Es el canario directo de pérdida de datos por
+    /// saturación — distinto de [`CH_ERRORS`], que cubre el fallo del INSERT ya
+    /// encolado. Alertar `rate(faro_ingest_dropped_total[5m]) > 0`.
+    /// Labels: `signal` (logs|traces|metrics|events|monitor_results), `reason`.
+    pub const INGEST_DROPPED: &str = "faro_ingest_dropped_total";
+
+    /// Gauge — filas encoladas ahora mismo en el canal mpsc del writer
+    /// (`max_capacity - capacity`). Es el leading indicator: avisa que la cola se
+    /// está llenando ANTES de que `try_send` empiece a descartar. Junto con
+    /// [`INGEST_CHANNEL_CAPACITY`] permite calcular la ocupación en PromQL y
+    /// alertar a, p.ej., 80%.
+    /// Label: `signal`.
+    pub const INGEST_CHANNEL_DEPTH: &str = "faro_ingest_channel_depth";
+
+    /// Gauge — capacidad máxima del canal mpsc del writer (constante por señal).
+    /// Sirve de denominador para la ocupación: `depth / capacity`.
+    /// Label: `signal`.
+    pub const INGEST_CHANNEL_CAPACITY: &str = "faro_ingest_channel_capacity";
+
+    /// Counter — FILAS perdidas cuando el flush de un lote a ClickHouse falla y se
+    /// descarta entero (sin reintento ni buffer durable). [`CH_ERRORS`] cuenta los
+    /// INSERTs fallidos; esta métrica cuenta cuántas FILAS se fueron con ellos, que
+    /// es lo que de verdad importa para dimensionar la pérdida.
+    /// Label: `table`.
+    pub const CH_ROWS_DROPPED: &str = "faro_clickhouse_rows_dropped_total";
+}
+
+/// Intervalo de muestreo del gauge de profundidad de los canales de ingesta.
+const CHANNEL_DEPTH_SAMPLE_SECS: u64 = 5;
+
+/// Registra el descarte de UN record en la ingesta por canal lleno (backpressure).
+///
+/// Centralizado aquí para que todos los sitios `try_send` fallidos emitan la misma
+/// serie sin typos en el nombre/labels. `signal` es una etiqueta de baja
+/// cardinalidad y conocida de antemano (logs|traces|metrics|events|monitor_results);
+/// NO se usa `project` a propósito: el canal es compartido entre proyectos, así que
+/// el drop es una condición global de saturación, no atribuible a un proyecto.
+pub fn record_ingest_drop(signal: &'static str) {
+    metrics::counter!(
+        names::INGEST_DROPPED,
+        "signal" => signal,
+        "reason" => "channel_full",
+    )
+    .increment(1);
+}
+
+/// Profundidad actual de un canal acotado: cuántos slots están ocupados.
+/// Función pura para poder testear el cálculo sin un canal real.
+fn channel_depth(max_capacity: usize, available_capacity: usize) -> usize {
+    max_capacity.saturating_sub(available_capacity)
+}
+
+/// Publica el gauge de profundidad/capacidad de un canal de ingesta.
+fn sample_channel<T>(tx: &tokio::sync::mpsc::Sender<T>, signal: &'static str) {
+    let max = tx.max_capacity();
+    let depth = channel_depth(max, tx.capacity());
+    metrics::gauge!(names::INGEST_CHANNEL_DEPTH, "signal" => signal).set(depth as f64);
+    metrics::gauge!(names::INGEST_CHANNEL_CAPACITY, "signal" => signal).set(max as f64);
+}
+
+/// Arranca una tarea periódica que muestrea la ocupación de los 5 canales de
+/// ingesta y la publica como gauges Prometheus. Es el leading indicator de
+/// saturación: permite alertar ANTES de que se empiecen a descartar records.
+///
+/// Debe llamarse después de [`install`] (el recorder global ya instalado) y antes
+/// de que el writer tome los receivers — sólo lee `capacity()`/`max_capacity()` de
+/// los senders, así que es seguro correrla en paralelo a la ingesta.
+pub fn spawn_channel_depth_sampler(state: crate::state::SharedState) {
+    use tokio::time::{interval, Duration, MissedTickBehavior};
+    tokio::spawn(async move {
+        let mut tick = interval(Duration::from_secs(CHANNEL_DEPTH_SAMPLE_SECS));
+        tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        loop {
+            tick.tick().await;
+            sample_channel(&state.ingest.logs_tx, "logs");
+            sample_channel(&state.ingest.spans_tx, "traces");
+            sample_channel(&state.ingest.metrics_tx, "metrics");
+            sample_channel(&state.ingest.events_tx, "events");
+            sample_channel(&state.ingest.monitor_results_tx, "monitor_results");
+        }
+    });
 }
 
 /// Instala el recorder global de Prometheus y devuelve el layer HTTP + el handle
@@ -83,4 +167,21 @@ pub fn install() -> (PrometheusMetricLayer<'static>, PrometheusHandle) {
                 .expect("no se pudo instalar el recorder Prometheus")
         })
         .build_pair()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::channel_depth;
+
+    #[test]
+    fn channel_depth_is_max_minus_available() {
+        // Canal vacío: profundidad 0.
+        assert_eq!(channel_depth(32_768, 32_768), 0);
+        // Mitad ocupado.
+        assert_eq!(channel_depth(32_768, 16_384), 16_384);
+        // Lleno: toda la capacidad ocupada.
+        assert_eq!(channel_depth(32_768, 0), 32_768);
+        // Defensivo: si `available` excede `max` (no debería), saturating evita underflow.
+        assert_eq!(channel_depth(10, 12), 0);
+    }
 }

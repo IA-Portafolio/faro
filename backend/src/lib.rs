@@ -4,6 +4,7 @@
 //! del backend con `use faro::*`. El binario `faro` (en `src/main.rs`) consume
 //! exactamente los mismos módulos vía este crate.
 
+pub mod alert_query;
 pub mod api;
 pub mod auth;
 pub mod config;

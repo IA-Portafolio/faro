@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/projects/[slug]/origins` — orígenes permitidos del proyecto.
+   *
+   * `[slug]` es el proyecto. Edita la lista blanca de orígenes (dominios) desde los
+   * que se acepta la ingesta del SDK web / CORS (`fetchOrigins`/`saveOrigins`); si
+   * está deshabilitada, no se filtra por origen.
+   */
   import { page } from '$app/stores';
   import { fetchOrigins, saveOrigins, type OriginConfig } from '$lib/api';
 

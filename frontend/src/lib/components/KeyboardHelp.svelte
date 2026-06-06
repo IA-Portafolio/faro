@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Diálogo de ayuda de atajos de teclado (se abre con la tecla "?").
+   *
+   * Tabla estática de shortcuts (navegación `g`+tecla, globales y atajos de
+   * listas) y de "saltos" tipo `traces:<id>` / `errors:<fingerprint>`. Se
+   * muestra/oculta con el store `helpOpen`; no tiene lógica, solo documenta
+   * visualmente lo que registran `KeyboardShortcuts` y `$lib/keyboard`.
+   */
   import { helpOpen } from '$lib/keyboard';
 
   type Row = { keys: string[]; label: string };

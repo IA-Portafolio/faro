@@ -1,3 +1,10 @@
+//! Tipo de error de la API y su conversión a respuestas HTTP.
+//!
+//! `ApiError` enumera los modos de fallo (no autorizado, prohibido, petición
+//! inválida, no encontrado, error de ClickHouse, rate limit…) y los mapea a su
+//! código de estado y body JSON. `ApiResult<T>` es el alias que devuelven los
+//! handlers.
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;

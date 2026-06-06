@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR:-/opt/faro}/.claude/hooks/enforce-tests.py\"",
+            "timeout": 30,
+            "statusMessage": "Verificando que corriste los tests (AGENTS.md)…"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,4 +1,13 @@
 <script lang="ts">
+  /**
+   * Página `/funnels` — constructor de embudos de conversión (funnels).
+   *
+   * El usuario arma una secuencia ordenada de `event_name` (mín. 2 pasos) desde el
+   * catálogo y, en vivo y con debounce, calcula el funnel: cuántos usuarios avanzan
+   * en cada paso, el drop-off (abandono) y el tiempo de conversión, dentro de una
+   * ventana temporal (`windowSecs`). Un contador `reqSeq` descarta respuestas que
+   * llegan fuera de orden.
+   */
   import { onDestroy, onMount } from 'svelte';
   import { browser } from '$app/environment';
 

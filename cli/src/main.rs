@@ -554,4 +554,88 @@ mod tests {
         assert_eq!(urlencode("hola-mundo_1.0~"), "hola-mundo_1.0~");
         assert_eq!(urlencode("a b&c"), "a%20b%26c");
     }
+
+    #[test]
+    fn duration_units_edge_cases() {
+        // Sin unidad equivale a minutos.
+        assert_eq!(parse_duration_minutes("90").unwrap(), 90);
+        // Whitespace alrededor se ignora.
+        assert_eq!(parse_duration_minutes("  2h  ").unwrap(), 120);
+        assert_eq!(parse_duration_minutes("0m").unwrap(), 0);
+        // Número faltante o inválido falla en vez de devolver basura.
+        assert!(parse_duration_minutes("h").is_err());
+        assert!(parse_duration_minutes("").is_err());
+    }
+
+    #[test]
+    fn severity_parsing_all_aliases() {
+        assert_eq!(parse_severity(Some("trace")).unwrap(), Some(1));
+        assert_eq!(parse_severity(Some("DEBUG")).unwrap(), Some(5));
+        assert_eq!(parse_severity(Some("info")).unwrap(), Some(9));
+        assert_eq!(parse_severity(Some("warning")).unwrap(), Some(13));
+        assert_eq!(parse_severity(Some("err")).unwrap(), Some(17));
+        assert_eq!(parse_severity(Some("fatal")).unwrap(), Some(21));
+        assert_eq!(parse_severity(Some("critical")).unwrap(), Some(21));
+    }
+
+    #[test]
+    fn truncate_caps_by_length() {
+        assert_eq!(truncate("hello", 3), "hel");
+        assert_eq!(truncate("hi", 5), "hi");
+        assert_eq!(truncate("", 3), "");
+        assert_eq!(truncate("exact", 5), "exact");
+    }
+
+    #[test]
+    fn encode_qs_joins_and_escapes_pairs() {
+        let pairs = vec![
+            ("q".to_string(), "a b".to_string()),
+            ("svc".to_string(), "x&y".to_string()),
+        ];
+        assert_eq!(encode_qs(&pairs), "q=a%20b&svc=x%26y");
+        assert_eq!(encode_qs(&[]), "");
+    }
+
+    #[test]
+    fn extract_session_cookie_finds_faro_session() {
+        use reqwest::header::{HeaderMap, HeaderValue, SET_COOKIE};
+        let mut h = HeaderMap::new();
+        h.append(
+            SET_COOKIE,
+            HeaderValue::from_static("other=1; Path=/"),
+        );
+        h.append(
+            SET_COOKIE,
+            HeaderValue::from_static("faro_session=tok123; Path=/; HttpOnly; SameSite=Lax"),
+        );
+        assert_eq!(extract_session_cookie(&h), Some("tok123".to_string()));
+    }
+
+    #[test]
+    fn extract_session_cookie_absent_returns_none() {
+        use reqwest::header::{HeaderMap, HeaderValue, SET_COOKIE};
+        let mut h = HeaderMap::new();
+        h.append(SET_COOKIE, HeaderValue::from_static("sid=abc; Path=/"));
+        assert_eq!(extract_session_cookie(&h), None);
+        assert_eq!(extract_session_cookie(&HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn client_url_normalizes_trailing_slash() {
+        let c = Client::new("http://localhost:8080/".to_string(), None).unwrap();
+        assert_eq!(c.url("/api/v1/logs"), "http://localhost:8080/api/v1/logs");
+        let c2 = Client::new("http://localhost:8080".to_string(), None).unwrap();
+        assert_eq!(c2.url("/api/v1/logs"), "http://localhost:8080/api/v1/logs");
+    }
+
+    #[test]
+    fn auth_header_only_when_session_present() {
+        let with = Client::new("http://x".to_string(), Some("tok".to_string())).unwrap();
+        assert_eq!(
+            with.auth_header(),
+            Some(("Cookie", "faro_session=tok".to_string()))
+        );
+        let without = Client::new("http://x".to_string(), None).unwrap();
+        assert_eq!(without.auth_header(), None);
+    }
 }

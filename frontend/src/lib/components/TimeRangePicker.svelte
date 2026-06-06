@@ -1,4 +1,10 @@
 <script lang="ts">
+  /**
+   * Selector de rango temporal global (5 min … 7 días).
+   *
+   * Un `<select>` enlazado al store `timeRange`; al cambiarlo, todas las páginas de
+   * exploración que leen ese store recalculan su ventana de tiempo.
+   */
   import { timeRange, type RangePreset } from '$lib/stores';
   const presets: { v: RangePreset; label: string }[] = [
     { v: '5m', label: 'Últimos 5 min' },

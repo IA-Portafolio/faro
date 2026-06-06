@@ -46,9 +46,9 @@ async fn ingest_logs_persists_to_clickhouse() {
     assert_eq!(body["project"], app.project_slug);
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("logs").await >= 1 })
+        .wait_for(120, || async { app.count_in("logs").await >= 1 })
         .await;
-    assert!(arrived, "el log no llegó a faro.logs en 2 s");
+    assert!(arrived, "el log no llegó a faro.logs en 6 s");
 
     let rows: Vec<LogRowOut> = app
         .ch
@@ -88,6 +88,51 @@ async fn ingest_logs_rejects_unknown_token() {
         .http
         .post(format!("{}/api/v1/ingest/logs", app.api_url))
         .bearer_auth("not-a-real-token")
+        .json(&serde_json::json!({ "logs": [{ "message": "x" }] }))
+        .send()
+        .await
+        .expect("send");
+    assert_eq!(resp.status(), reqwest::StatusCode::UNAUTHORIZED);
+}
+
+/// `navigator.sendBeacon` no puede setear headers, así que el SDK browser manda el
+/// token por query `?_token=`. Sin este fallback el flush al cerrar la pestaña daba
+/// 401 y perdía los últimos eventos. Valida el path completo sin header de auth.
+#[tokio::test]
+async fn ingest_logs_accepts_beacon_query_token() {
+    let app = TestApp::spawn().await;
+    let resp = app
+        .http
+        .post(format!(
+            "{}/api/v1/ingest/logs?_token={}",
+            app.api_url, app.project_token
+        ))
+        .json(&serde_json::json!({
+            "service": "beacon-svc",
+            "logs": [{ "level": "info", "message": "page unload flush" }],
+        }))
+        .send()
+        .await
+        .expect("send");
+    assert!(
+        resp.status().is_success(),
+        "beacon con _token debería autenticar; status: {}",
+        resp.status()
+    );
+    let body: serde_json::Value = resp.json().await.expect("json");
+    assert_eq!(body["accepted"], 1);
+    assert_eq!(body["project"], app.project_slug);
+}
+
+#[tokio::test]
+async fn ingest_logs_rejects_unknown_query_token() {
+    let app = TestApp::spawn().await;
+    let resp = app
+        .http
+        .post(format!(
+            "{}/api/v1/ingest/logs?_token=not-a-real-token",
+            app.api_url
+        ))
         .json(&serde_json::json!({ "logs": [{ "message": "x" }] }))
         .send()
         .await

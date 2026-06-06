@@ -1,3 +1,12 @@
+/**
+ * Helpers de la vista de usuarios de producto (product analytics).
+ *
+ * Un "product user" se identifica por su `distinct_id` (id estable del usuario
+ * final que el SDK envía, no el id interno de la fila). Aquí se construye su
+ * href (`/users/<distinct_id>`), se acortan ids largos, se previsualizan las
+ * `properties` (JSON) de un evento y se agrupan los eventos por `session_id`
+ * para pintar la timeline de sesiones del usuario.
+ */
 import type { ProductEvent } from './api';
 
 export type ProductUserHrefOptions = {

@@ -1,3 +1,11 @@
+//! Endpoints de proyectos (cada proyecto aísla datos y tiene su token de ingesta):
+//!   GET/POST        /projects               → lista / crea
+//!   GET/PUT/DELETE  /projects/{slug}        → detalle / edita / borra
+//!   POST            /projects/{slug}/rotate → rota el token de ingesta
+//!   …más sub-recursos de orígenes (CORS) y redacción de PII por proyecto.
+//!
+//! El `slug` es el identificador legible del proyecto en la URL.
+
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};

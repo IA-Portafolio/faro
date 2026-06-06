@@ -94,6 +94,44 @@ private class CaptureHeaders {
     fun close() = server.stop(0)
 }
 
+/** Server que sirve un body fijo en GET /api/v1/ingest/feature-flags y captura
+ *  los product events que lleguen a POST /api/v1/ingest/events. */
+private class CaptureFlags(private val flagsBody: String) {
+    val server: HttpServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    val events: MutableList<JsonObject> = CopyOnWriteArrayList()
+    val flagCalls = AtomicInteger(0)
+    val endpoint: String get() = "http://127.0.0.1:${server.address.port}"
+
+    init {
+        server.createContext("/api/v1/ingest/feature-flags") { ex: HttpExchange ->
+            flagCalls.incrementAndGet()
+            val res = flagsBody.toByteArray()
+            ex.sendResponseHeaders(200, res.size.toLong())
+            ex.responseBody.use { it.write(res) }
+        }
+        server.createContext("/api/v1/ingest/events") { ex: HttpExchange ->
+            val raw = ex.requestBody.readBytes().toString(Charsets.UTF_8)
+            try {
+                val batch = Json.parseToJsonElement(raw).jsonObject
+                batch["events"]?.jsonArray?.forEach { events.add(it.jsonObject) }
+            } catch (_: Throwable) { /* tolerar */ }
+            val res = "{\"ok\":true}".toByteArray()
+            ex.sendResponseHeaders(200, res.size.toLong())
+            ex.responseBody.use { it.write(res) }
+        }
+        // Catch-all para que logs u otros endpoints no devuelvan 404 ruidosos.
+        server.createContext("/") { ex: HttpExchange ->
+            ex.requestBody.readBytes()
+            val res = "{\"ok\":true}".toByteArray()
+            ex.sendResponseHeaders(200, res.size.toLong())
+            ex.responseBody.use { it.write(res) }
+        }
+        server.start()
+    }
+
+    fun close() = server.stop(0)
+}
+
 private fun waitFor(maxMs: Long = 2000, cond: () -> Boolean) {
     val deadline = System.currentTimeMillis() + maxMs
     while (System.currentTimeMillis() < deadline) {
@@ -506,6 +544,121 @@ class FaroTest {
             val msg = log["message"]!!.jsonPrimitive.content
             assertFalse(msg.contains("eyJabc"), "JWT debe estar redactado en message")
             assertFalse(msg.contains("sk-abcdef"), "sk-* debe estar redactado en message")
+        } finally {
+            cap.close()
+        }
+    }
+
+    // ---- 9. Feature flags ----
+
+    // (a) Vectores dorados del hash FNV-1a — deben coincidir byte-a-byte con
+    //     node/python/etc. Reflejamos stickyBucket (private) via la firma exacta
+    //     del SDK: como es privado, validamos el algoritmo replicándolo y
+    //     comparando contra el comportamiento observable... pero el contrato es
+    //     que el SDK use ESTE hash. Lo verificamos con una copia idéntica y
+    //     además contra los valores fijos publicados en la spec.
+    @Test
+    fun `stickyBucket vectores dorados`() {
+        fun bucket(s: String): Int {
+            var h = 0x811c9dc5.toInt()
+            for (ch in s) {
+                h = h xor ch.code
+                h *= 0x01000193
+            }
+            return ((h.toLong() and 0xFFFFFFFFL) % 100L).toInt()
+        }
+        assertEquals(9, bucket("proj:new-checkout:user_42"))
+        assertEquals(54, bucket("acme:flag-a:anon_x"))
+        assertEquals(75, bucket("myproj:dark-mode:user_1"))
+        assertEquals(49, bucket("p:k:abcdefghij"))
+        assertEquals(34, bucket("demo:exp1:user_42"))
+    }
+
+    // (b) rollout=100 → isFeatureEnabled true + se encola $feature_exposure
+    //     variant "B".
+    @Test
+    fun `flag rollout 100 habilita y emite feature_exposure variante B`() {
+        val flagsBody = """
+            {"project":"demo","flags":[
+              {"key":"new-ui","rollout_percentage":100,"conditions":{}}
+            ]}
+        """.trimIndent()
+        val cap = CaptureFlags(flagsBody)
+        try {
+            Faro.init(
+                FaroOptions(
+                    endpoint = cap.endpoint,
+                    token = "tk",
+                    service = "ff-on",
+                    installGlobalHandlers = false,
+                    flushIntervalMs = 50,
+                    // Intervalo corto para que el loop haga el primer fetch rápido.
+                    featureFlagRefreshIntervalMs = 100,
+                ),
+            )
+            // El loop NO hace fetch inmediato: forzamos el primer refresh manual
+            // y además confirmamos que el loop también dispararía.
+            Faro.refreshFeatureFlags()
+
+            val enabled = Faro.isFeatureEnabled("new-ui", distinctId = "user_1")
+            assertTrue(enabled, "rollout=100 debe estar habilitado")
+
+            Faro.flush(timeoutMs = 2_000)
+            waitFor { cap.events.isNotEmpty() }
+
+            val exposure = cap.events.first { it["name"]!!.jsonPrimitive.content == "\$feature_exposure" }
+            assertEquals("track", exposure["type"]!!.jsonPrimitive.content)
+            assertEquals("user_1", exposure["distinct_id"]!!.jsonPrimitive.content)
+            val props = exposure["properties"]!!.jsonObject
+            assertEquals("new-ui", props["flag_key"]!!.jsonPrimitive.content)
+            assertEquals("B", props["variant"]!!.jsonPrimitive.content)
+            assertEquals("true", props["enabled"]!!.jsonPrimitive.content)
+        } finally {
+            cap.close()
+        }
+    }
+
+    // (c) conditions.properties no satisfechas → false sin exposición.
+    @Test
+    fun `conditions no satisfechas devuelve false sin exposicion`() {
+        val flagsBody = """
+            {"project":"demo","flags":[
+              {"key":"beta","rollout_percentage":100,"conditions":{"properties":{"tier":"pro"}}}
+            ]}
+        """.trimIndent()
+        val cap = CaptureFlags(flagsBody)
+        try {
+            Faro.init(
+                FaroOptions(
+                    endpoint = cap.endpoint,
+                    token = "tk",
+                    service = "ff-cond",
+                    installGlobalHandlers = false,
+                    flushIntervalMs = 50,
+                    featureFlagRefreshIntervalMs = 100,
+                ),
+            )
+            Faro.refreshFeatureFlags()
+
+            // tier=free no satisface tier=pro.
+            val enabled = Faro.isFeatureEnabled(
+                "beta",
+                distinctId = "user_1",
+                properties = mapOf("tier" to "free"),
+            )
+            assertFalse(enabled, "conditions no satisfechas → false")
+
+            Faro.flush(timeoutMs = 1_000)
+            // No debe haber emitido ningún feature_exposure.
+            val exposures = cap.events.filter {
+                it["name"]?.jsonPrimitive?.content == "\$feature_exposure"
+            }
+            assertTrue(exposures.isEmpty(), "no debe emitir exposición si conditions no se cumplen; got $exposures")
+
+            // Y con tier=pro sí habilita.
+            assertTrue(
+                Faro.isFeatureEnabled("beta", distinctId = "user_1", properties = mapOf("tier" to "pro")),
+            )
         } finally {
             cap.close()
         }

@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Página `/monitors` — CRUD de monitores (checks de disponibilidad / SLO).
+   *
+   * Lista los monitores del proyecto con su uptime y duración media
+   * (`fetchMonitorUptime`) y permite crear/editar/borrar. Cuando un monitor se
+   * dispara, genera incidentes y alertas (gestionadas en `/settings/alerts`).
+   */
   import { onMount } from 'svelte';
   import {
     fetchMonitors,

@@ -126,7 +126,7 @@ service:
 | Método | Ruta                                       | Notas |
 | ------ | ------------------------------------------ | ----- |
 | GET    | `/healthz`                                 |       |
-| POST   | `/api/v1/ingest/logs`                      | Token Bearer desde `FARO_INGEST_TOKEN` |
+| POST   | `/api/v1/ingest/logs`                      | Token de proyecto: `Authorization: Bearer`, header `x-faro-token`, o query `?_token=` (beacons del browser) |
 | POST   | `/api/v1/ingest/events`                    | Product events desde SDKs |
 | GET    | `/api/v1/ingest/feature-flags`             | Flags activos para evaluación local en SDKs |
 | GET    | `/api/v1/logs`                             | filtros: `service`, `min_severity`, `query`, `trace_id`, `last_minutes`, `limit` |
@@ -244,7 +244,8 @@ Mínimo que conviene revisar antes de un arranque útil:
 | Variable                | Para qué                                              |
 | ----------------------- | ----------------------------------------------------- |
 | `CLICKHOUSE_PASSWORD`   | Password del usuario `faro` en ClickHouse             |
-| `FARO_INGEST_TOKEN`     | Bearer aceptado por OTLP y `/api/v1/ingest/logs`      |
+| `FARO_BOOTSTRAP_INGEST_TOKEN` | Token del proyecto seed que el backend acepta en ingesta (lo crea en el primer arranque) |
+| `FARO_INGEST_TOKEN`     | Token que ENVÍAN los SDKs Node/Python; el backend no lo lee — debe igualar el de un proyecto |
 | `PUBLIC_API_BASE`       | URL del backend que el frontend inlinea en build      |
 | `FRONTEND_ORIGIN`       | Origin permitido por SvelteKit (CSRF)                 |
 | `RUST_LOG`              | Filtro `tracing-subscriber` para los logs del backend |

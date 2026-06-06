@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/logs` — explorador de logs.
+   *
+   * Lista logs con filtros por servicio, severidad mínima, texto/regex y `trace_id`,
+   * con paginación por cursor keyset. Soporta modo "live" por SSE (EventSource) con
+   * buffer y pausa, el histograma de volumen por severidad con drag-to-select de
+   * sub-rango, y un drawer de detalle. Navegación por teclado j/k y `/` para buscar.
+   */
   import { onMount, onDestroy, tick } from 'svelte';
   import { browser } from '$app/environment';
   import { fetchLogs, apiBase, type LogRow } from '$lib/api';

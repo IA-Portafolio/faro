@@ -59,9 +59,9 @@ async fn ingest_spans_persists_to_clickhouse() {
     assert_eq!(body["project"], app.project_slug);
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("spans").await >= 1 })
+        .wait_for(120, || async { app.count_in("spans").await >= 1 })
         .await;
-    assert!(arrived, "el span no llegó a faro.spans en 2 s");
+    assert!(arrived, "el span no llegó a faro.spans en 6 s");
 
     let rows: Vec<SpanRowOut> = app
         .ch

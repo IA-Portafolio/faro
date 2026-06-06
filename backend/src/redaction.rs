@@ -92,9 +92,14 @@ impl Builtin {
             Builtin::PasswordKv => {
                 r#"(?i)"?(password|passwd|pwd|pass|secret_word|kennwort)"?\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;}\]&]+)"#
             }
-            // api_key, apikey, secret, token (no JWT, ya cubierto arriba).
+            // api_key, apikey, access_token, auth_token, secret, token (no JWT,
+            // ya cubierto arriba). El `token` "pelado" va al final de la
+            // alternación: las claves más largas (`access_token`, `auth_token`)
+            // ya matchean por sí mismas, y un campo llamado simplemente `token`
+            // —que el catálogo de la UI promete cubrir— también debe redactarse.
+            // El `[:=]` obligatorio evita falsos positivos como `token_count`.
             Builtin::ApikeyKv => {
-                r#"(?i)"?(api[_\-]?key|apikey|access[_\-]?token|secret|auth[_\-]?token)"?\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;}\]&]+)"#
+                r#"(?i)"?(api[_\-]?key|apikey|access[_\-]?token|auth[_\-]?token|secret|token)"?\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;}\]&]+)"#
             }
             // IPv4. Evitamos rangos exactos: cualquier 4 grupos de 1-3 dígitos.
             // Pierde un poco de precisión (matchea 999.999.999.999) a cambio de
@@ -373,6 +378,28 @@ mod tests {
         );
         // Variantes y case-insensitive
         assert_eq!(apply(&c, "PWD: abc123"), "PWD=[REDACTED]");
+    }
+
+    #[test]
+    fn apikey_kv_covers_documented_keys() {
+        let c = CompiledRules::from_config(&cfg(&["apikey_kv"])).unwrap();
+        // El catálogo de la UI promete: api_key / apikey / secret / token.
+        assert_eq!(apply(&c, "api_key=abc123"), "api_key=[REDACTED]");
+        assert_eq!(apply(&c, "apikey: abc123"), "apikey=[REDACTED]");
+        assert_eq!(apply(&c, "access_token=abc123"), "access_token=[REDACTED]");
+        assert_eq!(apply(&c, "auth_token=abc123"), "auth_token=[REDACTED]");
+        assert_eq!(apply(&c, "secret=abc123"), "secret=[REDACTED]");
+        // Un campo llamado simplemente `token` — antes se filtraba (regresión).
+        assert_eq!(apply(&c, "token=abc123"), "token=[REDACTED]");
+        assert_eq!(apply(&c, r#"{"token":"s3cret"}"#), r#"{token=[REDACTED]}"#);
+    }
+
+    #[test]
+    fn apikey_kv_does_not_over_redact_token_substrings() {
+        let c = CompiledRules::from_config(&cfg(&["apikey_kv"])).unwrap();
+        // `token_count` no es una clave de secreto: el `[:=]` obligatorio justo
+        // después de la clave evita el falso positivo (no hay `:`/`=` tras `token`).
+        assert_eq!(apply(&c, "token_count=5"), "token_count=5");
     }
 
     #[test]

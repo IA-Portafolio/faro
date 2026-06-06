@@ -28,6 +28,15 @@ Para (1) usamos un token Bearer estático (`FARO_INGEST_TOKEN`). Para
 (2) tenemos que decidir: implementar auth propia (signup, sesiones,
 RBAC) o delegar a la capa de red.
 
+> **Nota (posterior):** el mecanismo de (1) evolucionó a **tokens por
+> proyecto**. El backend ya no lee `FARO_INGEST_TOKEN`; autentica la
+> ingesta matcheando el token recibido (Bearer, header `x-faro-token`,
+> o query `?_token=` para beacons del browser) contra el `ingest_token`
+> de cada proyecto. El primer proyecto se siembra con
+> `FARO_BOOTSTRAP_INGEST_TOKEN`; el resto vía `POST /api/v1/projects`.
+> `FARO_INGEST_TOKEN` sobrevive como la env var que los SDKs leen para
+> saber qué token enviar.
+
 ## Decisión
 
 Faro **no implementa autenticación propia para el dashboard**.

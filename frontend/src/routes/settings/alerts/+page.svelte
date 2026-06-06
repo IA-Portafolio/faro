@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/alerts` — reglas de alerta e incidentes.
+   *
+   * CRUD de reglas de alerta (`AlertRule`) con sus destinatarios (`targets`), más
+   * la lista de incidentes recientes (`fetchAlertIncidents`). Las reglas evalúan
+   * métricas/monitores y, al dispararse, notifican por los canales configurados en
+   * Integraciones.
+   */
   import { onMount } from 'svelte';
   import {
     fetchAlertRules,

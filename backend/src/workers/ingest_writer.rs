@@ -1,3 +1,10 @@
+//! Workers de escritura por lotes (el otro extremo de los canales de ingesta).
+//!
+//! Arranca un writer por canal (logs, spans, metrics, events, resultados de
+//! monitores): cada uno acumula filas hasta llegar a N o a T y las vuelca a
+//! ClickHouse. Ante fallo descarta el lote tras loguear (el buffer durable sería
+//! una cola externa que se cablearía más adelante).
+
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -130,6 +137,10 @@ async fn flush<T: Serialize>(table: &'static str, ch: &Client, buf: &mut Vec<T>)
                 "operation" => "insert",
             )
             .increment(1);
+            // El lote entero se descarta (sin reintento ni buffer durable): contamos
+            // las FILAS perdidas, no sólo el INSERT fallido, para dimensionar la
+            // pérdida real de telemetría.
+            metrics::counter!(names::CH_ROWS_DROPPED, "table" => table).increment(n as u64);
             tracing::error!(%table, rows = n, error = %e, "flush failed, dropping batch");
         }
     }

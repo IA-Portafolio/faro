@@ -8,7 +8,7 @@
 //! que la tabla guarda eventos custom (track) y eventos especiales con la misma
 //! shape — el consumidor filtra por `event_name` cuando necesita uno u otro.
 
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::HeaderMap;
 use axum::routing::post;
 use axum::{Json, Router};
@@ -122,9 +122,10 @@ impl IngestPayload {
 pub(crate) async fn ingest_events(
     State(state): State<SharedState>,
     headers: HeaderMap,
+    Query(q): Query<super::IngestQuery>,
     Json(payload): Json<IngestPayload>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    let project = super::resolve_project(&state, &headers)?;
+    let project = super::resolve_project_with_query(&state, &headers, q.token.as_deref())?;
     super::check_origin(&state, &project, &headers)?;
 
     // Mismo bucket que el resto de ingesta — `signal = "events"` lo distingue
@@ -193,6 +194,7 @@ pub(crate) async fn ingest_events(
         if state.ingest.events_tx.try_send(row).is_ok() {
             accepted += 1;
         } else {
+            crate::observability::record_ingest_drop("events");
             tracing::warn!("event ingest channel full, dropping record");
         }
     }

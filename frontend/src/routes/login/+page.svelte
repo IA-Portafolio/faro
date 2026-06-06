@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Página `/login` — acceso con email + contraseña y 2FA opcional (TOTP).
+   *
+   * Fase 1: email/password. Si el backend responde `needs_totp`, la fase 2 pide el
+   * código TOTP (o un código de recuperación), usando un `challenge_token` para no
+   * re-validar la contraseña. Si ya hay sesión activa, redirige a `?next=` (o "/").
+   */
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { page } from '$app/stores';

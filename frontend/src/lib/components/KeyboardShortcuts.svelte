@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Manejador global de teclado (componente sin UI; se monta una vez en el layout).
+   *
+   * Registra la secuencia estilo Vim `g`+tecla para navegar (g l → /logs, g t →
+   * /traces…), el toggle de la paleta con ⌘K/Ctrl+K, `?` para la ayuda y Escape
+   * para cerrar overlays globales. La maquinaria de secuencias y el guard de
+   * "estás escribiendo en un input" viven en `$lib/keyboard`.
+   */
   import { onMount, onDestroy } from 'svelte';
   import { goto } from '$app/navigation';
   import {

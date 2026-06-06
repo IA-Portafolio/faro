@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/metrics` — explorador de métricas (series temporales).
+   *
+   * Elige una métrica del catálogo (`fetchMetricNames`), opcionalmente filtra por
+   * servicio y función de agregación (avg/sum/…), y pinta la serie con `Chart`.
+   * Detecta las métricas derivadas de product events (`events.<x>.count`). Los
+   * filtros se sincronizan con la URL.
+   */
   import { onMount } from 'svelte';
   import { browser } from '$app/environment';
   import { fetchMetricNames, fetchMetricSeries, type MetricName, type Point } from '$lib/api';

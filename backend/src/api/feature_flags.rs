@@ -1,3 +1,9 @@
+//! Endpoint que sirve las feature flags a los SDKs:
+//!   GET /feature-flags → flags evaluadas para el proyecto que identifica el
+//!   request (resuelto por token/headers), tras validar el origen.
+//!
+//! La evaluación y el almacenamiento de flags viven en `crate::feature_flags`.
+
 use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::routing::get;

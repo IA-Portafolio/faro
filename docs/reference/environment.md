@@ -52,7 +52,7 @@ falla el PR si los dos archivos están desincronizados.
 | `FARO_API_PORT` | `8080` | Puerto donde el backend sirve la API REST (`/api/v1/*`), SSE y `/healthz`. |
 | `FARO_OTLP_HTTP_PORT` | `4318` | Puerto del listener OTLP/HTTP+JSON. Acepta `/v1/logs`, `/v1/traces`, `/v1/metrics` de cualquier exportador OpenTelemetry oficial. |
 | `FARO_OTLP_GRPC_PORT` | `4317` | Puerto del listener OTLP/gRPC. Misma superficie OTLP pero con codec protobuf — los SDKs oficiales de OTel lo usan por default. |
-| `FARO_INGEST_TOKEN` | `dev-ingest-token` | Token Bearer aceptado por `/api/v1/ingest/logs` y los receptores OTLP. En producción rotalo con `openssl rand -hex 32`. |
+| `FARO_INGEST_TOKEN` | `dev-ingest-token` | Token de ingesta que los SDKs/clientes ENVÍAN al backend (como `Authorization: Bearer`, header `x-faro-token`, o query `?_token=` para los beacons del browser al cerrar la pestaña). OJO: el backend NO lee esta variable — autentica matcheando el token recibido contra el `ingest_token` de cada proyecto. Su valor debe COINCIDIR con el de un proyecto; en dev/single-project es el mismo que `FARO_BOOTSTRAP_INGEST_TOKEN` (abajo). La leen los SDKs Node y Python. En producción: `openssl rand -hex 32`. |
 
 ## Bootstrap (primer arranque)
 
@@ -60,7 +60,7 @@ falla el PR si los dos archivos están desincronizados.
 | -------- | ------- | ----------- |
 | `FARO_BOOTSTRAP_PROJECT_SLUG` | `default` | Slug del proyecto seed (segmento de URL y prefijo en logs). |
 | `FARO_BOOTSTRAP_PROJECT_NAME` | `Default` | Nombre humano del proyecto seed (lo que muestra el dashboard). |
-| `FARO_BOOTSTRAP_INGEST_TOKEN` | `dev-ingest-token` | Token Bearer del proyecto seed para ingesta. En producción tiene que ser un secret real. |
+| `FARO_BOOTSTRAP_INGEST_TOKEN` | `dev-ingest-token` | Token de ingesta del proyecto seed que el backend crea en el primer arranque (cuando la BD está vacía). ESTE sí lo lee el backend. Es el token que los clientes deben enviar (ver `FARO_INGEST_TOKEN`). Para crear más proyectos o rotar tokens: `POST /api/v1/projects` y `POST /api/v1/projects/{slug}/rotate`. En producción tiene que ser un secret real (`openssl rand -hex 32`). |
 | `FARO_BOOTSTRAP_ADMIN_EMAIL` | `admin@local.test` | Email del admin seed. Será el primer login del dashboard. |
 | `FARO_BOOTSTRAP_ADMIN_PASSWORD` | `admin12345` | Password del admin seed (almacenado hasheado). Cambialo apenas entres por primera vez al dashboard. |
 | `FARO_BOOTSTRAP_ADMIN_NAME` | `Admin` | Nombre humano del admin seed (aparece en la UI). |
@@ -159,6 +159,22 @@ falla el PR si los dos archivos están desincronizados.
 | `FARO_STALE_DETECTOR_ENABLED` | `true` · opcional | Activa el worker que detecta servicios que dejaron de emitir tráfico. |
 | `FARO_STALE_DETECTOR_INTERVAL_SECS` | `3600` · opcional | Cadencia (segundos) del detector. |
 | `FARO_STALE_THRESHOLD_HOURS` | `24` · opcional | Horas sin tráfico tras las cuales un servicio se marca como stale. |
+
+## Unificación de usuarios multi-device (goal 10.E.1)
+
+| Variable | Default | Descripción |
+| -------- | ------- | ----------- |
+| `FARO_USER_UNIFIER_ENABLED` | `true` · opcional | Activa el worker que mantiene `product_users` y `product_user_aliases` a partir de `product_events`. Sin esto, esas dos tablas quedan vacías y el endpoint `GET /api/v1/product-users/:id/events` (todos los eventos del user en cualquier device) responde sólo lo que matchea `distinct_id` directo, sin expandir a los anon_ids ligados. |
+| `FARO_USER_UNIFIER_INTERVAL_SECS` | `60` · opcional | Cadencia (segundos) entre ticks del unificador. Cada tick mira eventos desde `last_watermark - 30s` para no perder eventos justo después de un tick. Tope interno: 5 000 users/tick. |
+
+## Session aggregator (goal 10.F.1)
+
+| Variable | Default | Descripción |
+| -------- | ------- | ----------- |
+| `FARO_SESSION_AGGREGATOR_ENABLED` | `true` · opcional | Activa el worker que sesionaliza `product_events` y mantiene `faro.product_sessions`. Si el SDK manda `session_id` en el evento, se respeta; si no, se cortan sesiones por gap > `FARO_SESSION_GAP_MINUTES`. |
+| `FARO_SESSION_AGGREGATOR_INTERVAL_SECS` | `300` · opcional | Cadencia (segundos) del agregador. 5 min es lo bastante fino para que las sesiones "vivas" se actualicen en near-real-time sin escanear `product_events` en cada request. |
+| `FARO_SESSION_GAP_MINUTES` | `30` · opcional | Minutos de inactividad tras los cuales se considera que una sesión terminó y la siguiente actividad del mismo `(project, distinct_id)` arranca una nueva. 30 es la convención de GA/Mixpanel; cambiarlo recalcula retroactivamente el conteo de sesiones en ticks sucesivos. |
+| `FARO_SESSION_LOOKBACK_MINUTES` | `360` · opcional | Cuánto hacia atrás mira el worker en cada tick. Debe ser >= a la duración máxima realista de una sesión activa — si una sesión sigue viva más allá de este horizonte, su `started_at` (y el `session_id` sintético) puede drift al fall out de la ventana en runs sucesivos. Para sesiones cuyo `session_id` viene del SDK no aplica el drift. |
 
 ## Notificaciones · Telegram
 

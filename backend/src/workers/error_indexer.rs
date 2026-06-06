@@ -1,3 +1,9 @@
+//! Worker que indexa errores a partir del stream de logs en vivo.
+//!
+//! Se suscribe al bus broadcast de logs, detecta los de nivel error, calcula su
+//! `fingerprint` y los escribe en `faro.error_events`. Los conteos por Issue se
+//! calculan en lectura desde esa tabla (no se mantiene un contador aparte).
+
 use std::time::Duration;
 
 use tokio::time::{interval, MissedTickBehavior};

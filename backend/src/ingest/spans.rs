@@ -128,6 +128,7 @@ async fn ingest_spans(
         if state.ingest.spans_tx.try_send(row).is_ok() {
             accepted += 1;
         } else {
+            crate::observability::record_ingest_drop("traces");
             tracing::warn!("spans ingest channel full, dropping record");
         }
     }

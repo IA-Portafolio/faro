@@ -1,3 +1,14 @@
+/**
+ * Stores globales de Svelte para el estado de exploración compartido entre páginas,
+ * más utilidades de formato comunes.
+ *
+ * Expone `currentUser` (sesión), `selectedProject` (slug del proyecto activo; ''
+ * = "todos") y `timeRange` (preset de rango temporal: 5m…7d). La persistencia
+ * real vive en el backend (`faro.user_preferences`) y el deep-link en el query
+ * string; estos stores son la copia en memoria que cada página sincroniza con la
+ * URL. Helpers: `formatTimestamp`, `formatDuration` (nanosegundos → ns/µs/ms/s) y
+ * `severityClass` (nivel de log → clase CSS).
+ */
 import { writable } from 'svelte/store';
 import { browser } from '$app/environment';
 

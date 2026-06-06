@@ -1,3 +1,9 @@
+//! Streaming SSE (Server-Sent Events) de logs y product events en vivo.
+//!
+//! Convierte un receptor `broadcast` en un stream SSE filtrado por proyecto. Gestiona
+//! el backpressure (un cliente lento recibe `Lagged` y pierde mensajes, pero la
+//! conexión sigue) y libera su "slot" de subscripción al desconectar.
+
 use std::convert::Infallible;
 use std::time::Duration;
 

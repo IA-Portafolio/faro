@@ -1,5 +1,9 @@
 # Faro SDKs
 
+> ⚠️ **Al cambiar la API pública de un SDK, actualiza la documentación en el mismo cambio.**
+> La doc (`/docs`, `/docs.md`, `/llms.txt`) se alimenta de `frontend/src/lib/sdk-docs.ts`,
+> que se mantiene a mano. Reglas y checklist: [`MANTENIMIENTO-DOCS.md`](./MANTENIMIENTO-DOCS.md).
+
 Librerías cliente para enviar logs y excepciones a Faro desde tu aplicación. Todos los SDKs comparten la misma API conceptual:
 
 | Método                        | Qué hace                                                    |
@@ -160,7 +164,7 @@ El SDK bufferiza para no bloquear, lo que significa que un proceso/pestaña/app 
 
 Notas sobre el cierre acotado:
 
-- `close()` siempre **acepta un timeout** (`timeoutMs` en TS, `timeout=` en Python, `timeoutMs =` en Kotlin, `ctx` en Go). Si la red está caída no debería bloquear el proceso indefinidamente.
+- `close()` siempre **acepta un timeout** (`timeoutMs` en TS/Expo, `timeout=` en Python, `timeoutMs =` en Kotlin, `timeout:` Duration en Flutter, `ctx` en Go). Si la red está caída no debería bloquear el proceso indefinidamente.
 - En Python `close()` hace `worker.join(timeout=...)` además del drenado — el worker es daemon, sin join podría truncarse a mitad de POST.
 - En Node `close()` rompe el bucle si la cola no se reduce entre flushes (red caída → no insiste).
 - Lo que se pierde si el timeout vence: los eventos que ya estaban en cola pero no llegaron a salir. Llega como mucho **un** batch incompleto al servidor en ese escenario.
@@ -288,6 +292,33 @@ faro.init({
 `pageViews` emite `page()` en init y navegaciones SPA. `clicks` captura `[data-faro]`, `button` y `a`. `formSubmissions` captura `form[data-faro-form]`. `rageClicks` y `deadClicks` detectan UX rota y emiten `$rage_click` / `$dead_click`.
 
 Esto no cambia los flags legacy de RUM: `captureClicks` y `captureNavigation` siguen generando breadcrumbs; `autoCapture` genera product events y está apagado por defecto.
+
+## Feature flags y experimentos
+
+Los **7 SDKs** evalúan feature flags **localmente** (sin round-trip por evaluación) y, cuando un usuario entra al targeting, emiten un product event `$feature_exposure` que alimenta el A/B testing y el rollback-por-errores de Faro. Ver el flujo completo en [`docs/feature-flags-experiments.md`](../docs/feature-flags-experiments.md).
+
+```typescript
+// Node / Next.js / Expo
+if (faro.isFeatureEnabled('new-checkout', { distinct_id: 'user_42', properties: { plan: 'pro' } })) {
+  // render del treatment
+}
+```
+
+| SDK              | Firma de evaluación                                                  |
+| ---------------- | ------------------------------------------------------------------- |
+| Node / Next.js / Expo | `faro.isFeatureEnabled(key, { distinct_id?, properties? })` → `boolean` |
+| Python           | `faro.is_feature_enabled(key, distinct_id=None, properties=None)` → `bool` |
+| Go               | `faro.IsFeatureEnabled(key, faro.FlagContext{DistinctID, Properties})` → `bool` |
+| Kotlin           | `Faro.isFeatureEnabled(key, distinctId?, properties?)` → `Boolean`  |
+| Flutter          | `Faro.instance.isFeatureEnabled(key, distinctId:, properties:)` → `bool` |
+
+Semántica uniforme (idéntica en todos los SDKs):
+
+- **Snapshot local + refresh periódico.** El SDK hace `GET /api/v1/ingest/feature-flags` cada `featureFlagRefreshIntervalMs` (default **30 s**; `feature_flag_refresh_interval` en Python, `FeatureFlagRefreshInterval` en Go, etc.). No hay fetch inicial bloqueante: hasta el primer refresh los flags evalúan a `false`. `refreshFeatureFlags()` fuerza un refresh inmediato (útil en arranque/tests).
+- **Sticky por `distinct_id`.** El bucket se deriva de `FNV-1a(project:flag:distinct_id) % 100` contra `rollout_percentage`, así un mismo usuario obtiene siempre la misma variante — y el mismo bucket en cualquier SDK/plataforma.
+- **`conditions`.** Si el flag trae `conditions.properties`, el usuario solo entra al experimento si **todas** matchean (igualdad estricta) contra el `properties` pasado.
+- **`$feature_exposure` deduplicado.** Se emite **una vez** por combinación `(project, flag, distinct_id, variant)` — `variant` es `"B"` (enabled) o `"A"` (control). Viaja por la misma cola de product events (mismo flush/batch/queue).
+- **`distinct_id`** se resuelve como `context.distinct_id` → `distinct_id` post-`identify` → `anonymous_id`.
 
 ## SDKs disponibles
 

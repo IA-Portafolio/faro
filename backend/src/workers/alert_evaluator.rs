@@ -1,3 +1,9 @@
+//! Worker que evalúa las reglas de alerta y abre/cierra incidentes.
+//!
+//! Cada regla corre en su propia cadencia: su `query` debe devolver un único
+//! Float64 (opcionalmente usando `:window_seconds`). Si cruza el umbral, se abre
+//! un incidente y se notifica; al normalizarse, se cierra.
+
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
@@ -80,10 +86,25 @@ pub async fn evaluate_rule(
     rule: AlertRuleRow,
     active: &mut HashMap<Uuid, AlertIncidentRow>,
 ) {
+    // Defensa en profundidad: omitir reglas con queries inseguras (SSRF/RCE vía
+    // table-functions de red/fichero) aunque hayan quedado persistidas antes del
+    // gate de creación en `api::alerts`. Ver `crate::alert_query`.
+    if let Err(reason) = crate::alert_query::validate_alert_query(&rule.query) {
+        tracing::warn!(
+            rule = %rule.name,
+            reason,
+            "regla de alerta con query insegura — se omite la evaluación"
+        );
+        return;
+    }
     let query = rule
         .query
         .replace(":window_seconds", &rule.window_seconds.to_string());
-    let sql = format!("SELECT toFloat64({query}) AS value");
+    // `SETTINGS` acota el blast radius de cualquier query de alerta: corta a 15s
+    // de ejecución y 1 fila de resultado.
+    let sql = format!(
+        "SELECT toFloat64({query}) AS value SETTINGS max_execution_time = 15, max_result_rows = 1"
+    );
 
     let value = match state.ch.select_one::<ScalarRow>(&sql).await {
         Ok(Some(s)) => s.value.unwrap_or(0.0),

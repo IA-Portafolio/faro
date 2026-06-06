@@ -118,6 +118,7 @@ async fn ingest_metrics(
         if state.ingest.metrics_tx.try_send(row).is_ok() {
             accepted += 1;
         } else {
+            crate::observability::record_ingest_drop("metrics");
             tracing::warn!("metrics ingest channel full, dropping data point");
         }
     }

@@ -1,0 +1,11 @@
+# Mantén el contexto de build limpio y determinista. Sin esto, `COPY . .`
+# (que corre DESPUÉS de `npm install` en el Dockerfile) sobreescribiría el
+# node_modules instalado dentro del contenedor Alpine (musl) con el del host
+# (glibc) → mismatch de binarios nativos de Vite/Rolldown y build roto.
+node_modules
+.svelte-kit
+build
+.env.local
+.env.*.local
+npm-debug.log*
+.DS_Store

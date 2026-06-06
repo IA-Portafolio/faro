@@ -18,6 +18,8 @@ core.*
 
 # Rust
 backend/target/
+cli/target/
+**/target/
 **/*.rs.bk
 Cargo.lock.bak
 
@@ -60,3 +62,6 @@ sdks/go/vendor/
 # Docs CI — cache local de lychee (link-checker). En CI lo persiste
 # actions/cache; localmente es transitorio.
 .lycheecache
+
+# Backups locales ad-hoc (snapshots de src/, tarballs) — no van al repo
+backups/

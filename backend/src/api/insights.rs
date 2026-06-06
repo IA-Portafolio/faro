@@ -1,3 +1,11 @@
+//! Endpoints de "insights" (hallazgos de negocio por servicio):
+//!   GET /insights/service-dashboard            → resumen combinado por servicio
+//!   GET /insights/revenue-impact               → impacto estimado en ingresos
+//!   GET /insights/latency-funnel-impact        → latencia vs conversión del funnel
+//!   GET /insights/web-vitals-conversion-impact → web vitals vs conversión
+//!
+//! Cruzan product events, funnels, errores y latencia para estimar impacto.
+
 use std::collections::BTreeMap;
 
 use axum::extract::State;

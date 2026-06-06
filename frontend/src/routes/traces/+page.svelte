@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Página `/traces` — lista de trazas (tracing distribuido).
+   *
+   * Lista las trazas (`fetchTraces`) con filtros por servicio, estado y duración
+   * mínima (sincronizados con la URL), navegación por teclado y salto al detalle
+   * `/traces/<id>`. Una traza agrupa todos los spans de una misma operación.
+   */
   import { onMount, onDestroy, tick } from 'svelte';
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';

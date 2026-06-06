@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/users` — lista de usuarios de producto (product analytics).
+   *
+   * Lista los `ProductUserSummary` del proyecto/rango (`fetchProductUsers`) con
+   * búsqueda y filtro por `source`, y salto al detalle `/users/<distinct_id>`. OJO:
+   * son usuarios finales identificados por `distinct_id`, distintos de los usuarios
+   * del workspace de `/settings/users`.
+   */
   import { onMount } from 'svelte';
   import { fetchProductUsers, type ProductUserSummary } from '$lib/api';
   import { buildProductUserHref, propertiesPreview, shortProductId } from '$lib/product-users';

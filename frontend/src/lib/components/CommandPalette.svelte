@@ -1,4 +1,13 @@
 <script lang="ts">
+  /**
+   * Paleta de comandos global (⌘K / Ctrl+K): el buscador modal de acciones.
+   *
+   * Combina comandos estáticos (`staticCommands`), "saltos directos" parseados de
+   * la query (`jumpCommands`, p. ej. `traces:<id>`) y entidades traídas del backend
+   * (proyectos, servicios, monitores…), los filtra con `search()` y los agrupa por
+   * sección. Se abre/cierra con el store `paletteOpen`; la lógica de comandos y
+   * fuzzy-search vive en `$lib/palette`.
+   */
   import { tick } from 'svelte';
   import { paletteOpen } from '$lib/keyboard';
   import { selectedProject } from '$lib/stores';

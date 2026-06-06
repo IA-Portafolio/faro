@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/events` — explorador de product events (analítica de producto).
+   *
+   * Lista eventos con filtros por nombre, `distinct_id`, traza, `source` y pares
+   * `key:value` de properties. Soporta modo "live" por SSE (EventSource), el
+   * histograma de volumen por nombre de evento con drag-to-select de sub-rango, y
+   * un drawer con el detalle del evento seleccionado.
+   */
   import { onMount, onDestroy, tick } from 'svelte';
   import { browser } from '$app/environment';
   import { fetchEvents, apiBase, type ProductEvent } from '$lib/api';

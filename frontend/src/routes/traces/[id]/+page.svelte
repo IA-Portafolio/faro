@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Página `/traces/[id]` — detalle de una traza.
+   *
+   * `[id]` es el `trace_id`. Carga todos los spans de la traza (`fetchTrace`) y los
+   * pinta como flamegraph jerárquico (`Flamegraph`), con un panel de detalle del
+   * span seleccionado. Un span = una operación temporizada dentro de la traza.
+   */
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import { fetchTrace, type SpanRow } from '$lib/api';

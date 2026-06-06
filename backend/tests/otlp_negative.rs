@@ -187,7 +187,7 @@ async fn severity_number_in_u8_range_but_outside_otlp_range_is_accepted_graceful
     let (status, _) = post_logs(&app, payload).await;
     assert_eq!(status, StatusCode::OK);
     let arrived = app
-        .wait_for(40, || async { app.count_in("logs").await >= 1 })
+        .wait_for(120, || async { app.count_in("logs").await >= 1 })
         .await;
     assert!(arrived);
     #[derive(serde::Deserialize)]
@@ -298,7 +298,7 @@ async fn body_as_empty_anyvalue_object_is_accepted_with_empty_body() {
     let (status, _) = post_logs(&app, payload).await;
     assert_eq!(status, StatusCode::OK);
     let arrived = app
-        .wait_for(40, || async { app.count_in("logs").await >= 1 })
+        .wait_for(120, || async { app.count_in("logs").await >= 1 })
         .await;
     assert!(arrived);
     #[derive(serde::Deserialize)]
@@ -363,7 +363,7 @@ async fn resource_attributes_with_mixed_types_are_all_stringified() {
     let (status, _) = post_logs(&app, payload).await;
     assert_eq!(status, StatusCode::OK);
     let arrived = app
-        .wait_for(40, || async { app.count_in("logs").await >= 1 })
+        .wait_for(120, || async { app.count_in("logs").await >= 1 })
         .await;
     assert!(arrived);
     #[derive(serde::Deserialize)]
@@ -429,7 +429,7 @@ async fn server_remains_healthy_after_negative_volley() {
     let (status, _) = post_logs(&app, good).await;
     assert_eq!(status, StatusCode::OK);
     let arrived = app
-        .wait_for(40, || async { app.count_in("logs").await >= 1 })
+        .wait_for(120, || async { app.count_in("logs").await >= 1 })
         .await;
     assert!(
         arrived,

@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Página `/sessions/[session_id]/traces` — trazas de una sesión.
+   *
+   * `[session_id]` es la sesión y el `?project=` resuelve a qué proyecto pertenece
+   * (ambos son obligatorios). Lista las trazas distribuidas generadas durante esa
+   * sesión (`fetchProductSessionTraces`) para saltar al detalle de cada una.
+   */
   import { page } from '$app/stores';
   import { onMount } from 'svelte';
 

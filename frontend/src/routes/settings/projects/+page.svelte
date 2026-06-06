@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Pestaña `/settings/projects` — gestión de proyectos.
+   *
+   * CRUD de proyectos (cada uno identificado por su `slug`), incluida la rotación
+   * del token de ingesta (`rotateProjectToken`) y los snippets de instalación por
+   * SDK (`$lib/sdk-snippets`). Un proyecto aísla los datos y tiene su propio token.
+   */
   import { onMount } from 'svelte';
   import {
     fetchProjects,

@@ -149,6 +149,14 @@ código:
   linkean a la página generada — no copies tablas de env-vars en otros
   lados.
 
+- **La doc de los SDKs sigue al código** — si cambiás la API pública de un
+  SDK (método nuevo/renombrado/eliminado, firma, opción de `init()`,
+  capacidad, disponibilidad de `track/identify/page/screen/alias`, o un SDK
+  nuevo), actualizá [`frontend/src/lib/sdk-docs.ts`](frontend/src/lib/sdk-docs.ts)
+  en el mismo PR. Es la fuente única de `/docs`, `/docs.md` y `/llms.txt` y se
+  mantiene a mano. Reglas y checklist:
+  [`sdks/MANTENIMIENTO-DOCS.md`](sdks/MANTENIMIENTO-DOCS.md).
+
 ## SDKs
 
 Cada SDK es independiente. Para publicar:

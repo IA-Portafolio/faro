@@ -1,3 +1,10 @@
+//! Endpoints de usuarios del workspace (las cuentas que entran al dashboard):
+//!   GET/POST        /users              → lista / crea
+//!   GET/PUT/DELETE  /users/{id}         → detalle / edita / borra
+//!   PUT             /users/{id}/password → cambia la contraseña
+//!
+//! Son cuentas internas, distintas de los "product users" (`product_users.rs`).
+
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};

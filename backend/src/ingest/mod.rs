@@ -1,3 +1,13 @@
+//! Capa de ingesta: recepción de la telemetría entrante de los SDKs.
+//!
+//! Agrupa los receptores nativos (logs, metrics, spans, events, replay) y los
+//! compatibles con OTLP (HTTP/JSON y gRPC), servidos en un puerto dedicado
+//! (`:4318`). Aquí viven también las utilidades comunes: resolver el proyecto a
+//! partir del token Bearer (`resolve_project`) y validar el header `Origin` contra
+//! la whitelist del proyecto (`check_origin`). Los endpoints nativos aceptan además
+//! el token vía query `?_token=` (`resolve_project_with_query`) como fallback para
+//! `navigator.sendBeacon`, que no puede setear headers al cerrar la pestaña.
+
 use axum::http::HeaderMap;
 use axum::Router;
 
@@ -22,11 +32,46 @@ pub fn otlp_router(state: SharedState) -> Router {
     Router::new().merge(otlp::router()).with_state(state)
 }
 
+/// Query string aceptado por los endpoints de ingesta nativos para autenticar vía
+/// `?_token=` cuando el transporte no puede setear headers. Lo usa
+/// `navigator.sendBeacon` del SDK browser al cerrar la pestaña: el beacon no permite
+/// `Authorization`, así que el token viaja en la URL. El token de ingesta del browser
+/// es público —va en el bundle y la defensa real es `check_origin`—, por lo que
+/// aceptarlo por query es aceptable. El header siempre tiene prioridad.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct IngestQuery {
+    #[serde(default, rename = "_token")]
+    pub token: Option<String>,
+}
+
 /// Resuelve el token Bearer de las cabeceras entrantes a un slug de proyecto. Devuelve 401
 /// cuando el token falta o no coincide con ningún proyecto conocido.
 pub fn resolve_project(state: &SharedState, headers: &HeaderMap) -> Result<String, ApiError> {
-    let token = extract_token(headers).ok_or(ApiError::Unauthorized)?;
+    resolve_project_with_query(state, headers, None)
+}
+
+/// Igual que [`resolve_project`] pero acepta además el token vía query param `_token`
+/// (ver [`IngestQuery`]) como fallback para `navigator.sendBeacon`. El header tiene
+/// prioridad; el query solo se usa si no hay token en cabeceras.
+pub fn resolve_project_with_query(
+    state: &SharedState,
+    headers: &HeaderMap,
+    query_token: Option<&str>,
+) -> Result<String, ApiError> {
+    let token = select_ingest_token(headers, query_token).ok_or(ApiError::Unauthorized)?;
     state.projects.lookup(&token).ok_or(ApiError::Unauthorized)
+}
+
+/// Elige el token de ingesta: primero el header (`Authorization: Bearer` o
+/// `x-faro-token`), y si no hay, el query `_token` (fallback para `sendBeacon`).
+/// Normaliza espacios y descarta valores vacíos.
+fn select_ingest_token(headers: &HeaderMap, query_token: Option<&str>) -> Option<String> {
+    extract_token(headers).or_else(|| {
+        query_token
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+    })
 }
 
 /// Valida el header `Origin` contra la whitelist del proyecto.
@@ -103,5 +148,68 @@ pub fn redact_span(rules: Option<&CompiledRules>, row: &mut SpanRow) {
     r.apply_to_attrs(&mut row.resource_attributes);
     for e in &mut row.events_attributes {
         r.apply_in_place(e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::header::{HeaderValue, AUTHORIZATION};
+
+    fn headers_with_bearer(token: &str) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        h.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+        );
+        h
+    }
+
+    #[test]
+    fn extract_token_reads_bearer_and_x_faro_token() {
+        assert_eq!(
+            extract_token(&headers_with_bearer("abc")).as_deref(),
+            Some("abc")
+        );
+        let mut h = HeaderMap::new();
+        h.insert("x-faro-token", HeaderValue::from_static("xyz"));
+        assert_eq!(extract_token(&h).as_deref(), Some("xyz"));
+        assert_eq!(extract_token(&HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn select_token_prefers_header_over_query() {
+        let h = headers_with_bearer("from-header");
+        assert_eq!(
+            select_ingest_token(&h, Some("from-query")).as_deref(),
+            Some("from-header")
+        );
+    }
+
+    #[test]
+    fn select_token_falls_back_to_query_for_beacon() {
+        let h = HeaderMap::new();
+        assert_eq!(
+            select_ingest_token(&h, Some("beacon-token")).as_deref(),
+            Some("beacon-token")
+        );
+    }
+
+    #[test]
+    fn select_token_ignores_empty_or_whitespace_query() {
+        let h = HeaderMap::new();
+        assert_eq!(select_ingest_token(&h, Some("")), None);
+        assert_eq!(select_ingest_token(&h, Some("   ")), None);
+        assert_eq!(select_ingest_token(&h, None), None);
+    }
+
+    #[test]
+    fn ingest_query_maps_underscore_token_field() {
+        // El parseo real de query lo hace el extractor `Query` de axum; acá solo
+        // verificamos el mapeo del campo (`rename = "_token"`) y el default a None.
+        let q: IngestQuery = serde_json::from_str(r#"{"_token":"hex123"}"#).unwrap();
+        assert_eq!(q.token.as_deref(), Some("hex123"));
+        let empty: IngestQuery = serde_json::from_str("{}").unwrap();
+        assert_eq!(empty.token, None);
     }
 }

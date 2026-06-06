@@ -1,3 +1,11 @@
+//! Estado compartido de la aplicación (`AppState` / `SharedState`).
+//!
+//! Reúne lo que necesitan handlers y workers: cliente de ClickHouse, `Config`,
+//! caches (proyectos, feature flags, integraciones, canales) y los canales de
+//! ingesta por batching (`IngestChannels`: los handlers empujan filas y un writer
+//! las vuelca a ClickHouse), además del bus de eventos en vivo (SSE) y los rate
+//! limiters.
+
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;

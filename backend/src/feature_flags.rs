@@ -97,3 +97,40 @@ pub fn spawn_refresh(state: crate::state::SharedState) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_cache_returns_no_flags() {
+        let c = FeatureFlagsCache::new();
+        assert!(c.flags_for_project("cualquiera").is_empty());
+        // El default debe comportarse igual que new().
+        assert!(FeatureFlagsCache::default()
+            .flags_for_project("x")
+            .is_empty());
+    }
+
+    #[test]
+    fn parse_conditions_empty_is_empty_object() {
+        assert_eq!(parse_conditions(""), serde_json::json!({}));
+        assert_eq!(parse_conditions("   "), serde_json::json!({}));
+    }
+
+    #[test]
+    fn parse_conditions_valid_json_roundtrips() {
+        assert_eq!(
+            parse_conditions(r#"{"country":["US","CA"]}"#),
+            serde_json::json!({ "country": ["US", "CA"] })
+        );
+    }
+
+    #[test]
+    fn parse_conditions_invalid_json_falls_back_to_empty_object() {
+        // JSON malformado nunca debe propagar un error al ingest path: degrada
+        // a "sin condiciones" (la flag aplica al 100% según rollout).
+        assert_eq!(parse_conditions("{not valid"), serde_json::json!({}));
+        assert_eq!(parse_conditions("null-ish garbage"), serde_json::json!({}));
+    }
+}

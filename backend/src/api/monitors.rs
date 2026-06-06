@@ -1,3 +1,9 @@
+//! Endpoints de monitores (checks HTTP de disponibilidad / SLO):
+//!   GET/POST        /monitors              → lista / crea
+//!   GET/PUT/DELETE  /monitors/{id}         → detalle / edita / borra
+//!   GET             /monitors/{id}/results → últimos resultados de los checks
+//!   GET             /monitors/{id}/uptime  → % de uptime y latencia media
+
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};

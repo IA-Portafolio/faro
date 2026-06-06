@@ -1,3 +1,10 @@
+//! Fingerprint de errores: agrupa eventos del mismo defecto en un Issue.
+//!
+//! Calcula un hash SHA-256 determinista a partir del tipo de excepción, el mensaje
+//! y los primeros frames del stack, normalizando antes (descarta números de línea,
+//! direcciones hex y sufijos de clausuras) para que errores equivalentes colapsen
+//! en el mismo `fingerprint`.
+
 use sha2::{Digest, Sha256};
 
 /// Calcula una huella determinista para un error de modo que los eventos que comparten

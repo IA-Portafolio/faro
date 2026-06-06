@@ -70,7 +70,7 @@ export interface FaroBrowserOptions {
   captureUnhandled?: boolean;
   /** Capturar console.error y console.warn (default false — puede meter ruido) */
   captureConsole?: boolean;
-  /** Capturar Web Vitals LCP/CLS/INP/FID/TTFB (default true) */
+  /** Capturar Web Vitals LCP/CLS/INP/FCP/TTFB (default true) */
   captureWebVitals?: boolean;
   /** Capturar clicks como breadcrumbs (default true) */
   captureClicks?: boolean;

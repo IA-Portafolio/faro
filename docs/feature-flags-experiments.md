@@ -6,8 +6,12 @@ errores por variante.
 
 ## SDK
 
-Los SDKs mantienen una cache local de flags y la refrescan cada 30 segundos.
-La evaluación es local y sticky por `distinct_id`.
+Los **7 SDKs** (Node, Next.js, Expo, Python, Go, Kotlin, Flutter) mantienen una
+cache local de flags y la refrescan cada 30 segundos. La evaluación es local
+(sin red por evaluación) y sticky por `distinct_id` — el mismo usuario obtiene
+la misma variante en cualquier plataforma. Hasta el primer refresh los flags
+evalúan a `false`; `refreshFeatureFlags()` fuerza un refresh inmediato. La firma
+por lenguaje está en la [tabla de SDKs](../sdks/README.md#feature-flags-y-experimentos).
 
 ```ts
 if (faro.isFeatureEnabled('new-checkout', {

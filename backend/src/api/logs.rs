@@ -1,3 +1,8 @@
+//! Endpoints de logs:
+//!   GET /logs       → lista filtrable (servicio, severidad, texto/regex, trace_id)
+//!   GET /logs/live  → stream SSE de logs nuevos en vivo
+//!   GET /logs/stats → volumen por bucket y severidad para el histograma
+
 use axum::extract::State;
 use axum::response::sse::Sse;
 use axum::routing::get;

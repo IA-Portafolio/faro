@@ -1,3 +1,9 @@
+//! Cliente HTTP sobre ClickHouse.
+//!
+//! Inserta en formato `JSONEachRow` (NDJSON) y lee en JSON. Configura un pool HTTP
+//! acotado y explícito hacia ClickHouse (idle máximo + timeout) para no inflarlo
+//! bajo bursts. Es el único punto por el que el backend habla con la base.
+
 use std::time::Duration;
 
 use anyhow::{anyhow, Context, Result};

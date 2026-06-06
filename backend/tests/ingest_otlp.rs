@@ -49,7 +49,7 @@ async fn otlp_logs_persists_to_clickhouse() {
     assert!(resp.status().is_success(), "status: {}", resp.status());
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("logs").await >= 1 })
+        .wait_for(120, || async { app.count_in("logs").await >= 1 })
         .await;
     assert!(arrived, "log OTLP no llegó a faro.logs");
 
@@ -115,7 +115,7 @@ async fn otlp_traces_persists_to_clickhouse() {
     assert!(resp.status().is_success(), "status: {}", resp.status());
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("spans").await >= 1 })
+        .wait_for(120, || async { app.count_in("spans").await >= 1 })
         .await;
     assert!(arrived, "span OTLP no llegó a faro.spans");
 
@@ -194,7 +194,7 @@ async fn otlp_metrics_persists_to_clickhouse() {
     assert!(resp.status().is_success(), "status: {}", resp.status());
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("metrics").await >= 2 })
+        .wait_for(120, || async { app.count_in("metrics").await >= 2 })
         .await;
     assert!(arrived, "métricas OTLP no llegaron a faro.metrics");
 

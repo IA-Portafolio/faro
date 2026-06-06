@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/sessions` — lista de sesiones de usuario (session analytics).
+   *
+   * Lista las sesiones del proyecto/rango (`fetchProductSessions`) con su duración,
+   * pageviews, errores y si tienen replay grabado; con filtros "solo con replay" y
+   * "solo con error". Los helpers de href y de "salud" de cada sesión
+   * (error/replay/plain) viven en `$lib/sessions`.
+   */
   import { onMount } from 'svelte';
 
   import { fetchProductSessions, type ProductSessionSummary } from '$lib/api';

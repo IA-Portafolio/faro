@@ -1,3 +1,7 @@
+//! Endpoint de análisis de experimentos A/B:
+//!   POST /experiments/analyze → dado un `flag_key` (feature flag) y un evento de
+//!   conversión, calcula la conversión por variante en la ventana indicada.
+
 use axum::extract::State;
 use axum::routing::post;
 use axum::{Json, Router};

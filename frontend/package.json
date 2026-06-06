@@ -23,7 +23,6 @@
     "vite": "^8.0.14",
     "vitest": "^2.1.9"
   },
-  "dependencies": {},
   "overrides": {
     "cookie": "^0.7.2"
   }

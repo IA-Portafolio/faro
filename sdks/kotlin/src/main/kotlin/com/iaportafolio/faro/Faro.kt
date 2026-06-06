@@ -10,14 +10,25 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.doubleOrNull
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
 import java.time.Instant
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
@@ -62,6 +73,16 @@ data class FaroOptions(
     val scrubPatterns: List<String> = listOf("jwt", "api-key"),
     /** Hook post-scrub; devolver null descarta el evento. */
     val beforeSend: ((WireEntry) -> WireEntry?)? = null,
+    /** Cadencia de refresh de feature flags en ms (por defecto 30_000). */
+    val featureFlagRefreshIntervalMs: Long = 30_000,
+)
+
+/** Definición de un feature flag tal como queda en memoria tras el refresh.
+ *  Paridad con FeatureFlagWire del SDK Node. */
+data class FlagDef(
+    val key: String,
+    val rolloutPercentage: Int,
+    val conditions: Map<String, Any?>,
 )
 
 /** Payload exacto que sale por la red (post-merge de atributos + post-scrub).
@@ -141,6 +162,16 @@ object Faro {
     // batch llegan al server antes de devolver).
     private val sendMutex = Mutex()
 
+    // ---- Feature flags ----
+    // featureFlags se reemplaza atómicamente (@Volatile) en cada refresh; las
+    // lecturas son lock-free. featureFlagsProject idem. featureExposureSeen
+    // dedup las exposiciones y se sincroniza explícitamente (el SDK es un
+    // singleton accedido desde varias threads).
+    @Volatile private var featureFlags: Map<String, FlagDef> = emptyMap()
+    @Volatile private var featureFlagsProject: String = ""
+    private val featureExposureSeen: MutableSet<String> =
+        Collections.synchronizedSet(mutableSetOf())
+
     private fun newScope(): CoroutineScope =
         CoroutineScope(SupervisorJob() + Dispatchers.IO + CoroutineName("faro"))
 
@@ -171,10 +202,23 @@ object Faro {
         anonymousId = "anon_${System.nanoTime().toString(36)}_${Random.nextLong().toString(36).take(8)}"
         synchronized(userProperties) { userProperties.clear() }
         distinctId = ""
+        // Reset del estado de feature flags ante re-init.
+        featureFlags = emptyMap()
+        featureFlagsProject = ""
+        featureExposureSeen.clear()
         started.set(true)
         closed.set(false)
         scope.launch { runFlusher() }
         scope.launch { runEventsFlusher() }
+        // Loop de refresh de feature flags. NO hay fetch inicial inmediato:
+        // espera un intervalo antes del primer GET. Muere solo cuando close()
+        // cancela el scope (isActive pasa a false).
+        scope.launch {
+            while (isActive) {
+                delay(options.featureFlagRefreshIntervalMs)
+                refreshFeatureFlags()
+            }
+        }
         if (options.installGlobalHandlers) installHandlers()
     }
 
@@ -298,6 +342,7 @@ object Faro {
         properties: Map<String, Any?>,
         userPropertiesOverride: Map<String, Any?>? = null,
         anonymousIdOverride: String? = null,
+        distinctIdOverride: String? = null,
     ) {
         val o = opts ?: return
         if (closed.get()) return
@@ -315,7 +360,7 @@ object Faro {
             type = type,
             name = name,
             timestamp = Instant.now().toString(),
-            distinct_id = distinctId.ifEmpty { anonymousId },
+            distinct_id = distinctIdOverride ?: distinctId.ifEmpty { anonymousId },
             anonymous_id = anonymousIdOverride ?: anonymousId,
             session_id = "",
             properties = JsonObject(properties.mapValues { jsonOf(it.value) }),
@@ -364,6 +409,151 @@ object Faro {
         prevUncaughtHandler?.let { Thread.setDefaultUncaughtExceptionHandler(it) }
         prevUncaughtHandler = null
         started.set(false)
+    }
+
+    // ---------- Feature flags API ----------
+
+    /** Refresca los feature flags desde el endpoint. Corre en background (loop
+     *  del scope) pero también es invocable manualmente. NUNCA propaga una
+     *  excepción: ante fallo de red / body inválido conserva los flags actuales
+     *  y emite un diag log. */
+    fun refreshFeatureFlags() {
+        val o = opts ?: return
+        if (closed.get()) return
+        try {
+            val url = URL("${o.endpoint}/api/v1/ingest/feature-flags")
+            val conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = o.httpTimeoutMs
+                readTimeout = o.httpTimeoutMs
+                setRequestProperty("Authorization", "Bearer ${o.token}")
+            }
+            val status = conn.responseCode
+            if (status >= 400) {
+                System.err.println("[faro] feature flags HTTP $status")
+                conn.disconnect()
+                return
+            }
+            val body = BufferedReader(InputStreamReader(conn.inputStream, StandardCharsets.UTF_8))
+                .use { it.readText() }
+            conn.disconnect()
+            val root = try {
+                json.parseToJsonElement(body).jsonObject
+            } catch (_: Throwable) {
+                System.err.println("[faro] feature flags response inválida")
+                return
+            }
+            val flagsArray = root["flags"] as? JsonArray
+            if (flagsArray == null) {
+                System.err.println("[faro] feature flags response inválida")
+                return
+            }
+            val next = LinkedHashMap<String, FlagDef>()
+            for (el in flagsArray) {
+                val obj = el as? JsonObject ?: continue
+                val key = obj["key"]?.jsonPrimitive?.contentOrNull ?: continue
+                if (key.isEmpty()) continue
+                val rollout = obj["rollout_percentage"]?.let { rp ->
+                    (rp as? JsonPrimitive)?.intOrNull ?: 0
+                } ?: 0
+                next[key] = FlagDef(
+                    key = key,
+                    rolloutPercentage = clamp(rollout),
+                    conditions = parseConditions(obj["conditions"]),
+                )
+            }
+            val project = root["project"]?.jsonPrimitive?.contentOrNull ?: ""
+            // Reemplazo atómico.
+            featureFlags = next
+            featureFlagsProject = project
+        } catch (t: Throwable) {
+            System.err.println("[faro] falló el refresh de feature flags: ${t.message}")
+        }
+    }
+
+    /** Evalúa un feature flag. Devuelve false si el flag no existe o si las
+     *  condiciones no se cumplen. El bucketing es sticky por (project:key:id).
+     *  Emite un evento `${'$'}feature_exposure` (deduplicado por variante). */
+    fun isFeatureEnabled(
+        key: String,
+        distinctId: String? = null,
+        properties: Map<String, Any?>? = null,
+    ): Boolean {
+        val flag = featureFlags[key] ?: return false
+        if (!matchesConditions(flag, properties)) return false
+        val rollout = clamp(flag.rolloutPercentage)
+        val id = distinctId ?: this.distinctId.ifEmpty { null } ?: this.anonymousId
+        val project = featureFlagsProject
+        val enabled = rollout >= 100 ||
+            (rollout > 0 && stickyBucket("$project:$key:$id") < rollout)
+        trackFeatureExposure(key, id, enabled)
+        return enabled
+    }
+
+    private fun matchesConditions(flag: FlagDef, properties: Map<String, Any?>?): Boolean {
+        val required = flag.conditions["properties"] as? Map<*, *> ?: return true
+        val props = properties ?: emptyMap()
+        for ((k, expected) in required) {
+            if (props[k] != expected) return false
+        }
+        return true
+    }
+
+    private fun trackFeatureExposure(flagKey: String, distinctId: String, enabled: Boolean) {
+        val variant = if (enabled) "B" else "A"
+        val dedup = "$featureFlagsProject:$flagKey:$distinctId:$variant"
+        synchronized(featureExposureSeen) {
+            if (!featureExposureSeen.add(dedup)) return
+        }
+        enqueueEvent(
+            type = "track",
+            name = "\$feature_exposure",
+            properties = mapOf(
+                "flag_key" to flagKey,
+                "variant" to variant,
+                "enabled" to enabled,
+            ),
+            distinctIdOverride = distinctId,
+        )
+    }
+
+    /** Parsea el objeto `conditions` del wire a un Map<String, Any?> donde los
+     *  valores escalares (string/number/boolean) se desenvuelven a su tipo
+     *  nativo y los anidados quedan como Map/List. Esto permite que
+     *  matchesConditions compare `props[k] != expected` correctamente. */
+    private fun parseConditions(el: JsonElement?): Map<String, Any?> {
+        val obj = el as? JsonObject ?: return emptyMap()
+        val out = LinkedHashMap<String, Any?>(obj.size)
+        for ((k, v) in obj) out[k] = jsonToAny(v)
+        return out
+    }
+
+    private fun jsonToAny(el: JsonElement): Any? = when (el) {
+        is JsonNull -> null
+        is JsonPrimitive -> when {
+            el.isString -> el.content
+            el.booleanOrNull != null -> el.booleanOrNull
+            el.intOrNull != null -> el.intOrNull
+            el.longOrNull != null -> el.longOrNull
+            el.doubleOrNull != null -> el.doubleOrNull
+            else -> el.content
+        }
+        is JsonObject -> el.mapValues { jsonToAny(it.value) }
+        is JsonArray -> el.map { jsonToAny(it) }
+    }
+
+    private fun clamp(n: Int): Int = maxOf(0, minOf(100, n))
+
+    /** FNV-1a 32-bit, devuelve un bucket 0..99. El hash usa overflow de Int
+     *  (igual que Java/JS imul) y luego enmascara a unsigned con Long para el
+     *  módulo. Los vectores dorados están fijados en el test. */
+    private fun stickyBucket(s: String): Int {
+        var h = 0x811c9dc5.toInt()
+        for (ch in s) {
+            h = h xor ch.code
+            h *= 0x01000193
+        }
+        return ((h.toLong() and 0xFFFFFFFFL) % 100L).toInt()
     }
 
     // ---------- internal ----------

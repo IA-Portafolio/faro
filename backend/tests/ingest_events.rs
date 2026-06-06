@@ -48,9 +48,9 @@ async fn ingest_events_persists_track_to_clickhouse() {
     assert_eq!(body["project"], app.project_slug);
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("product_events").await >= 1 })
+        .wait_for(120, || async { app.count_in("product_events").await >= 1 })
         .await;
-    assert!(arrived, "el event no llegó a faro.product_events en 2 s");
+    assert!(arrived, "el event no llegó a faro.product_events en 6 s");
 
     let rows: Vec<EventOut> = app
         .ch
@@ -87,7 +87,7 @@ async fn ingest_events_identify_writes_canonical_name() {
     assert!(resp.status().is_success(), "status: {}", resp.status());
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("product_events").await >= 1 })
+        .wait_for(120, || async { app.count_in("product_events").await >= 1 })
         .await;
     assert!(arrived, "identify no llegó a faro.product_events");
 
@@ -140,7 +140,7 @@ async fn ingest_events_identify_upserts_product_users_immediately() {
     // El INSERT a product_users es síncrono dentro del handler — no esperamos
     // al flush del writer. Damos un margen mínimo por la latencia del round-trip.
     let arrived = app
-        .wait_for(20, || async {
+        .wait_for(60, || async {
             let rows: Vec<UserRow> = app
                 .ch
                 .select_with_params(

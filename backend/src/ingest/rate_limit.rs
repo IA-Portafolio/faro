@@ -87,3 +87,80 @@ impl IngestLimiter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_after_secs_floors_at_one_when_blocking() {
+        assert_eq!(LimitOutcome::Allowed.retry_after_secs(), 0);
+        assert_eq!(LimitOutcome::BatchTooLarge.retry_after_secs(), 1);
+        // Subsegundo redondea hacia arriba a 1 — nunca devolvemos Retry-After: 0
+        // cuando bloqueamos (evita spinloops del cliente).
+        assert_eq!(
+            LimitOutcome::Throttled {
+                retry_after: Duration::from_millis(200)
+            }
+            .retry_after_secs(),
+            1
+        );
+        assert_eq!(
+            LimitOutcome::Throttled {
+                retry_after: Duration::from_secs(5)
+            }
+            .retry_after_secs(),
+            5
+        );
+    }
+
+    #[test]
+    fn zero_records_is_a_noop_allow() {
+        let l = IngestLimiter::new(10);
+        assert!(matches!(l.check("proj", 0), LimitOutcome::Allowed));
+    }
+
+    #[test]
+    fn requests_within_burst_are_allowed() {
+        // rps=100 → burst=200. Un batch de 50 cabe de sobra.
+        let l = IngestLimiter::new(100);
+        assert!(matches!(l.check("proj", 50), LimitOutcome::Allowed));
+    }
+
+    #[test]
+    fn batch_larger_than_burst_is_rejected_as_too_large() {
+        // rps=10 → burst=20. Un batch de 1000 nunca cabe tal cual.
+        let l = IngestLimiter::new(10);
+        assert!(matches!(l.check("proj", 1000), LimitOutcome::BatchTooLarge));
+    }
+
+    #[test]
+    fn exhausting_the_bucket_throttles_the_next_request() {
+        // rps=10 → capacidad burst=20. Consumimos el burst entero...
+        let l = IngestLimiter::new(10);
+        assert!(matches!(l.check("proj", 20), LimitOutcome::Allowed));
+        // ...y el siguiente request encuentra el bucket vacío (no se rellenan
+        // 20 tokens en los microsegundos entre llamadas a 10 tok/s).
+        match l.check("proj", 20) {
+            LimitOutcome::Throttled { retry_after } => {
+                assert!(retry_after > Duration::ZERO);
+            }
+            other => panic!("esperaba Throttled, fue {other:?}"),
+        }
+    }
+
+    #[test]
+    fn buckets_are_independent_per_project() {
+        let l = IngestLimiter::new(10); // burst=20
+        assert!(matches!(l.check("a", 20), LimitOutcome::Allowed));
+        // El consumo de "a" no toca el bucket de "b".
+        assert!(matches!(l.check("b", 20), LimitOutcome::Allowed));
+    }
+
+    #[test]
+    fn rps_zero_is_clamped_to_at_least_one() {
+        // `new(0)` no debe panicar (clamp interno a >= 1).
+        let l = IngestLimiter::new(0);
+        assert!(matches!(l.check("proj", 1), LimitOutcome::Allowed));
+    }
+}

@@ -793,3 +793,84 @@ pub async fn bootstrap_admin_if_empty(state: &SharedState) -> anyhow::Result<()>
     let _ = Duration::default(); // silence unused import warning under some feature combos
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{hash_password, hash_token, is_public_path, verify_password};
+
+    #[test]
+    fn password_hash_verify_roundtrip() {
+        let hash = hash_password("s3cr3t-pass").unwrap();
+        assert!(verify_password("s3cr3t-pass", &hash));
+        assert!(!verify_password("contraseña-incorrecta", &hash));
+        // El hash es una cadena PHC ($argon2...), nunca el plaintext.
+        assert!(hash.starts_with("$argon2"));
+        assert!(!hash.contains("s3cr3t-pass"));
+    }
+
+    #[test]
+    fn password_hash_uses_random_salt() {
+        // Dos hashes del MISMO password difieren (salt aleatorio) pero ambos
+        // verifican — defensa estándar contra rainbow tables.
+        let a = hash_password("misma").unwrap();
+        let b = hash_password("misma").unwrap();
+        assert_ne!(a, b);
+        assert!(verify_password("misma", &a));
+        assert!(verify_password("misma", &b));
+    }
+
+    #[test]
+    fn verify_password_rejects_malformed_hash_without_panicking() {
+        assert!(!verify_password("x", "no-es-un-hash-phc"));
+        assert!(!verify_password("x", ""));
+        assert!(!verify_password("x", "$argon2id$basura"));
+    }
+
+    #[test]
+    fn hash_token_is_deterministic_sha256() {
+        // Vector conocido: SHA-256("abc").
+        assert_eq!(
+            hash_token("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        // Determinista e inyectivo para inputs distintos.
+        assert_eq!(hash_token("tok"), hash_token("tok"));
+        assert_ne!(hash_token("tok"), hash_token("tol"));
+        // Siempre 64 hex chars (32 bytes).
+        let h = hash_token("cualquier-token");
+        assert_eq!(h.len(), 64);
+        assert!(h.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn public_paths_skip_auth() {
+        for p in [
+            "/healthz",
+            "/readyz",
+            "/api/v1/auth/login",
+            "/api/v1/auth/login/2fa",
+            "/api/v1/openapi.json",
+            "/metrics",
+            "/docs",
+            "/docs/scalar",
+            "/api/v1/ingest/logs",
+            "/api/v1/ingest/otlp/v1/traces",
+        ] {
+            assert!(is_public_path(p), "{p} debería ser público");
+        }
+    }
+
+    #[test]
+    fn protected_paths_require_auth() {
+        for p in [
+            "/api/v1/projects",
+            "/api/v1/dashboard",
+            "/api/v1/auth/me",
+            "/",
+            "/docs-but-not-really", // no es ni "/docs" ni empieza con "/docs/"
+            "/api/v1/ingestion",    // parecido pero no es el prefijo "/api/v1/ingest/"
+        ] {
+            assert!(!is_public_path(p), "{p} NO debería ser público");
+        }
+    }
+}

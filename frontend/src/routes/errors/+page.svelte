@@ -1,4 +1,11 @@
 <script lang="ts">
+  /**
+   * Página `/errors` — lista de "Issues" (grupos de errores).
+   *
+   * Un Issue agrupa todos los errores con el mismo `fingerprint`. Aquí se listan
+   * con filtros por servicio y estado (sincronizados con la URL vía `url-filters`),
+   * navegación por teclado j/k y salto al detalle `/errors/<fingerprint>`.
+   */
   import { onMount, onDestroy, tick } from 'svelte';
   import { browser } from '$app/environment';
   import { goto } from '$app/navigation';

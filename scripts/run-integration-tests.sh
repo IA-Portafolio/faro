@@ -11,12 +11,16 @@ apt-get install -y -qq --no-install-recommends curl pkg-config
 
 echo "[setup] applying clickhouse schema (one statement per request)"
 # CH HTTP por default ejecuta una sola sentencia por POST. Los .sql del repo
-# tienen varias CREATE TABLE / MV separadas por `;`. Splitéo por `;` y mando
-# cada sentencia individual; saltamos comentarios `--`.
+# tienen varias CREATE TABLE / MV separadas por `;`. Quitamos TODOS los
+# comentarios `--` (de línea completa E inline) ANTES de colapsar los saltos de
+# línea: si no, un `-- comentario` inline (p. ej. en 60-alerts.sql) se come el
+# resto de la sentencia al unir las líneas con `tr` y la tabla nunca se crea.
+# Ningún `--` aparece dentro de literales de cadena en el schema, así que
+# borrar de `--` al fin de línea es seguro. Luego splitéo por `;`.
 for f in /clickhouse/init/*.sql /clickhouse/migrations/*.sql; do
   [ -f "$f" ] || continue
   echo "  applying $(basename "$f")"
-  grep -v '^[[:space:]]*--' "$f" | tr '\n' ' ' | tr ';' '\n' \
+  sed 's/--.*$//' "$f" | tr '\n' ' ' | tr ';' '\n' \
     | while IFS= read -r stmt; do
         trimmed=$(echo "$stmt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
         if [ -n "$trimmed" ]; then

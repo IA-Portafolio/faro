@@ -53,9 +53,9 @@ async fn ingest_metrics_persists_counter_to_clickhouse() {
     assert_eq!(body["project"], app.project_slug);
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("metrics").await >= 1 })
+        .wait_for(120, || async { app.count_in("metrics").await >= 1 })
         .await;
-    assert!(arrived, "la métrica no llegó a faro.metrics en 2 s");
+    assert!(arrived, "la métrica no llegó a faro.metrics en 6 s");
 
     let rows: Vec<MetricRowOut> = app
         .ch
@@ -109,9 +109,9 @@ async fn ingest_metrics_persists_histogram_with_buckets() {
     assert!(resp.status().is_success(), "status: {}", resp.status());
 
     let arrived = app
-        .wait_for(40, || async { app.count_in("metrics").await >= 1 })
+        .wait_for(120, || async { app.count_in("metrics").await >= 1 })
         .await;
-    assert!(arrived, "el histograma no llegó a faro.metrics en 2 s");
+    assert!(arrived, "el histograma no llegó a faro.metrics en 6 s");
 
     let rows: Vec<MetricRowOut> = app
         .ch

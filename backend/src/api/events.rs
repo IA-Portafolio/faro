@@ -1,3 +1,11 @@
+//! Endpoints de product events (analítica de producto):
+//!   GET /events       → lista filtrable (nombre, distinct_id, properties, …)
+//!   GET /events/live  → stream SSE de eventos nuevos en vivo
+//!   GET /events/stats → volumen por bucket para el histograma
+//!
+//! Acota los filtros `properties.X=Y` (ver `MAX_PROP_FILTERS`) para que un cliente
+//! patológico no convierta la query de ClickHouse en un DoS barato.
+
 use axum::extract::State;
 use axum::response::sse::Sse;
 use axum::routing::get;

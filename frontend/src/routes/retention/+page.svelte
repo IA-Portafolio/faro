@@ -1,4 +1,12 @@
 <script lang="ts">
+  /**
+   * Página `/retention` — retención de usuarios por cohortes (heatmap).
+   *
+   * Elegido un evento "ancla", pide `fetchRetention` y pinta el heatmap: cada fila
+   * es una cohorte (usuarios vistos por primera vez un día) y cada columna su
+   * retención a D1/D7/D30. El cálculo (tasa ponderada, cohortes maduras, color)
+   * vive en `$lib/retention`.
+   */
   import { onMount } from 'svelte';
 
   import {
