@@ -15,7 +15,10 @@ linters:
     - goimports
     - revive
     - gocritic
-    - misspell
+    # misspell deshabilitado: el codebase tiene comentarios en español y el
+    # linter (solo inglés) marca falsos positivos ("producto"→production,
+    # "variantes"→variants). No hay forma de enseñarle español salvo una lista
+    # ignore-words inmanejable, así que se desactiva.
 
 linters-settings:
   revive:

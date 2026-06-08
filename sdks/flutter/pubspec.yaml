@@ -12,3 +12,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  # analysis_options.yaml hace `include: package:flutter_lints/flutter.yaml`;
+  # sin esta dep el include no resuelve y `dart analyze` falla con
+  # include_file_not_found. ^4.0.0 es compatible con sdk Dart >=3.0.0.
+  flutter_lints: ^4.0.0

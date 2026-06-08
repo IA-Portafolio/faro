@@ -15,6 +15,12 @@ on:
   push:
     branches: [main]
 
+# Igual que ci.yml: paths-filter necesita `pull-requests: read` o falla con
+# "Resource not accessible by integration" y arrastra al umbrella `docs`.
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: docs-${{ github.ref }}
   cancel-in-progress: true

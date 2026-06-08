@@ -16,6 +16,13 @@ on:
   push:
     branches: [main]
 
+# paths-filter (job `changes`) llama a la API listFiles del PR; sin
+# `pull-requests: read` el GITHUB_TOKEN da "Resource not accessible by
+# integration" y el job falla, arrastrando al umbrella `ci`.
+permissions:
+  contents: read
+  pull-requests: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
