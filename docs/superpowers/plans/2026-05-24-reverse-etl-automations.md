@@ -34,6 +34,7 @@
 ### Task 1: ClickHouse Schema
 
 **Files:**
+
 - Create: `clickhouse/init/88-automations.sql`
 - Create: `clickhouse/migrations/017-automations.sql`
 - Modify: `clickhouse/test-migrations.sh`
@@ -141,6 +142,7 @@ git commit -m "feat(automations): add clickhouse schema"
 ### Task 2: Storage Models
 
 **Files:**
+
 - Modify: `backend/src/storage/models.rs`
 
 - [ ] **Step 1: Write failing model serialization tests**
@@ -296,6 +298,7 @@ git commit -m "feat(automations): add storage models"
 ### Task 3: Automation Domain Helpers
 
 **Files:**
+
 - Create: `backend/src/automations.rs`
 - Modify: `backend/src/lib.rs`
 
@@ -718,6 +721,7 @@ git commit -m "feat(automations): add domain helpers"
 ### Task 4: Automations API
 
 **Files:**
+
 - Create: `backend/src/api/automations.rs`
 - Modify: `backend/src/api/mod.rs`
 
@@ -1114,6 +1118,7 @@ git commit -m "feat(automations): add api"
 ### Task 5: Automation Runner Worker
 
 **Files:**
+
 - Create: `backend/src/workers/automation_runner.rs`
 - Modify: `backend/src/workers/mod.rs`
 - Modify: `backend/src/config.rs`
@@ -1421,6 +1426,7 @@ git commit -m "feat(automations): add runner worker"
 ### Task 6: Environment Documentation
 
 **Files:**
+
 - Modify: `.env.example`
 - Modify: `.env.prod.template`
 - Modify: `docs/reference/environment.md`
@@ -1476,6 +1482,7 @@ git commit -m "docs(automations): document runner env"
 ### Task 7: Frontend API Helpers
 
 **Files:**
+
 - Modify: `frontend/src/lib/api.ts`
 
 - [ ] **Step 1: Write failing frontend API tests**
@@ -1649,6 +1656,7 @@ git commit -m "feat(automations): add frontend api helpers"
 ### Task 8: Automations UI
 
 **Files:**
+
 - Create: `frontend/src/routes/automations/+page.svelte`
 - Modify: `frontend/src/lib/components/Sidebar.svelte`
 
@@ -2124,6 +2132,7 @@ git commit -m "feat(automations): add ui"
 ### Task 9: Final Verification
 
 **Files:**
+
 - All files touched by previous tasks.
 
 - [ ] **Step 1: Format Rust**

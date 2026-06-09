@@ -26,8 +26,11 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$ROOT"
 
 # 1) Catálogo de archivos bajo docs/ que esperamos ver referenciados.
+#    Excluimos docs/superpowers/** : son specs/plans de diseño archivados de
+#    sesiones puntuales, no documentación de navegación que deba indexarse.
 mapfile -t DOC_FILES < <(
   find docs -type f \
+    -not -path 'docs/superpowers/*' \
     \( -iname '*.md'   -o -iname '*.mdx'  -o -iname '*.png' \
     -o -iname '*.svg'  -o -iname '*.jpg'  -o -iname '*.jpeg' \
     -o -iname '*.gif'  -o -iname '*.webp' \) \

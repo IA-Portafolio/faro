@@ -63,7 +63,7 @@ Está dentro de alcance cualquier código de este repositorio, incluyendo:
 Faro tiene **auth nativa** desde 2026-05 (ver [ADR-0009](docs/adr/0009-security-hardening.md)).
 El bootstrap se hace vía variables de entorno:
 
-```
+```bash
 FARO_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 FARO_BOOTSTRAP_ADMIN_PASSWORD=...         # opcional; si no se setea se genera uno y se loguea
 FARO_BOOTSTRAP_ADMIN_NAME=Admin

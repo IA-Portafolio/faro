@@ -13,6 +13,7 @@
 ### Task 1: Failing Helper Tests
 
 **Files:**
+
 - Modify: `backend/src/ingest/events.rs`
 
 - [ ] Add unit tests for new `batch` envelope, legacy `events` envelope, event-name validation, 16KB properties limit, and redaction scope.
@@ -22,6 +23,7 @@
 ### Task 2: Implement Parsing And Validation
 
 **Files:**
+
 - Modify: `backend/src/ingest/events.rs`
 
 - [ ] Change `IngestPayload` to accept `batch` and `events`.
@@ -33,6 +35,7 @@
 ### Task 3: Redaction Scope And Verification
 
 **Files:**
+
 - Modify: `backend/src/ingest/events.rs`
 - Optional docs: `sdks/README.md`
 

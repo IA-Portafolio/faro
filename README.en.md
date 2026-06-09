@@ -46,10 +46,10 @@ When everything is healthy:
 
 | Service        | URL                       |
 | -------------- | ------------------------- |
-| Dashboard      | http://localhost:3000     |
-| REST API       | http://localhost:8080     |
-| OTLP/HTTP      | http://localhost:4318     |
-| ClickHouse     | http://localhost:8123     |
+| Dashboard      | <http://localhost:3000>     |
+| REST API       | <http://localhost:8080>     |
+| OTLP/HTTP      | <http://localhost:4318>     |
+| ClickHouse     | <http://localhost:8123>     |
 
 ClickHouse initializes the `faro` database and all tables on first boot
 from `clickhouse/init/*.sql`.

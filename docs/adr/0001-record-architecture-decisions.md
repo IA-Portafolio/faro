@@ -38,6 +38,7 @@ a alguien nuevo.
 ## Consecuencias
 
 ### Positivas
+
 - Decisiones grandes quedan documentadas junto al código que las
   implementa.
 - PRs futuros pueden citar ADRs (`closes ADR-0007`, `revisar a la luz
@@ -46,10 +47,12 @@ a alguien nuevo.
   via osmosis.
 
 ### Negativas / costo asumido
+
 - Disciplina: hay que recordar escribir ADRs antes de que la decisión
   se vuelva implícita. Mitigamos requiriéndolas en el PR template para
   cambios grandes.
 
 ### Trabajo de seguimiento
+
 - Backfill de ADRs para decisiones ya tomadas (ClickHouse, Rust, OTLP,
   no-auth) — ADRs 0002 a 0005 cubren esto.

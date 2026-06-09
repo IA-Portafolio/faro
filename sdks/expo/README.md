@@ -69,6 +69,7 @@ npx expo install @react-native-async-storage/async-storage
 ```
 
 Sin más configuración:
+
 - **Al pasar a background / inactive**: flush → si queda algo (red caída, server 5xx), persiste a `@faro/queue/{service}`.
 - **En el próximo `init()`**: carga lo persistido, lo prepende a la cola y dispara flush inmediato.
 - **Tras un fatal**: persiste antes de propagar al handler previo (best-effort — Android es más fiable que iOS aquí).

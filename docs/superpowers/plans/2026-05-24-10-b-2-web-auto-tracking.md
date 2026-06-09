@@ -13,6 +13,7 @@
 ### Task 1: Auto Capture Tests
 
 **Files:**
+
 - Modify: `sdks/nextjs/test/browser.test.mjs`
 
 - [ ] Add DOM listener stubs for `window` and `document`.
@@ -22,6 +23,7 @@
 ### Task 2: Browser Core Implementation
 
 **Files:**
+
 - Modify: `sdks/nextjs/src/browser-core.ts`
 
 - [ ] Add `autoCapture` option type.
@@ -33,6 +35,7 @@
 ### Task 3: Documentation And Verification
 
 **Files:**
+
 - Modify: `sdks/nextjs/README.md`
 - Modify: `sdks/README.md`
 

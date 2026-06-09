@@ -37,6 +37,7 @@ y TTL nativo de ClickHouse para retención (30 días logs, 14 traces,
 ## Consecuencias
 
 ### Positivas
+
 - Un único motor cubre logs, traces, métricas y alertas con SQL
   estándar. El evaluador de alertas (`workers/alert_evaluator.rs`) es
   trivial porque la "DSL" de reglas es SQL crudo de ClickHouse.
@@ -45,6 +46,7 @@ y TTL nativo de ClickHouse para retención (30 días logs, 14 traces,
   ráfagas sin que el backend tenga que implementar otro batching.
 
 ### Negativas / costo asumido
+
 - ClickHouse es lo más pesado del compose (~600MB RAM en idle).
 - Migraciones son a mano (no hay ORM); las hacemos idempotentes en
   `clickhouse/migrations/*.sql` y `deploy.yml` las aplica en cada push.
@@ -52,6 +54,7 @@ y TTL nativo de ClickHouse para retención (30 días logs, 14 traces,
   menor que en Postgres.
 
 ### Trabajo de seguimiento
+
 - Evaluar `ClickHouse Cloud` si la instancia self-hosted no escala.
 - Considerar buffers Redis Streams entre backend y CH para sobrevivir
   caídas (placeholder ya está en el compose).

@@ -71,7 +71,7 @@ Todos los knobs por env var, ningún archivo que mantener:
 
 En el dashboard de incidentes, las anomalías aparecen con `rule_name` empezando por `anomaly:`. Ejemplo:
 
-```
+```text
 anomaly:errors:default:checkout-svc
   severity: warn
   started: 14:32:17

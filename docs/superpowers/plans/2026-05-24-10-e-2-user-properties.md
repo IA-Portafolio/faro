@@ -13,6 +13,7 @@
 ### Task 1: Extend The Cohort Definition Model
 
 **Files:**
+
 - Modify: `backend/src/storage/models.rs`
 - Test: `backend/src/storage/models.rs`
 
@@ -126,6 +127,7 @@ git commit -m "feat(cohorts): add user filters to definition"
 ### Task 2: Validate User Filters With Existing Guardrails
 
 **Files:**
+
 - Modify: `backend/src/api/cohorts.rs`
 - Test: `backend/src/api/cohorts.rs`
 
@@ -235,6 +237,7 @@ git commit -m "feat(cohorts): validate user property filters"
 ### Task 3: Join Product Users In Cohort Queries When Needed
 
 **Files:**
+
 - Modify: `backend/src/api/cohorts.rs`
 - Test: `backend/src/api/cohorts.rs`
 
@@ -373,6 +376,7 @@ git commit -m "feat(cohorts): filter by user properties"
 ### Task 4: Merge Identify Traits Into Product Users
 
 **Files:**
+
 - Modify: `backend/src/workers/user_unifier.rs`
 - Test: `backend/src/workers/user_unifier.rs`
 
@@ -504,6 +508,7 @@ git commit -m "feat(users): merge identify properties"
 ### Task 5: Full Backend Verification
 
 **Files:**
+
 - Modify: no source files unless verification reveals a compile error in the touched code.
 
 - [ ] **Step 1: Format the backend**

@@ -130,7 +130,7 @@ faro.init({
 
 Última oportunidad de muestrear, transformar o descartar un evento sin esperar a una release del SDK. Firma uniforme:
 
-```
+```text
 beforeSend(entry) -> entry | null   // null = descartar
 ```
 

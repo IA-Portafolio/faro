@@ -26,6 +26,7 @@
 ## Task 1: Fix Backend Test Fixture Config
 
 **Files:**
+
 - Modify: `backend/tests/common/mod.rs`
 
 - [ ] **Step 1: Run the current backend test compile**
@@ -73,6 +74,7 @@ git commit -m "test: refresh backend fixture config"
 ## Task 2: Add Failing Session Aggregator Integration Tests
 
 **Files:**
+
 - Create: `backend/tests/workers_session_aggregator.rs`
 
 - [ ] **Step 1: Create the failing test file**
@@ -263,6 +265,7 @@ git commit -m "test: cover product session aggregation"
 ## Task 3: Make One-Shot Aggregation Testable
 
 **Files:**
+
 - Modify: `backend/src/workers/session_aggregator.rs`
 
 - [ ] **Step 1: Expose the aggregation helper intentionally**
@@ -412,6 +415,7 @@ git commit -m "fix: sessionize anonymous product events"
 ## Task 4: Verify Focused Backend Suite
 
 **Files:**
+
 - No code changes expected.
 
 - [ ] **Step 1: Run session aggregator tests**

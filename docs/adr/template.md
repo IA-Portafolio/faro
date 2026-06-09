@@ -21,10 +21,13 @@ Qué decidimos hacer, en imperativo. Una o dos frases.
 ## Consecuencias
 
 ### Positivas
+
 - ...
 
 ### Negativas / costo asumido
+
 - ...
 
 ### Trabajo de seguimiento
+
 - ...

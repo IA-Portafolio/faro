@@ -1,6 +1,6 @@
 mod common;
 
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, Timelike, Utc};
 use common::TestApp;
 use faro::storage::{AttrMap, ProductEventRow, SpanRow};
 use serde::Deserialize;
@@ -187,7 +187,17 @@ async fn latency_funnel_impact_reports_conversion_drop_when_p95_is_slow() {
     let app = TestApp::spawn().await;
     let email = app.create_user("hunter2-test").await;
     let session = app.login_session(&email, "hunter2-test").await;
-    let from = Utc.with_ymd_and_hms(2026, 5, 24, 10, 0, 0).unwrap();
+    // Base reciente y alineada a la hora (NO una fecha fija): faro.spans tiene
+    // TTL de 14 días, así que una fecha hardcodeada termina cayendo fuera del
+    // TTL con el paso del tiempo y ClickHouse borra las filas en un merge →
+    // test flaky. 6h atrás mantiene la ventana [from, from+4h] dentro del TTL.
+    let from = (Utc::now() - Duration::hours(6))
+        .with_minute(0)
+        .unwrap()
+        .with_second(0)
+        .unwrap()
+        .with_nanosecond(0)
+        .unwrap();
     let to = from + Duration::hours(4);
     seed(&app, from).await;
 

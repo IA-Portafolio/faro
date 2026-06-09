@@ -66,7 +66,7 @@ que descargaba el bundle de Swagger via `curl` durante la compilación
   Schemathesis en CI para detectar breaking changes y validar
   respuestas reales.
 - **Scalar en `/docs`** sirve como referencia pública moderna (sidebar
-  + try-it-out three-pane) para cualquiera que toque la API (incluyendo
+  - try-it-out three-pane) para cualquiera que toque la API (incluyendo
   nosotros mismos en 6 meses).
 - El derive empuja a documentar cada response con su shape exacto, no
   con "devuelve JSON".

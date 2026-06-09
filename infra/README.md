@@ -19,12 +19,14 @@ el runner localmente.
 
 ### Instalación nueva (primera vez)
 
-1. En GitHub abre **https://github.com/IA-Portafolio/faro/settings/actions/runners/new**. Elige Linux x64. Verás un token estilo `AABBCC...` (válido ~1 hora).
+1. En GitHub abre **<https://github.com/IA-Portafolio/faro/settings/actions/runners/new>**. Elige Linux x64. Verás un token estilo `AABBCC...` (válido ~1 hora).
 2. Copia el token y entra al server:
+
    ```bash
    ssh infra-iaportafolio
    REG_TOKEN="AABBCC..." bash /opt/faro/infra/runner-install.sh
    ```
+
    El script:
    - Crea `/opt/actions-runner/`
    - Descarga el runner v2.319.x
@@ -45,20 +47,24 @@ que también acepte jobs de CI hay que sumarle `faro-ci`. Tres caminos:
    corriendo, no requiere reinicio.
 
 **B) Vía REST API** (si preferís CLI desde tu workstation):
+
    ```bash
    gh api -X POST /repos/IA-Portafolio/faro/actions/runners/<RUNNER_ID>/labels \
      -f labels[]=faro-ci
    ```
+
    `RUNNER_ID` lo sacás con
    `gh api /repos/IA-Portafolio/faro/actions/runners | jq '.runners[] | {id,name,labels}'`.
 
 **C) Re-registrar** (último recurso — pierde el ID actual):
+
    ```bash
    ssh infra-iaportafolio
    sudo /opt/actions-runner/svc.sh stop
    cd /opt/actions-runner && sudo -u victalejo ./config.sh remove --token "<remove-token>"
    REG_TOKEN="<token nuevo>" bash /opt/faro/infra/runner-install.sh
    ```
+
    El script ya viene con `RUNNER_LABELS` incluyendo `faro-ci`.
 
 Tras cualquiera de las 3, el próximo push a `main` debería disparar
@@ -108,6 +114,7 @@ El runner ejecuta `docker compose -f docker-compose.prod.yml --env-file .env.pro
 ### Qué hace el workflow `deploy.yml`
 
 En cada push a `main`:
+
 1. `rsync` del checkout hacia `/opt/faro/` (preserva `.env.prod`, backups, volúmenes)
 2. Aplica todas las migraciones idempotentes de `clickhouse/migrations/*.sql`
 3. `docker compose build` (re-aprovecha cache de capas)
@@ -153,26 +160,31 @@ En **Settings → Secrets and variables → Actions**:
 | `NPM_TOKEN`                 | Publicar a npm                            | npmjs.com → Profile → Access Tokens → Generate **Granular** token con permiso `Read and write` sobre la organización `@iaportafolio`. La org ya existe — no recrearla. |
 | `PYPI_API_TOKEN` *(o configurar Trusted Publishing — recomendado)* | Publicar a PyPI | pypi.org → Account settings → API tokens. **Trusted publishing** (sin secret) es preferible: registra el proyecto en pypi.org/manage/account/publishing/ apuntando a este repo + workflow. |
 | `PUB_CREDENTIALS_JSON`      | Publicar a pub.dev                        | Localmente: `dart pub token add https://pub.dev` → autoriza con Google → copia el contenido de `~/.config/dart/pub-credentials.json` |
-| `OSSRH_USERNAME`            | Maven Central                             | Tu username en https://central.sonatype.com/ (o legacy s01.oss.sonatype.org) |
-| `OSSRH_PASSWORD`            | Maven Central                             | Token generado en https://central.sonatype.com/account |
+| `OSSRH_USERNAME`            | Maven Central                             | Tu username en <https://central.sonatype.com/> (o legacy s01.oss.sonatype.org) |
+| `OSSRH_PASSWORD`            | Maven Central                             | Token generado en <https://central.sonatype.com/account> |
 | `MAVEN_GPG_PRIVATE_KEY`     | Firmar artefactos Maven                   | `gpg --armor --export-secret-keys <KEY_ID>` (ver más abajo) |
 | `MAVEN_GPG_PASSPHRASE`      | Passphrase de la clave GPG                | La que pusiste al generar la clave |
 
 ### Setup inicial de cada registry
 
 #### npm (@iaportafolio/node, @iaportafolio/nextjs, @iaportafolio/expo)
+
 1. Crea cuenta en npmjs.com si no tienes.
 2. La **organización** `iaportafolio` ya está creada en npm. (El scope `@faro` se descartó en su momento porque estaba tomado.)
 3. **Profile → Access Tokens → Generate New Token** → tipo **Granular Access Token**. Scope: `Packages and scopes` con permiso `Read and write` para `@iaportafolio/*`. Expiración: 1 año (renovable).
 4. Pega el token en `NPM_TOKEN` del repo.
 
 #### PyPI (faro-sdk)
+
 **Opción A — Trusted publishing (sin secret, recomendada)**:
+
 1. Sube manualmente el primer release con tu cuenta (para reclamar el nombre `faro-sdk`):
+
    ```bash
    cd sdks/python && python -m build && twine upload dist/*
    ```
-2. En https://pypi.org/manage/project/faro-sdk/settings/publishing/ añade un **trusted publisher**:
+
+2. En <https://pypi.org/manage/project/faro-sdk/settings/publishing/> añade un **trusted publisher**:
    - Owner: `IA-Portafolio`
    - Repo: `faro`
    - Workflow: `publish-sdks.yml`
@@ -182,27 +194,34 @@ En **Settings → Secrets and variables → Actions**:
 **Opción B — Token clásico**: pypi.org → Account settings → API tokens → Add. Pégalo como `PYPI_API_TOKEN` y descomenta esa rama en el workflow.
 
 #### pub.dev (faro_sdk)
+
 1. Localmente: `dart pub token add https://pub.dev` y autoriza con la cuenta Google con la que vas a publicar.
 2. Lee el JSON: `cat ~/.config/dart/pub-credentials.json`.
 3. Pégalo entero (multi-línea) como `PUB_CREDENTIALS_JSON`.
 
 #### Maven Central (com.iaportafolio:faro) — el más engorroso
-1. **Registra el namespace** `com.iaportafolio` en https://central.sonatype.com/. Requiere demostrar control del dominio iaportafolio.com (vía DNS TXT record).
+
+1. **Registra el namespace** `com.iaportafolio` en <https://central.sonatype.com/>. Requiere demostrar control del dominio iaportafolio.com (vía DNS TXT record).
 2. **Genera una par de claves GPG** y publícala:
+
    ```bash
    gpg --generate-key                       # nombre real, email del proyecto
    gpg --list-secret-keys --keyid-format=long
    gpg --keyserver keyserver.ubuntu.com --send-keys <KEY_ID>
    gpg --keyserver keys.openpgp.org --send-keys <KEY_ID>
    ```
+
 3. Exporta la clave privada con armor:
+
    ```bash
    gpg --armor --export-secret-keys <KEY_ID> > maven-gpg.key
    ```
+
 4. Pega el contenido completo (incluyendo `-----BEGIN PGP PRIVATE KEY BLOCK-----`) como `MAVEN_GPG_PRIVATE_KEY`. Pega la passphrase como `MAVEN_GPG_PASSPHRASE`.
 5. En el portal de Central genera un **user token** (Settings → User Token → Generate). Username = primera cadena, password = segunda. Pégalos como `OSSRH_USERNAME` y `OSSRH_PASSWORD`.
 
 #### Go modules
+
 Sin registry — los tags `sdks/go/v<ver>` que crea el workflow ya hacen disponible el módulo en `proxy.golang.org`. El nombre de import es `github.com/IA-Portafolio/faro/sdks/go`.
 
 ## 3 · Primera publicación end-to-end

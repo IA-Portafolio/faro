@@ -6,6 +6,7 @@
 
 mod common;
 
+use chrono::{Duration, SecondsFormat, Utc};
 use common::TestApp;
 use serde::Deserialize;
 
@@ -26,7 +27,12 @@ struct SpanRowOut {
 async fn ingest_spans_persists_to_clickhouse() {
     let app = TestApp::spawn().await;
 
-    // start = 1700000000.000000000, end = +500ms → duration_ns = 500_000_000.
+    // Timestamps RECIENTES (no hardcodeados a 2023): faro.spans tiene TTL de
+    // 14 días, así que un span viejo es elegible para borrado en un merge y el
+    // test se vuelve flaky (la fila desaparece entre el count y el SELECT).
+    // end = start + 500ms → duration_ns = 500_000_000.
+    let start = Utc::now() - Duration::hours(1);
+    let end = start + Duration::milliseconds(500);
     let payload = serde_json::json!({
         "service": "checkout",
         "spans": [
@@ -36,8 +42,8 @@ async fn ingest_spans_persists_to_clickhouse() {
                 "parent_span_id": "2222222222222222",
                 "name": "charge-order",
                 "kind": "client",
-                "start": "2023-11-14T22:13:20.000Z",
-                "end":   "2023-11-14T22:13:20.500Z",
+                "start": start.to_rfc3339_opts(SecondsFormat::Millis, true),
+                "end":   end.to_rfc3339_opts(SecondsFormat::Millis, true),
                 "status_code": "OK",
                 "attributes": { "order_id": "abc-1", "amount": "9.99" },
             }

@@ -20,6 +20,7 @@
 ## Task 1: Add Failing Unit Tests For Latency Funnel Helpers
 
 **Files:**
+
 - Modify: `backend/src/api/insights.rs`
 
 - [ ] **Step 1: Add helper tests to the existing `#[cfg(test)] mod tests`**
@@ -83,6 +84,7 @@ If unrelated existing unit-test compile errors appear first (currently `src/inge
 ## Task 2: Implement Latency Funnel Helpers
 
 **Files:**
+
 - Modify: `backend/src/api/insights.rs`
 
 - [ ] **Step 1: Add helper functions above the test module**
@@ -127,6 +129,7 @@ Expected: `cargo check` finishes successfully. Existing warnings in unrelated fi
 ## Task 3: Add Failing Integration Test For Latency Funnel Impact
 
 **Files:**
+
 - Create: `backend/tests/latency_funnel_impact.rs`
 
 - [ ] **Step 1: Create the route-level integration test**
@@ -373,6 +376,7 @@ Expected: the authenticated test fails with `404 Not Found` because the route is
 ## Task 4: Implement The Latency Funnel Impact Endpoint
 
 **Files:**
+
 - Modify: `backend/src/api/insights.rs`
 
 - [ ] **Step 1: Add imports and route**
@@ -669,6 +673,7 @@ Only interpolate `bucket_seconds_sql`, which is server-side validated numeric co
 ## Task 5: Final Verification
 
 **Files:**
+
 - Verify: `backend/src/api/insights.rs`
 - Verify: `backend/tests/latency_funnel_impact.rs`
 - Existing: `backend/tests/revenue_impact_insights.rs`

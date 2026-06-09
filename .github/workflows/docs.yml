@@ -78,6 +78,7 @@ jobs:
             !frontend/.svelte-kit/**
             !**/CHANGELOG.md
             !sdks/**/CHANGELOG.md
+            !docs/superpowers/**
 
   cspell:
     needs: changes

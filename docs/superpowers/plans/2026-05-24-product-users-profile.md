@@ -32,6 +32,7 @@
 ## Task 1: Product User Helpers
 
 **Files:**
+
 - Create: `frontend/src/lib/product-users.ts`
 - Create: `frontend/src/lib/product-users.test.ts`
 
@@ -287,6 +288,7 @@ git commit -m "feat(frontend): add product user timeline helpers" -- frontend/sr
 ## Task 2: Product User API Client
 
 **Files:**
+
 - Modify: `frontend/src/lib/api.ts`
 
 - [ ] **Step 1: Add product user types and fetchers**
@@ -381,6 +383,7 @@ git commit -m "feat(frontend): add product user api client" -- frontend/src/lib/
 ## Task 3: Product Users List Page
 
 **Files:**
+
 - Modify: `frontend/src/routes/users/+page.svelte`
 
 - [ ] **Step 1: Replace the redirect with a product user list**
@@ -603,6 +606,7 @@ git commit -m "feat(frontend): list product users" -- frontend/src/routes/users/
 ## Task 4: Product User Profile Page
 
 **Files:**
+
 - Create: `frontend/src/routes/users/[distinct_id]/+page.svelte`
 
 - [ ] **Step 1: Create the dedicated profile page**
@@ -1058,6 +1062,7 @@ git commit -m "feat(frontend): add product user profile" -- frontend/src/routes/
 ## Task 5: Navigation and Command Palette
 
 **Files:**
+
 - Modify: `frontend/src/lib/components/Sidebar.svelte`
 - Modify: `frontend/src/lib/palette.ts`
 - Modify: `frontend/src/lib/palette.test.ts`
@@ -1133,6 +1138,7 @@ git commit -m "feat(frontend): expose product users navigation" -- frontend/src/
 ## Task 6: Final Verification
 
 **Files:**
+
 - Verify the files changed by Tasks 1-5.
 
 - [ ] **Step 1: Run all frontend unit tests**
