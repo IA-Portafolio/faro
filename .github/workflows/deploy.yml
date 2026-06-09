@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Sync source to ${{ env.FARO_DIR }}
         # --delete para limpiar archivos eliminados del repo; conserva .env.prod,
