@@ -110,13 +110,12 @@ governor = "0.7"
 # `metrics` tiene su propio recorder global estático: si el app emite con
 # `metrics` 0.24 pero axum-prometheus instala un recorder 0.23, TODOS los
 # `metrics::counter!/gauge!/histogram!` custom son no-ops silenciosos (sólo
-# renderizan las métricas HTTP del propio layer). axum-prometheus 0.7 →
-# metrics-exporter-prometheus 0.15 → metrics 0.23, así que acá fijamos 0.23.
-# El test `tests/metrics_endpoint.rs` falla si el split reaparece. Para subir a
-# metrics 0.24 hay que subir axum-prometheus a una versión que use el exporter
-# 0.16+ (cambia la API de `install()`).
+# renderizan las métricas HTTP del propio layer). axum-prometheus 0.10 →
+# metrics-exporter-prometheus 0.18 → metrics 0.24, así que acá fijamos 0.24.
+# El test `tests/metrics_endpoint.rs` falla si el split reaparece: al subir
+# axum-prometheus hay que mover `metrics` a la mayor que use su exporter.
 axum-prometheus = "0.10"
-metrics = "0.23"
+metrics = "0.24"
 
 # 2FA TOTP (RFC 6238). `totp-rs` con `gen_secret` produce el secreto Base32 y
 # el otpauth:// URL para enrolar la cuenta en Google Authenticator / Authy / 1Password.

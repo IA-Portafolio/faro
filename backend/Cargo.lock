@@ -9,18 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "ahash"
-version = "0.8.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a15f179cd60c4584b8a8c596927aadc462e27f2ca70c04e0071964a73ba7a75"
-dependencies = [
- "cfg-if",
- "once_cell",
- "version_check",
- "zerocopy",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -208,7 +196,7 @@ dependencies = [
  "http",
  "http-body",
  "matchit",
- "metrics 0.24.6",
+ "metrics",
  "metrics-exporter-prometheus",
  "pin-project-lite",
  "tokio",
@@ -558,7 +546,7 @@ dependencies = [
  "futures",
  "governor",
  "hex",
- "metrics 0.23.1",
+ "metrics",
  "opentelemetry 0.27.1",
  "opentelemetry-otlp",
  "opentelemetry-proto 0.32.0",
@@ -1292,16 +1280,6 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "metrics"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3045b4193fbdc5b5681f32f11070da9be3609f189a79f3390706d42587f46bb5"
-dependencies = [
- "ahash",
- "portable-atomic",
-]
-
-[[package]]
-name = "metrics"
 version = "0.24.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89550ee9f79e88fef3119de263694973a8adb26c21d75322164fb8c493039fe2"
@@ -1319,7 +1297,7 @@ dependencies = [
  "base64",
  "evmap",
  "indexmap",
- "metrics 0.24.6",
+ "metrics",
  "metrics-util",
  "quanta",
  "thiserror 2.0.18",
@@ -1334,7 +1312,7 @@ dependencies = [
  "crossbeam-epoch",
  "crossbeam-utils",
  "hashbrown 0.16.1",
- "metrics 0.24.6",
+ "metrics",
  "quanta",
  "rand 0.9.4",
  "rand_xoshiro",
