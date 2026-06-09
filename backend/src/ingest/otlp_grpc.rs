@@ -168,6 +168,11 @@ fn any_to_string(v: &AnyValue) -> String {
                 .collect();
             format!("{{{}}}", parts.join(","))
         }
+        // `StringValueStrindex` (otel-proto ≥0.32) referencia un string por índice
+        // en la string-table del request (encoding de diccionario de OTLP). No
+        // tenemos esa tabla en este punto de conversión, así que lo tratamos como
+        // ausente — igual que `None`.
+        Some(any_value::Value::StringValueStrindex(_)) => String::new(),
         None => String::new(),
     }
 }

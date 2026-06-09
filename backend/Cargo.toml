@@ -90,7 +90,7 @@ tracing-opentelemetry = { version = "0.28", default-features = false }
 # por defecto, así que sin esto un cliente Java/Go/Python "stock" falla en silencio.
 # `opentelemetry-proto` con `gen-tonic` trae los stubs ya generados, evitando
 # tener que vendorear los .proto y configurar `build.rs` con protoc.
-tonic = { version = "0.12", default-features = false, features = ["transport", "codegen", "prost"] }
+tonic = "0.14"
 opentelemetry-proto = { version = "0.32", default-features = false, features = ["gen-tonic", "trace", "metrics", "logs"] }
 
 # Rate limit por proyecto en la ingesta (token bucket GCRA). In-memory por proceso —
