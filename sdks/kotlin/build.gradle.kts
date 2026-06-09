@@ -4,7 +4,7 @@ plugins {
     // Dependabot subió kotlinx-serialization-json a 1.11.0 compilado con
     // Kotlin 2.3.x → necesitamos compilador 2.3.x o más reciente. Si quedamos
     // en 2.0 / 2.1, falla con "metadata 2.3.0, expected version is 2.0.0".
-    kotlin("jvm") version "2.3.0"
+    kotlin("jvm") version "2.3.21"
     kotlin("plugin.serialization") version "2.3.0"
     `maven-publish`
     signing
