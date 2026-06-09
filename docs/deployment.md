@@ -6,7 +6,7 @@ Cómo se despliega Faro en producción. La instancia operada está en
 
 ## Topología
 
-```
+```text
 Internet
    ↓ HTTPS (Cloudflare / proxy del host)
 faro.iaportafolio.com

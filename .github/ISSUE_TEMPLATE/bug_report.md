@@ -27,7 +27,7 @@ Pasos mínimos:
 
 ## Logs / output
 
-```
+```text
 <pega aquí logs relevantes — recorta lo sensible>
 ```
 

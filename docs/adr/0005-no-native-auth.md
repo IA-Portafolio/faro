@@ -64,12 +64,14 @@ Documentado explícitamente en README → Limitaciones y reforzado en
 ## Consecuencias
 
 ### Positivas
+
 - Cero código de auth que mantener, parchar y testear.
 - Operador elige el mecanismo de auth apropiado para su red
   (Cloudflare Access es muy distinto a Tailscale).
 - Reduce la superficie de ataque del propio servicio.
 
 ### Negativas / costo asumido
+
 - **Reportes de "el dashboard no requiere login" se cierran como
   working-as-designed** (ver `SECURITY.md`).
 - Multi-tenant es imposible sin auth — pero Faro no busca ser
@@ -79,6 +81,7 @@ Documentado explícitamente en README → Limitaciones y reforzado en
   a internet tiene una mala experiencia.
 
 ### Trabajo de seguimiento
+
 - Mantener `SECURITY.md` y `docs/deployment.md` claros sobre la
   necesidad del proxy.
 - Considerar un middleware opcional `FARO_DASHBOARD_TOKEN` (Bearer

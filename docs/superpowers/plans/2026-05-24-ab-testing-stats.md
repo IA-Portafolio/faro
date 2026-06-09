@@ -13,6 +13,7 @@
 ### Task 1: SDK Feature Exposure Events
 
 **Files:**
+
 - Modify: `sdks/node/src/index.ts`
 - Modify: `sdks/node/test/client.test.mjs`
 - Modify: `sdks/nextjs/src/browser-core.ts`
@@ -25,6 +26,7 @@
 ### Task 2: Backend Experiment Analysis
 
 **Files:**
+
 - Create: `backend/src/api/experiments.rs`
 - Modify: `backend/src/api/mod.rs`
 - Test: `backend/src/api/experiments.rs` unit tests
@@ -37,6 +39,7 @@
 ### Task 3: Frontend Experiments UI
 
 **Files:**
+
 - Modify: `frontend/src/lib/api.ts`
 - Create: `frontend/src/routes/experiments/+page.svelte`
 - Modify: `frontend/src/lib/components/Sidebar.svelte`
@@ -47,6 +50,7 @@
 - [x] Run frontend checks/build.
 
 Verification notes:
+
 - `sdks/node`: `npm test` passed 19/19.
 - `sdks/nextjs`: `npm test` passed 22/22.
 - `frontend`: `npm run build` passed; `npm run check` is blocked by existing type/config errors outside the experiments page.

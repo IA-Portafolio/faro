@@ -34,4 +34,3 @@ Add `/insights`, a combined observability/product analytics dashboard that answe
 
 Expected workspace caveat: local Windows PATH may not include `cargo`; `svelte-check`
 currently has known baseline errors unrelated to `/insights`.
-

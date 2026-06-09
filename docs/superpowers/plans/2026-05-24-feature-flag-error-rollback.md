@@ -7,6 +7,7 @@
 ## Task 1: Detector Worker
 
 Files:
+
 - Create: `backend/src/workers/feature_rollback_detector.rs`
 - Modify: `backend/src/workers/mod.rs`
 
@@ -18,6 +19,7 @@ Files:
 ## Task 2: Config and Startup
 
 Files:
+
 - Modify: `backend/src/config.rs`
 - Modify: `backend/src/main.rs`
 
@@ -31,6 +33,7 @@ Files:
 - [x] Document environment limitations.
 
 Verification notes:
+
 - Rust tests could not run in this shell because `cargo` is not installed/on PATH.
 - `rustfmt` is also unavailable/on PATH.
 - The env reference generator could not run because `/bin/bash` is missing; `docs/reference/environment.md` was updated manually for the new variables.

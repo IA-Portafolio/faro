@@ -38,6 +38,7 @@ docker compose -f docker-compose.test.yml -p faro-test up --build \
 ## Mapa de módulos (`src/`)
 
 ### Arranque y plumbing
+
 | Módulo | Qué es |
 |--------|--------|
 | `main.rs` | Binario: arranca logging, config, ClickHouse, workers y los 3 listeners; shutdown ordenado. |
@@ -50,6 +51,7 @@ docker compose -f docker-compose.test.yml -p faro-test up --build \
 | `versions.rs` | Compatibilidad de versión SDK ↔ backend (header de versión). |
 
 ### API REST — `api/`
+
 `api/mod.rs` arma el router raíz y monta un sub-router por recurso. Cada archivo
 expone los endpoints de un recurso (su cabecera `//!` lista las rutas):
 
@@ -60,6 +62,7 @@ expone los endpoints de un recurso (su cabecera `//!` lista las rutas):
 `preferences` · `integrations` · `health`.
 
 ### Ingesta — `ingest/`
+
 | Módulo | Qué es |
 |--------|--------|
 | `mod.rs` | Router OTLP + utilidades: `resolve_project` (token→proyecto) y `check_origin` (whitelist CORS). |
@@ -69,6 +72,7 @@ expone los endpoints de un recurso (su cabecera `//!` lista las rutas):
 | `rate_limit` | Rate limiting de ingesta por proyecto. |
 
 ### Workers en segundo plano — `workers/`
+
 Tareas tokio que corren fuera del request/response (cada `start_*` un bucle):
 
 | Worker | Qué hace |
@@ -85,17 +89,20 @@ Tareas tokio que corren fuera del request/response (cada `start_*` un bucle):
 | `user_unifier` | Unifica identidades de product users (`distinct_id` ↔ anónimos). |
 
 ### Almacenamiento — `storage/`
+
 | Módulo | Qué es |
 |--------|--------|
 | `client.rs` | Cliente HTTP sobre ClickHouse (inserta `JSONEachRow`, lee JSON; pool acotado). |
 | `models.rs` | Structs de fila (`LogRow`, `SpanRow`, `ProductEventRow`, …) que mapean las tablas `faro.*`. |
 
 ### Notificaciones — `notify/` + canales
+
 `notify/` tiene un emisor por destino: `telegram`, `slack`, `discord`,
 `email_resend`, `opsgenie`, `pagerduty`, `webhook`. `notification_channels.rs` e
 `integrations.rs` gestionan su configuración y cache.
 
 ### Dominio / seguridad (módulos raíz)
+
 | Módulo | Qué es |
 |--------|--------|
 | `auth.rs` | Sesiones por cookie, hashing de password, gestión de usuarios. |

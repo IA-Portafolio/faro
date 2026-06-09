@@ -18,6 +18,7 @@ El backend, ClickHouse y Redis **no se tocan** (llevan 7 días estables/healthy)
 | `frontend/.dockerignore` | **nuevo** | Excluye `node_modules`/`.svelte-kit`/`build` del contexto Docker. **Necesario:** sin él, `COPY . .` (posterior a `npm install` en el Dockerfile) metería el `node_modules` del host (glibc) en la imagen Alpine (musl) y rompería el build por mismatch de binarios nativos de Vite/Rolldown. |
 
 Validación previa al deploy (con Node 20.20.2 instalado en `/usr/local`):
+
 - `npm run check` (svelte-check) → **0 errores** (55 warnings a11y preexistentes, ninguno en archivos nuevos).
 - `npm run build` → OK, incluye `entries/pages/docs/_page.svelte.js`.
 - Dev server: `GET /docs` → HTTP 200.
@@ -127,6 +128,7 @@ renderizados en servidor** para que LLMs/crawlers lean la doc sin ejecutar el SP
 | `frontend/src/routes/docs/+page.svelte` | editado | `<svelte:head>` (meta/alternate) + enlaces visibles a `/docs.md` y `/llms.txt`. |
 
 Endpoints públicos (verificados sin auth):
+
 - `https://faro.iaportafolio.com/llms.txt` → 200 `text/plain`
 - `https://faro.iaportafolio.com/docs.md` → 200 `text/markdown` (≈559 líneas, 7 SDKs, 145 métodos)
 - `https://faro.iaportafolio.com/docs` → 200 (sin redirect a login)
@@ -162,6 +164,7 @@ tratar la ruta como pública.
 | `frontend/src/routes/+layout.svelte` | Visitante anónimo en `/docs` → shell público sin sidebar (barra mínima con login); con sesión, chrome normal. |
 
 **Verificado con navegador headless real (anónimo, sin cookies):**
+
 - `/docs` → se queda en `/docs`, h1 "SDKs & referencia de API", contenido visible, sin sidebar, sin password. ✅
 - `/logs` → redirige a `/login?next=/logs` (el gate sigue intacto para el resto). ✅
 

@@ -13,6 +13,7 @@
 ### Task 1: Next.js Browser Tracking Tests
 
 **Files:**
+
 - Modify: `sdks/nextjs/test/browser.test.mjs`
 - Verify: `sdks/nextjs/src/browser-core.ts`
 
@@ -37,6 +38,7 @@ Expected: all Next.js SDK tests pass.
 ### Task 2: Expo Mobile Tracking Tests
 
 **Files:**
+
 - Modify: `sdks/expo/test/client.test.mjs`
 - Verify: `sdks/expo/src/index.ts`
 
@@ -61,6 +63,7 @@ Expected: all Expo SDK tests pass.
 ### Task 3: Flutter And Kotlin Coverage Check
 
 **Files:**
+
 - Modify if needed: `sdks/flutter/test/faro_test.dart`
 - Modify if needed: `sdks/kotlin/src/test/kotlin/com/iaportafolio/faro/FaroTest.kt`
 - Verify: `sdks/flutter/lib/faro_sdk.dart`
@@ -85,6 +88,7 @@ Expected: all tests pass or toolchain absence is reported explicitly.
 ### Task 4: Final Contract Verification
 
 **Files:**
+
 - Read: `sdks/README.md`
 - Read: SDK README files if touched
 

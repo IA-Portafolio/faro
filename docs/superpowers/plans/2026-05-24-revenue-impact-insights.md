@@ -19,6 +19,7 @@
 ## Task 1: Add Failing Unit Tests For Revenue Math
 
 **Files:**
+
 - Create: `backend/src/api/insights.rs`
 - Modify: `backend/src/api/mod.rs`
 
@@ -98,6 +99,7 @@ This is the RED step for the pure math.
 ## Task 2: Implement Revenue Math Helpers
 
 **Files:**
+
 - Modify: `backend/src/api/insights.rs`
 
 - [ ] **Step 1: Add the minimal helper implementations**
@@ -151,6 +153,7 @@ git commit -m "test: add revenue impact math"
 ## Task 3: Add A Failing Integration Test For The Endpoint
 
 **Files:**
+
 - Create: `backend/tests/revenue_impact_insights.rs`
 
 - [ ] **Step 1: Create the route-level integration test**
@@ -351,6 +354,7 @@ Expected: `revenue_impact_prioritizes_errors_by_checkout_loss` fails with an HTT
 ## Task 4: Implement The Revenue Impact Endpoint
 
 **Files:**
+
 - Modify: `backend/src/api/insights.rs`
 - Modify: `backend/src/api/mod.rs`
 
@@ -689,6 +693,7 @@ git commit -m "feat: add revenue impact insights endpoint"
 ## Task 5: Final Verification
 
 **Files:**
+
 - Verify: `backend/src/api/insights.rs`
 - Verify: `backend/src/api/mod.rs`
 - Verify: `backend/tests/revenue_impact_insights.rs`

@@ -50,4 +50,3 @@ The first viewport should be the dashboard itself, not a landing page. It should
 - three compact metric groups: Events, Errors, Latency
 - top linked issues table
 - small outbound links to underlying pillar pages
-

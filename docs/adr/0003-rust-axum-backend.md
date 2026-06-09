@@ -41,6 +41,7 @@ crate de driver específico — keep it simple).
 ## Consecuencias
 
 ### Positivas
+
 - Binario estático sin runtime — la imagen Docker pesa ~30MB.
 - `tokio::sync::mpsc` modela limpiamente el patrón
   ingest-channel → batch-writer.
@@ -49,6 +50,7 @@ crate de driver específico — keep it simple).
 - Sin riesgo de OOM por GC pausas en momentos de ingesta pico.
 
 ### Negativas / costo asumido
+
 - Tiempo de compilación de CI más largo (~3 min en frío, ~30s con
   cache). Mitigamos con `Swatinem/rust-cache` en CI.
 - Onboarding más lento si alguien nuevo no sabe Rust.
@@ -56,5 +58,6 @@ crate de driver específico — keep it simple).
   (pero usaremos Faro para observarse a sí mismo, eventualmente).
 
 ### Trabajo de seguimiento
+
 - Considerar `axum-otel` o equivalente para auto-instrumentar la
   ingesta y mandarse spans a sí mismo (dogfooding).

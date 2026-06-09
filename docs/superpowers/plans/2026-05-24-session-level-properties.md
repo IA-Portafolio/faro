@@ -13,6 +13,7 @@
 ### Task 1: Write Failing Session Property Test
 
 **Files:**
+
 - Modify: `backend/tests/workers_session_aggregator.rs`
 
 - [ ] **Step 1: Extend test row shape**
@@ -77,6 +78,7 @@ Expected: fail because the new columns are not in `ProductSessionRow`/ClickHouse
 ### Task 2: Extend ClickHouse Schema
 
 **Files:**
+
 - Modify: `clickhouse/init/86-product-events-aux.sql`
 - Create: `clickhouse/migrations/018-session-level-properties.sql`
 
@@ -121,6 +123,7 @@ ALTER TABLE faro.product_sessions
 ### Task 3: Extend Rust Model and Aggregator
 
 **Files:**
+
 - Modify: `backend/src/storage/models.rs`
 - Modify: `backend/src/workers/session_aggregator.rs`
 
@@ -170,6 +173,7 @@ Ensure subqueries carry `event_name` through so count predicates work.
 ### Task 4: Verify
 
 **Files:**
+
 - No new source files.
 
 - [ ] **Step 1: Apply schema and run targeted test**

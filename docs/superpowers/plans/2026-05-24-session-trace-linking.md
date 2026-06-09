@@ -13,6 +13,7 @@
 ### Task 1: Worker Test for Trace IDs
 
 **Files:**
+
 - Modify: `backend/tests/workers_session_aggregator.rs`
 
 - [x] **Step 1: Extend session test output**
@@ -66,6 +67,7 @@ Expected: fail because `trace_ids`/`trace_count` do not exist yet.
 ### Task 2: Schema and Model
 
 **Files:**
+
 - Modify: `clickhouse/init/86-product-events-aux.sql`
 - Create: `clickhouse/migrations/019-session-trace-linking.sql`
 - Modify: `backend/src/storage/models.rs`
@@ -106,6 +108,7 @@ pub trace_count: u32,
 ### Task 3: Aggregator Trace Materialization
 
 **Files:**
+
 - Modify: `backend/src/workers/session_aggregator.rs`
 
 - [x] **Step 1: Add row fields**
@@ -128,6 +131,7 @@ Include `trace_ids, trace_count` in the outer SELECT.
 ### Task 4: Session Traces API
 
 **Files:**
+
 - Create: `backend/src/api/sessions.rs`
 - Modify: `backend/src/api/mod.rs`
 - Create: `backend/tests/api_session_traces.rs`
@@ -170,6 +174,7 @@ Add `pub mod sessions;` and `.merge(sessions::router())` in `backend/src/api/mod
 ### Task 5: Verification
 
 **Files:**
+
 - No new source files.
 
 - [x] **Step 1: Apply schema and run targeted tests**

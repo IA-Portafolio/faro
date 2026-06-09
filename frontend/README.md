@@ -41,7 +41,7 @@ las pone `docker-compose*.yml` (ver raíz del repo).
 
 ## Mapa de carpetas
 
-```
+```text
 src/
 ├── app.html              Plantilla HTML raíz (shell de la SPA).
 ├── app.css               Estilos globales y variables de tema (claro/oscuro).
@@ -64,6 +64,7 @@ carpeta `[algo]` es un parámetro dinámico de la URL.
 ## Rutas (páginas) — qué es cada URL
 
 ### Observabilidad
+
 | Ruta | Qué es |
 |------|--------|
 | `/` | **Resumen / dashboard**: contadores globales (logs, errores, servicios, issues, incidentes) + volumen de logs. |
@@ -77,6 +78,7 @@ carpeta `[algo]` es un parámetro dinámico de la URL.
 | `/insights` | **Hallazgos** por servicio: cruza conversión de funnel + errores + latencia p95. |
 
 ### Producto (product analytics)
+
 | Ruta | Qué es |
 |------|--------|
 | `/events` | Explorador de **product events** (filtros por nombre, `distinct_id`, properties; modo live por SSE). |
@@ -90,6 +92,7 @@ carpeta `[algo]` es un parámetro dinámico de la URL.
 | `/replays/[session_id]` | **Session replay**: reproduce la grabación de la sesión con rrweb-player. |
 
 ### Monitorización y configuración
+
 | Ruta | Qué es |
 |------|--------|
 | `/monitors` | CRUD de **monitores** (checks de disponibilidad/SLO) con uptime. |
@@ -104,6 +107,7 @@ carpeta `[algo]` es un parámetro dinámico de la URL.
 | `/settings/integrations` | **Canales de notificación** (Telegram, etc.). |
 
 ### Acceso, docs y alias
+
 | Ruta | Qué es |
 |------|--------|
 | `/login` | Acceso email+password con 2FA opcional. `login/+layout.svelte` quita el chrome global. |
@@ -184,4 +188,3 @@ carpeta `[algo]` es un parámetro dinámico de la URL.
 - **SSE (Server-Sent Events):** stream HTTP unidireccional; el modo "live" de logs y
   events lo usa (`EventSource`) para recibir datos nuevos en tiempo real.
 - **2FA / TOTP:** segundo factor por código temporal (apps tipo Authenticator).
-```

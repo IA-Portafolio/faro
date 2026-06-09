@@ -32,17 +32,27 @@ jobs:
         include:
           - language: javascript-typescript
           - language: python
+          # go y java-kotlin con build-mode: none (extracción buildless): el
+          # runner self-hosted no tiene go/java en PATH y el autobuild fallaba
+          # con "Unable to locate executable file: go". buildless no compila ni
+          # necesita toolchain.
           - language: go
+            build-mode: none
           - language: java-kotlin
+            build-mode: none
     steps:
       - uses: actions/checkout@v4
 
       - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
           queries: security-extended,security-and-quality
 
-      - uses: github/codeql-action/autobuild@v3
+      # autobuild solo si build-mode es autobuild (ninguno hoy). Con build-mode:
+      # none la extracción no compila, así que este paso se saltea.
+      - if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@v3
 
       - uses: github/codeql-action/analyze@v3
         with:

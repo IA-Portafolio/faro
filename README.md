@@ -38,11 +38,11 @@ Cuando todo esté saludable:
 
 | Servicio       | URL                       |
 | -------------- | ------------------------- |
-| Dashboard      | http://localhost:3000     |
-| API REST       | http://localhost:8080     |
-| OTLP/HTTP      | http://localhost:4318     |
+| Dashboard      | <http://localhost:3000>     |
+| API REST       | <http://localhost:8080>     |
+| OTLP/HTTP      | <http://localhost:4318>     |
 | OTLP/gRPC      | localhost:4317            |
-| ClickHouse     | http://localhost:8123     |
+| ClickHouse     | <http://localhost:8123>     |
 
 ClickHouse inicializa la base de datos `faro` y todas las tablas en el primer arranque desde `clickhouse/init/*.sql`.
 
@@ -207,7 +207,7 @@ Uptime de monitor por debajo del 99%:
 
 ## Estructura del repositorio
 
-```
+```text
 faro/
 ├── docker-compose.yml
 ├── .env.example

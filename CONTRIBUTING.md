@@ -129,6 +129,7 @@ código:
   enlazalo desde donde corresponda — el job `orphan-docs` corre
   [`scripts/check-orphan-docs.sh`](scripts/check-orphan-docs.sh) y falla
   el PR si nadie lo referencia. Localmente:
+
   ```bash
   bash scripts/check-orphan-docs.sh
   ```
@@ -138,10 +139,12 @@ código:
   default de una variable, edita `.env.example` (respetá el formato:
   header `# ---- Sección ----`, comentario descriptivo encima del var,
   línea en blanco entre vars) y regenerá la página:
+
   ```bash
   bash scripts/gen-env-reference.sh
   git add docs/reference/environment.md
   ```
+
   El job `env-reference` corre
   [`scripts/check-env-reference.sh`](scripts/check-env-reference.sh) y
   falla el PR con el diff si los dos archivos están desincronizados.
@@ -177,7 +180,7 @@ hace que `publish-sdks.yml` no dispare ningún job y el paquete no salga.
 El workflow `validate-tag.yml` falla rápido si alguien empuja un tag
 malformado:
 
-```
+```text
 sdk-<lang>-v<major>.<minor>.<patch>[-<pre>][+<build>]
 ```
 
@@ -221,4 +224,4 @@ los deja pasar sin tocarlos — no hay un workflow que los consuma todavía.
 
 ## Contacto
 
-Mantenedor: [@victalejo](https://github.com/victalejo) — victoralejocj@gmail.com.
+Mantenedor: [@victalejo](https://github.com/victalejo) — <victoralejocj@gmail.com>.

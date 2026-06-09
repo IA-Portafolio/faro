@@ -91,11 +91,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: '1.22' }
+        # go.mod pide go 1.25.0 (lo arrastra go.opentelemetry.io/otel v1.44);
+        # antes estaba en 1.22 y funcionaba solo por el auto-toolchain de Go.
+        with: { go-version: '1.25' }
       - run: go vet ./...
       - run: go build ./...
       - run: go test -race ./...
+      # golangci-lint advisory (no bloquea): el binario `latest` está compilado
+      # con go1.24 y no puede typecheckear el módulo que requiere go1.25
+      # (otel v1.44) -> "package requires newer Go version go1.25". vet/build/
+      # test de arriba son los gates duros. TODO: reactivar como bloqueante
+      # cuando golangci-lint publique binarios construidos con go1.25 (o migrar
+      # .golangci.yml a formato v2 + install-mode: goinstall con go1.25).
       - uses: golangci/golangci-lint-action@v6
+        continue-on-error: true
         with:
           version: latest
           working-directory: sdks/go
@@ -110,12 +119,13 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: stable }
       - run: flutter pub get
-      # --no-fatal-infos: los lints de estilo (require_trailing_commas,
-      # unnecessary_import) quedan informativos y no rompen CI; los errores
-      # reales + warnings + unused_import/dead_code (promovidos a error en
-      # analysis_options.yaml) SIGUEN siendo fatales. `dart fix --apply`
-      # limpia el estilo cuando se quiera.
-      - run: dart analyze --no-fatal-infos
+      # `dart analyze` a secas: con flutter_lints ya en dev_dependencies el
+      # warning include_file_not_found desaparece, y los lints de estilo
+      # (require_trailing_commas, unnecessary_import) son `info` → NO son
+      # fatales por default (solo errors/warnings lo son). La flag
+      # `--no-fatal-infos` NO existe en dart analyze (da exit 64).
+      # `dart fix --apply` limpia el estilo cuando se quiera.
+      - run: dart analyze
       - run: flutter test
 
   kotlin:

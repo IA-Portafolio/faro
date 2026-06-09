@@ -13,6 +13,7 @@
 ### Task 1: Backend Feature Flags Storage And Endpoint
 
 **Files:**
+
 - Create: `backend/src/feature_flags.rs`
 - Create: `backend/src/api/feature_flags.rs`
 - Create: `clickhouse/init/88-feature-flags.sql`
@@ -34,6 +35,7 @@
 ### Task 2: JS SDK Local Evaluation
 
 **Files:**
+
 - Modify: `sdks/node/src/index.ts`
 - Modify: `sdks/node/test/client.test.mjs`
 
@@ -46,6 +48,7 @@
 ### Task 3: Documentation Touches
 
 **Files:**
+
 - Modify: `sdks/node/README.md`
 
 - [ ] Document the `isFeatureEnabled` API with a short example.
