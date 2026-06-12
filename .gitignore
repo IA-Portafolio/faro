@@ -6,6 +6,8 @@
 # Logs / coredumps
 *.log
 core.*
+# `core.*` se come módulos legítimos llamados core.<ext>; re-incluir los del repo.
+!frontend/src/lib/api/core.*
 
 # OS / editor
 .DS_Store
@@ -28,12 +30,14 @@ node_modules/
 frontend/.svelte-kit/
 frontend/build/
 frontend/.vercel/
+sdks/_shared/sdk-core/dist/
 sdks/node/dist/
 sdks/nextjs/dist/
 sdks/nextjs/.next/
 sdks/expo/dist/
 sdks/expo/.expo/
 sdks/*/package-lock.json
+sdks/_shared/sdk-core/package-lock.json
 
 # Python SDK
 __pycache__/

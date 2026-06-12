@@ -7,7 +7,24 @@
  */
 
 export type Severity = 'TRACE' | 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'FATAL';
-export type ScrubPreset = 'email' | 'jwt' | 'credit-card' | 'api-key';
+
+// Funciones puras compartidas cross-SDK (scrubbing + feature flags).
+// Fuente canónica: sdks/_shared/sdk-core (inlineado en el bundle por tsup).
+import {
+  DEFAULT_SCRUB_FIELDS,
+  HEADER_SCRUB_FIELDS,
+  SCRUB_REGEXES,
+  scrubWire,
+  clampRollout,
+  normalizeConditions,
+  matchesFeatureConditions,
+  stickyBucket,
+  type ScrubPreset,
+  type FeatureFlagContext,
+  type FeatureFlagWire,
+} from '@iaportafolio/sdk-core';
+
+export type { ScrubPreset, FeatureFlagContext, FeatureFlagWire } from '@iaportafolio/sdk-core';
 
 export interface FaroPersistenceOptions {
   /** Clave AsyncStorage. Default: `@faro/queue/{service}` */
@@ -80,84 +97,9 @@ export interface ProductEventWire {
 
 // ---------- Feature flags ----------
 
-export interface FeatureFlagContext {
-  distinct_id?: string;
-  properties?: Record<string, unknown>;
-}
-
-export interface FeatureFlagWire {
-  key: string;
-  rollout_percentage: number;
-  conditions?: {
-    properties?: Record<string, unknown>;
-  } & Record<string, unknown>;
-}
-
 interface FeatureFlagsResponse {
   project?: string;
   flags?: FeatureFlagWire[];
-}
-
-const DEFAULT_SCRUB_FIELDS = [
-  'password', 'token', 'secret', 'authorization', 'cookie', 'set-cookie', 'api_key', 'apikey',
-];
-const HEADER_SCRUB_FIELDS = ['authorization', 'cookie', 'set-cookie'];
-const REDACTED = '[REDACTED]';
-
-const SCRUB_REGEXES: Record<ScrubPreset, RegExp> = {
-  'email': /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g,
-  'jwt': /\beyJ[\w-]+\.[\w-]+\.[\w-]+\b/g,
-  // Sin Luhn; opt-in deliberadamente.
-  'credit-card': /\b(?:\d[ -]?){13,19}\b/g,
-  'api-key': /\b(?:sk-|ghp_|ghs_|gho_|github_pat_|xoxb-|xoxp-|xoxs-|AKIA|ASIA|AIza)[\w-]{12,}\b/g,
-};
-
-function scrubString(s: string, regexes: RegExp[]): string {
-  let out = s;
-  for (const re of regexes) out = out.replace(re, REDACTED);
-  return out;
-}
-
-function scrubWire(wire: Wire, needles: string[], regexes: RegExp[]): void {
-  for (const key of Object.keys(wire.attributes)) {
-    const kLower = key.toLowerCase();
-    if (needles.some((n) => kLower.includes(n))) {
-      wire.attributes[key] = REDACTED;
-    } else if (regexes.length > 0) {
-      wire.attributes[key] = scrubString(wire.attributes[key], regexes);
-    }
-  }
-  if (regexes.length > 0) wire.message = scrubString(wire.message, regexes);
-}
-
-// ---- Feature flags: helpers (port idéntico al SDK Node) ----
-
-function clampRollout(value: unknown): number {
-  const n = typeof value === 'number' && Number.isFinite(value) ? Math.trunc(value) : 0;
-  return Math.max(0, Math.min(100, n));
-}
-
-function normalizeConditions(value: FeatureFlagWire['conditions']): FeatureFlagWire['conditions'] {
-  return value && typeof value === 'object' ? value : {};
-}
-
-function matchesFeatureConditions(flag: FeatureFlagWire, context: FeatureFlagContext): boolean {
-  const required = flag.conditions?.properties;
-  if (!required || typeof required !== 'object') return true;
-  const props = context.properties ?? {};
-  for (const [key, expected] of Object.entries(required)) {
-    if (props[key] !== expected) return false;
-  }
-  return true;
-}
-
-function stickyBucket(input: string): number {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return (hash >>> 0) % 100;
 }
 
 // ---- Persistencia en AsyncStorage ----

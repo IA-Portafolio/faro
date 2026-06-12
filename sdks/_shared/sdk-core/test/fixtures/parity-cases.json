@@ -1,0 +1,118 @@
+{
+  "$comment": "Casos canónicos de la spec de paridad cross-SDK. Spec escrita: docs/superpowers/specs/2026-06-10-sdk-parity-spec.md. NO cambiar valores esperados sin actualizar la spec: stickyBucket re-bucketiza usuarios.",
+  "stickyBucket": [
+    { "input": "user-42", "expected": 99 },
+    { "input": "proj:flag:user-42", "expected": 88 },
+    { "input": "", "expected": 61 },
+    { "input": "a", "expected": 20 },
+    { "input": "unicode-ñandú", "expected": 19 },
+    { "input": "proj:checkout-v2:anon_123", "expected": 46 }
+  ],
+  "clampRollout": [
+    { "input": 50, "expected": 50 },
+    { "input": -10, "expected": 0 },
+    { "input": 150, "expected": 100 },
+    { "input": 99.9, "expected": 99 },
+    { "input": null, "expected": 0 },
+    { "input": "50", "expected": 0 },
+    { "input": "NaN-marker", "expected": 0, "$special": "NaN" },
+    { "input": "Infinity-marker", "expected": 0, "$special": "Infinity" }
+  ],
+  "matchesFeatureConditions": [
+    {
+      "name": "sin conditions → true",
+      "flag": { "key": "f", "rollout_percentage": 100 },
+      "context": {},
+      "expected": true
+    },
+    {
+      "name": "properties exactas → true",
+      "flag": { "key": "f", "rollout_percentage": 100, "conditions": { "properties": { "plan": "pro" } } },
+      "context": { "properties": { "plan": "pro" } },
+      "expected": true
+    },
+    {
+      "name": "property distinta → false",
+      "flag": { "key": "f", "rollout_percentage": 100, "conditions": { "properties": { "plan": "pro" } } },
+      "context": { "properties": { "plan": "free" } },
+      "expected": false
+    },
+    {
+      "name": "property ausente → false",
+      "flag": { "key": "f", "rollout_percentage": 100, "conditions": { "properties": { "plan": "pro" } } },
+      "context": {},
+      "expected": false
+    },
+    {
+      "name": "igualdad estricta: '1' !== 1 → false",
+      "flag": { "key": "f", "rollout_percentage": 100, "conditions": { "properties": { "level": 1 } } },
+      "context": { "properties": { "level": "1" } },
+      "expected": false
+    },
+    {
+      "name": "conditions.properties vacío → true",
+      "flag": { "key": "f", "rollout_percentage": 100, "conditions": { "properties": {} } },
+      "context": {},
+      "expected": true
+    }
+  ],
+  "scrubWire": [
+    {
+      "name": "needle en key (case-insensitive, substring) → REDACTED entero",
+      "needles": ["password", "token", "authorization"],
+      "patterns": [],
+      "wire": {
+        "message": "login ok",
+        "attributes": { "user_PASSWORD": "hunter2", "AuthorizationHeader": "Bearer x", "plan": "pro" }
+      },
+      "expected": {
+        "message": "login ok",
+        "attributes": { "user_PASSWORD": "[REDACTED]", "AuthorizationHeader": "[REDACTED]", "plan": "pro" }
+      }
+    },
+    {
+      "name": "regex jwt + api-key en values y message",
+      "needles": [],
+      "patterns": ["jwt", "api-key"],
+      "wire": {
+        "message": "token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl y key sk-abcdefghijklmnop",
+        "attributes": { "note": "ghp_0123456789abcdef útil" }
+      },
+      "expected": {
+        "message": "token [REDACTED] y key [REDACTED]",
+        "attributes": { "note": "[REDACTED] útil" }
+      }
+    },
+    {
+      "name": "preset email solo si está activado",
+      "needles": [],
+      "patterns": ["email"],
+      "wire": {
+        "message": "contacto victor@example.com",
+        "attributes": { "from": "a+b@dom.co.ar" }
+      },
+      "expected": {
+        "message": "contacto [REDACTED]",
+        "attributes": { "from": "[REDACTED]" }
+      }
+    },
+    {
+      "name": "sin patterns: message intacto, solo needles",
+      "needles": ["secret"],
+      "patterns": [],
+      "wire": {
+        "message": "secret eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "attributes": { "client_secret": "x", "other": "y" }
+      },
+      "expected": {
+        "message": "secret eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2ln",
+        "attributes": { "client_secret": "[REDACTED]", "other": "y" }
+      }
+    }
+  ],
+  "constants": {
+    "DEFAULT_SCRUB_FIELDS": ["password", "token", "secret", "authorization", "cookie", "set-cookie", "api_key", "apikey"],
+    "HEADER_SCRUB_FIELDS": ["authorization", "cookie", "set-cookie"],
+    "REDACTED": "[REDACTED]"
+  }
+}

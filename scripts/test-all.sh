@@ -16,8 +16,10 @@
 #   scripts/test-all.sh                 # todo lo que el entorno permita
 #   scripts/test-all.sh frontend cli    # sólo las suites nombradas
 #
-# Suites: backend cli frontend sdk-node sdk-nextjs sdk-expo
+# Suites: backend cli frontend sdk-core sdk-node sdk-nextjs sdk-expo
 #         sdk-python sdk-go sdk-flutter sdk-kotlin
+# (sdk-core = sdks/_shared/sdk-core: funciones compartidas + spec ejecutable
+#  de paridad cross-SDK; corre antes que los SDKs TS que la consumen.)
 #
 # CLICKHOUSE_URL: si está seteada y CH responde, el backend corre TAMBIÉN los
 # integration tests de backend/tests/*.rs. Si no, sólo los unit tests inline
@@ -72,6 +74,7 @@ do_frontend() {
   if ! have npm; then skip frontend "npm no instalado"; return; fi
   run frontend bash -c 'cd frontend && { [ -d node_modules ] || npm install; } && npx svelte-kit sync && npm test'
 }
+do_sdk_core()   { have npm && run sdk-core   bash -c 'cd sdks/_shared/sdk-core && { [ -d node_modules ] || npm install; } && npm test' || skip sdk-core "npm no instalado"; }
 do_sdk_node()   { have npm && run sdk-node   bash -c 'cd sdks/node   && { [ -d node_modules ] || npm install; }                   && npm test' || skip sdk-node "npm no instalado"; }
 do_sdk_nextjs() { have npm && run sdk-nextjs bash -c 'cd sdks/nextjs && { [ -d node_modules ] || npm install --legacy-peer-deps; } && npm test' || skip sdk-nextjs "npm no instalado"; }
 do_sdk_expo()   { have npm && run sdk-expo   bash -c 'cd sdks/expo   && { [ -d node_modules ] || npm install; }                   && npm test' || skip sdk-expo "npm no instalado"; }
@@ -88,6 +91,7 @@ do_sdk_kotlin() {
 wanted backend     && do_backend
 wanted cli         && do_cli
 wanted frontend    && do_frontend
+wanted sdk-core    && do_sdk_core
 wanted sdk-node    && do_sdk_node
 wanted sdk-nextjs  && do_sdk_nextjs
 wanted sdk-expo    && do_sdk_expo

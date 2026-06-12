@@ -36,8 +36,18 @@
   },
   "homepage": "https://github.com/IA-Portafolio/faro/tree/main/sdks/nextjs#readme",
   "bugs": "https://github.com/IA-Portafolio/faro/issues",
-  "keywords": ["faro", "nextjs", "observability", "rum", "web-vitals", "logging", "telemetry"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "faro",
+    "nextjs",
+    "observability",
+    "rum",
+    "web-vitals",
+    "logging",
+    "telemetry"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup src/index.ts src/client.ts src/server.ts --format cjs,esm --dts --clean --external react --external next --external @iaportafolio/node --external rrweb",
     "test": "npm run build && node --test --test-force-exit test/browser.test.mjs"
@@ -49,18 +59,23 @@
     "rrweb": "^2.0.0-alpha.4"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true },
-    "rrweb": { "optional": true }
+    "react": {
+      "optional": true
+    },
+    "rrweb": {
+      "optional": true
+    }
   },
   "dependencies": {
     "web-vitals": "^5.3.0"
   },
   "devDependencies": {
-    "tsup": "^8.0.0",
-    "typescript": "^6.0.3",
+    "@iaportafolio/node": "^0.1.0",
+    "@iaportafolio/sdk-core": "file:../_shared/sdk-core",
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
     "react": "^19.0.0",
-    "@iaportafolio/node": "^0.1.0"
+    "tsup": "^8.0.0",
+    "typescript": "^6.0.3"
   }
 }

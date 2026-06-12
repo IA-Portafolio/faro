@@ -5,20 +5,39 @@
   "license": "MIT",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "src", "README.md"],
-  "repository": { "type": "git", "url": "git+https://github.com/IA-Portafolio/faro.git", "directory": "sdks/expo" },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IA-Portafolio/faro.git",
+    "directory": "sdks/expo"
+  },
   "homepage": "https://github.com/IA-Portafolio/faro/tree/main/sdks/expo#readme",
   "bugs": "https://github.com/IA-Portafolio/faro/issues",
-  "keywords": ["faro", "expo", "react-native", "observability", "logging"],
-  "publishConfig": { "access": "public" },
+  "keywords": [
+    "faro",
+    "expo",
+    "react-native",
+    "observability",
+    "logging"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "test": "npm run build && node --test --test-force-exit test/*.test.mjs"
   },
-  "peerDependencies": { "react-native": ">=0.72" },
+  "peerDependencies": {
+    "react-native": ">=0.72"
+  },
   "devDependencies": {
+    "@iaportafolio/sdk-core": "file:../_shared/sdk-core",
+    "@types/node": "^25.9.2",
     "tsup": "^8.0.0",
-    "typescript": "^6.0.3",
-    "@types/node": "^25.9.2"
+    "typescript": "^6.0.3"
   }
 }
