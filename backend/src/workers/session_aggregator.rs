@@ -85,11 +85,15 @@ pub fn start_session_aggregator(state: SharedState) {
 
         loop {
             tick.tick().await;
+            metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "session_aggregator").increment(1);
             let from = Utc::now() - chrono::Duration::minutes(lookback_minutes as i64);
             match aggregate_once(&state, from, gap_minutes).await {
                 Ok(0) => tracing::debug!("session_aggregator: tick sin sesiones"),
                 Ok(n) => tracing::info!(sessions = n, "session_aggregator: tick completo"),
-                Err(e) => tracing::warn!(error = %e, "session_aggregator: tick falló"),
+                Err(e) => {
+                    tracing::warn!(error = %e, "session_aggregator: tick falló");
+                    metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "session_aggregator").increment(1);
+                }
             }
         }
     });

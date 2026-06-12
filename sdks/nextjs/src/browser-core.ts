@@ -71,6 +71,13 @@ export interface FaroBrowserOptions {
   captureSessionReplay?: boolean;
   /** % de sesiones a grabar cuando captureSessionReplay=true (default 1.0) */
   sessionReplaySampleRate?: number;
+  /**
+   * Si true (DEFAULT), el session replay enmascara TODO el texto del DOM (no
+   * sólo inputs), para no capturar PII visible en pantalla (emails, saldos,
+   * nombres). Ponelo en `false` sólo si necesitás replays con texto legible y
+   * ya controlás la PII con `.faro-mask` u otros medios.
+   */
+  sessionReplayMaskAllText?: boolean;
   /** Hook post-scrub; devolver null descarta el evento. */
   beforeSend?: (event: WireEvent) => WireEvent | null;
   /** Substrings case-insensitive: cualquier atributo cuya clave los contenga se redacta. Default: lista común de campos sensibles. */
@@ -248,6 +255,7 @@ class FaroBrowser {
       },
       captureSessionReplay: opts.captureSessionReplay ?? false,
       sessionReplaySampleRate: opts.sessionReplaySampleRate ?? 1.0,
+      sessionReplayMaskAllText: opts.sessionReplayMaskAllText ?? true,
       beforeSend: opts.beforeSend,
       scrubFields,
       scrubHeaders,
@@ -287,6 +295,7 @@ class FaroBrowser {
         sampleRate: this.opts.sessionReplaySampleRate,
         getUserId: () => this.user?.id,
         scrubUrlQuery: this.opts.scrubUrlQuery,
+        maskAllText: this.opts.sessionReplayMaskAllText,
       });
     }
   }

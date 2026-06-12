@@ -113,12 +113,16 @@ pub fn start_fingerprint_compactor(state: SharedState) {
 
         loop {
             tick.tick().await;
+            metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "fingerprint_compactor").increment(1);
             match compact_once(&state, &mut known_fps, jaccard_threshold).await {
                 Ok(0) => tracing::debug!("compactador: nada nuevo"),
                 Ok(n) => {
                     tracing::info!(processed = n, "compactador: nuevos fingerprints procesados")
                 }
-                Err(e) => tracing::warn!(error = %e, "compactador: tick falló"),
+                Err(e) => {
+                    tracing::warn!(error = %e, "compactador: tick falló");
+                    metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "fingerprint_compactor").increment(1);
+                }
             }
         }
     });

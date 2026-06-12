@@ -97,6 +97,8 @@ pub fn start_user_unifier(state: SharedState) {
 
         loop {
             tick.tick().await;
+            metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "user_unifier")
+                .increment(1);
             // Punto de corte del tick. Usamos `now()` como `to` para que
             // ventanas consecutivas sean estrictamente disjuntas (modulo
             // overlap). Si el tick demora, igual avanza al `now()` actual.
@@ -117,6 +119,7 @@ pub fn start_user_unifier(state: SharedState) {
                 }
                 Err(e) => {
                     tracing::warn!(error = %e, "user_unifier: tick falló — reintento en el próximo tick");
+                    metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "user_unifier").increment(1);
                     // No avanzamos watermark: el siguiente tick reintenta esta ventana.
                 }
             }

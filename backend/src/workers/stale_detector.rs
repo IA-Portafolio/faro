@@ -82,6 +82,7 @@ pub fn start_stale_detector(state: SharedState) {
 
         loop {
             tick.tick().await;
+            metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "stale_detector").increment(1);
             match detect_once(&state, &mut is_stale, threshold_hours).await {
                 Ok((stale_now, transitions)) => {
                     if transitions > 0 {
@@ -94,7 +95,10 @@ pub fn start_stale_detector(state: SharedState) {
                         tracing::debug!(stale_now, "stale: tick sin transiciones");
                     }
                 }
-                Err(e) => tracing::warn!(error = %e, "stale: tick falló"),
+                Err(e) => {
+                    metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "stale_detector").increment(1);
+                    tracing::warn!(error = %e, "stale: tick falló");
+                }
             }
         }
     });

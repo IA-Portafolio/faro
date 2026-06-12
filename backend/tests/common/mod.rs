@@ -121,7 +121,12 @@ impl TestApp {
         insert_project(&ch, &project_slug, &project_token).await;
         state.projects.reload(&ch).await.expect("reload projects");
 
-        workers::start_ingest_writers(state.clone());
+        // Coordinador de apagado: en los tests no apagamos, así que dejamos el
+        // sender vivo (leak intencional — el proceso de test es efímero) para que
+        // los writers no drenen y salgan antes de tiempo.
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        std::mem::forget(shutdown_tx);
+        workers::start_ingest_writers(state.clone(), shutdown_rx);
 
         let api_router = api::router(state.clone());
         let otlp_router = ingest::otlp_router(state.clone());

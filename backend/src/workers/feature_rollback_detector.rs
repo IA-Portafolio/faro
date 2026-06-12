@@ -78,7 +78,9 @@ pub fn start_feature_rollback_detector(state: SharedState) {
 
         loop {
             tick.tick().await;
+            metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "feature_rollback_detector").increment(1);
             if let Err(e) = evaluate(&state, &mut active).await {
+                metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "feature_rollback_detector").increment(1);
                 tracing::warn!(error = %e, "evaluación feature rollback falló");
             }
         }

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use tokio::sync::{broadcast, mpsc};
 
+use crate::auth::LoginRateLimiter;
 use crate::config::Config;
 use crate::feature_flags::FeatureFlagsCache;
 use crate::ingest::rate_limit::IngestLimiter;
@@ -207,6 +208,9 @@ pub struct AppState {
     /// Rate limiter para verificación de códigos TOTP/recovery. 5 intentos/min/user;
     /// sin esto los 6 dígitos son brute-forceables vía API en minutos.
     pub totp_rl: TotpRateLimiter,
+    /// Rate limiter para `/auth/login` (fase password), por cuenta e IP. Sin esto
+    /// el endpoint público permite fuerza bruta de credenciales + DoS por Argon2id.
+    pub login_rl: LoginRateLimiter,
     /// Secretos TOTP en mitad del setup, antes de que el user confirme el código.
     /// Ver `PendingTotpSecrets` para el porqué de mantenerlos in-memory.
     pub pending_totp: PendingTotpSecrets,
@@ -228,6 +232,7 @@ impl AppState {
             feature_flags: FeatureFlagsCache::new(),
             limiter,
             totp_rl: TotpRateLimiter::new(),
+            login_rl: LoginRateLimiter::new(),
             pending_totp: PendingTotpSecrets::new(),
         }
     }

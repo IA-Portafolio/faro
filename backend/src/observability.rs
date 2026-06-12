@@ -80,6 +80,24 @@ pub mod names {
     /// es lo que de verdad importa para dimensionar la pérdida.
     /// Label: `table`.
     pub const CH_ROWS_DROPPED: &str = "faro_clickhouse_rows_dropped_total";
+
+    /// Counter — resultado del despacho de UNA notificación de alerta a UN destino.
+    /// Sin esto, un webhook/canal/token roto se tragaba el fallo en silencio y el
+    /// panel mostraba "firing" mientras la alerta nunca salía. Alertar sobre
+    /// `outcome="failed"` o `"unroutable"`.
+    /// Labels: `kind` (channel|webhook|telegram|unknown), `outcome` (sent|failed|unroutable).
+    pub const ALERT_NOTIFY: &str = "faro_alert_notify_total";
+
+    /// Counter — iteraciones completadas por cada worker en segundo plano. Es el
+    /// heartbeat: `rate(faro_worker_runs_total[5m]) == 0` para un worker que
+    /// debería tickear = worker muerto/colgado (panic, deadlock). Junto con
+    /// [`WORKER_ERRORS`] da la salud de los 10 workers que antes eran invisibles.
+    /// Label: `worker`.
+    pub const WORKER_RUNS: &str = "faro_worker_runs_total";
+
+    /// Counter — errores no fatales dentro del ciclo de un worker (query fallida,
+    /// insert fallido, etc. — el worker sigue vivo). Label: `worker`.
+    pub const WORKER_ERRORS: &str = "faro_worker_errors_total";
 }
 
 /// Intervalo de muestreo del gauge de profundidad de los canales de ingesta.

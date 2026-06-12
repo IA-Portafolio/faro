@@ -126,8 +126,10 @@ pub fn start_anomaly_detector(state: SharedState) {
 
         loop {
             tick.tick().await;
+            metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "anomaly_detector").increment(1);
             for signal in [Signal::Errors, Signal::P95Latency, Signal::LogVolume] {
                 if let Err(e) = evaluate_signal(&state, signal, &mut active).await {
+                    metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "anomaly_detector").increment(1);
                     tracing::warn!(signal = signal.slug(), error = %e, "evaluación de anomalía falló");
                 }
             }

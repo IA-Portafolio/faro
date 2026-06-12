@@ -22,6 +22,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 
+use crate::observability::names;
 use crate::state::SharedState;
 use crate::storage::AlertIncidentRow;
 
@@ -134,15 +135,41 @@ fn parse_target(raw: &str) -> Option<Target> {
     None
 }
 
+/// Resumen del despacho de un incidente a todos sus destinos. Antes el resultado
+/// se descartaba con `let _ = dispatch(...)`; devolverlo permite al evaluador
+/// loguear/alertar cuando una notificación no salió aunque el incidente quede
+/// "firing" en el panel.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NotifyOutcome {
+    /// Destinos despachados con éxito.
+    pub sent: usize,
+    /// Destinos cuyo envío falló (webhook caído, token inválido, canal borrado…).
+    pub failed: usize,
+    /// Targets que no se pudieron parsear (string mal formado / scheme no soportado).
+    pub unroutable: usize,
+}
+
+/// Etiqueta de baja cardinalidad para la métrica `faro_alert_notify_total`.
+fn target_kind(t: &Target) -> &'static str {
+    match t {
+        Target::Channel(_) => "channel",
+        Target::InlineWebhook(_) => "webhook",
+        Target::InlineTelegram { .. } => "telegram",
+    }
+}
+
 /// Dispara una notificación a cada destino configurado. Mantiene firma estable
-/// para `workers/alert_evaluator.rs`.
+/// para `workers/alert_evaluator.rs` (salvo el tipo de retorno, ahora un resumen).
+/// Cada destino emite `faro_alert_notify_total{kind,outcome}` para que un fallo
+/// de entrega sea visible en `/metrics` en vez de tragarse en silencio.
 pub async fn dispatch(
     state: &SharedState,
     targets: &[String],
     incident: &AlertIncidentRow,
-) -> Result<()> {
+) -> Result<NotifyOutcome> {
+    let mut outcome = NotifyOutcome::default();
     if targets.is_empty() {
-        return Ok(());
+        return Ok(outcome);
     }
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -153,16 +180,29 @@ pub async fn dispatch(
         let parsed = match parse_target(raw) {
             Some(p) => p,
             None => {
+                outcome.unroutable += 1;
+                metrics::counter!(names::ALERT_NOTIFY, "kind" => "unknown", "outcome" => "unroutable")
+                    .increment(1);
                 tracing::warn!(target = %raw, "target de notificación no reconocido (se ignora)");
                 continue;
             }
         };
-        let result = dispatch_one(state, &client, parsed, incident).await;
-        if let Err(e) = result {
-            tracing::warn!(target = %raw, error = %e, "dispatch de notificación falló");
+        let kind = target_kind(&parsed);
+        match dispatch_one(state, &client, parsed, incident).await {
+            Ok(()) => {
+                outcome.sent += 1;
+                metrics::counter!(names::ALERT_NOTIFY, "kind" => kind, "outcome" => "sent")
+                    .increment(1);
+            }
+            Err(e) => {
+                outcome.failed += 1;
+                metrics::counter!(names::ALERT_NOTIFY, "kind" => kind, "outcome" => "failed")
+                    .increment(1);
+                tracing::warn!(target = %raw, error = %e, "dispatch de notificación falló");
+            }
         }
     }
-    Ok(())
+    Ok(outcome)
 }
 
 async fn dispatch_one(

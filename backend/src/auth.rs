@@ -10,19 +10,22 @@
 //!   expiración o revoke explícito); cambiar el password revoca todas las demás
 //!   sesiones del user dejando viva la actual.
 
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::extract::State;
-use axum::http::{Request, StatusCode};
+use axum::http::{HeaderMap, Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use parking_lot::Mutex;
 use rand::distr::Alphanumeric;
 use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -161,6 +164,94 @@ pub fn verify_password(plain: &str, hash: &str) -> bool {
         .is_ok()
 }
 
+/// Hash Argon2id dummy, calculado una vez. Sirve para verificar en tiempo
+/// (casi) constante en `login` cuando el email NO existe: corremos un verify
+/// igual de caro contra este hash para no filtrar la existencia de la cuenta
+/// por timing ni por la ausencia del costo de Argon2.
+fn dummy_password_hash() -> &'static str {
+    use std::sync::OnceLock;
+    static DUMMY: OnceLock<String> = OnceLock::new();
+    DUMMY.get_or_init(|| hash_password("faro-constant-time-dummy-password").unwrap_or_default())
+}
+
+/// IP del cliente detrás de un reverse proxy (Caddy/Traefik en prod). Toma el
+/// primer hop de `X-Forwarded-For`, luego `X-Real-IP`; `unknown` si no hay
+/// ninguno (dev directo). El backend no se expone directo a internet, sólo vía
+/// el proxy que setea estas cabeceras, así que confiar en ellas es correcto.
+fn client_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            headers
+                .get("x-real-ip")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+        })
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+/// Rate limiter para `/auth/login` (fase password). El endpoint es público
+/// (`is_public_path`) y cada intento corre un verify Argon2id deliberadamente
+/// caro: sin throttle queda expuesto a fuerza bruta de credenciales y a un DoS
+/// por agotamiento de CPU. Limita por DOS dimensiones independientes —cuenta
+/// (email) e IP—; basta con que una pegue el cap para frenar. In-memory por
+/// proceso (modelo de un nodo, igual que [`crate::totp::TotpRateLimiter`]); si
+/// hay varios nodos en el futuro, migra a Redis con la misma API.
+#[derive(Clone, Default)]
+pub struct LoginRateLimiter {
+    inner: Arc<Mutex<HashMap<String, Vec<Instant>>>>,
+}
+
+const LOGIN_RL_WINDOW: Duration = Duration::from_secs(300);
+const LOGIN_RL_MAX_PER_EMAIL: usize = 10;
+const LOGIN_RL_MAX_PER_IP: usize = 30;
+
+impl LoginRateLimiter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registra un intento contra `key` (ventana deslizante) y devuelve `true`
+    /// si sigue bajo `max`.
+    fn check_key(&self, key: String, max: usize, now: Instant) -> bool {
+        let cutoff = now.checked_sub(LOGIN_RL_WINDOW).unwrap_or(now);
+        let mut guard = self.inner.lock();
+        let attempts = guard.entry(key).or_default();
+        attempts.retain(|t| *t >= cutoff);
+        if attempts.len() >= max {
+            return false;
+        }
+        attempts.push(now);
+        true
+    }
+
+    /// Chequea+registra un intento de login para `(ip, email)`. Devuelve `true`
+    /// sólo si AMBAS dimensiones siguen bajo el cap. Si la cuenta ya está
+    /// bloqueada no toca el contador de IP (y no se llega a registrar de más).
+    pub fn check_and_record(&self, ip: &str, email: &str) -> bool {
+        let now = Instant::now();
+        if !self.check_key(format!("email:{email}"), LOGIN_RL_MAX_PER_EMAIL, now) {
+            return false;
+        }
+        if !self.check_key(format!("ip:{ip}"), LOGIN_RL_MAX_PER_IP, now) {
+            return false;
+        }
+        true
+    }
+
+    /// Limpia el contador de la cuenta tras un password correcto, para no dejar
+    /// bloqueado a un user legítimo. No limpia el de IP (sigue protegiendo
+    /// contra credential stuffing desde esa IP).
+    pub fn clear_email(&self, email: &str) {
+        self.inner.lock().remove(&format!("email:{email}"));
+    }
+}
+
 // ---------- Session tokens ----------
 
 fn new_random_token() -> String {
@@ -287,6 +378,7 @@ pub enum LoginResponse {
 async fn login(
     State(state): State<SharedState>,
     jar: CookieJar,
+    headers: HeaderMap,
     Json(input): Json<LoginInput>,
 ) -> Result<(CookieJar, Json<LoginResponse>), ApiError> {
     let email = input.email.trim().to_lowercase();
@@ -295,11 +387,35 @@ async fn login(
             "email y password son obligatorios".into(),
         ));
     }
+
+    // Throttle ANTES del lookup + verify Argon2id (caro). Frena fuerza bruta de
+    // credenciales y el DoS por agotamiento de CPU sobre un endpoint público.
+    let ip = client_ip(&headers);
+    if !state.login_rl.check_and_record(&ip, &email) {
+        return Err(ApiError::TooManyRequests {
+            retry_after_secs: 60,
+        });
+    }
+
     let user = lookup_user_by_email(&state, &email).await?;
-    let user = user.ok_or(ApiError::Unauthorized)?;
-    if !verify_password(&input.password, &user.password_hash) {
+    // Verificación en tiempo (casi) constante: si el email no existe igual
+    // corremos un verify Argon2id contra un hash dummy, para no filtrar la
+    // existencia de la cuenta por timing. El resultado siempre es "no autorizado".
+    let password_ok = match &user {
+        Some(u) => verify_password(&input.password, &u.password_hash),
+        None => {
+            verify_password(&input.password, dummy_password_hash());
+            false
+        }
+    };
+    let Some(user) = user else {
+        return Err(ApiError::Unauthorized);
+    };
+    if !password_ok {
         return Err(ApiError::Unauthorized);
     }
+    // Password correcto → no dejar la cuenta bloqueada por intentos previos.
+    state.login_rl.clear_email(&email);
 
     if user.totp_enabled == 1 && !user.totp_secret.is_empty() {
         // Fase 1: emitir challenge. NO sentamos la cookie ni emitimos sesión todavía.
@@ -821,13 +937,15 @@ pub async fn bootstrap_admin_if_empty(state: &SharedState) -> anyhow::Result<()>
     };
     state.ch.insert("faro.users", &[row]).await?;
     tracing::info!(%email, "usuario admin de bootstrap creado");
-    let _ = Duration::default(); // silence unused import warning under some feature combos
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{hash_password, hash_token, is_public_path, verify_password};
+    use super::{
+        hash_password, hash_token, is_public_path, verify_password, LoginRateLimiter,
+        LOGIN_RL_MAX_PER_EMAIL, LOGIN_RL_MAX_PER_IP,
+    };
 
     #[test]
     fn password_hash_verify_roundtrip() {
@@ -903,5 +1021,55 @@ mod tests {
         ] {
             assert!(!is_public_path(p), "{p} NO debería ser público");
         }
+    }
+
+    #[test]
+    fn login_rl_blocks_after_per_email_cap() {
+        let rl = LoginRateLimiter::new();
+        // Misma cuenta desde IPs distintas: el cap por email debe frenar igual,
+        // antes de pegar el (más alto) cap por IP.
+        for i in 0..LOGIN_RL_MAX_PER_EMAIL {
+            let ip = format!("10.0.0.{i}");
+            assert!(
+                rl.check_and_record(&ip, "victim@example.com"),
+                "intento {i} debería pasar"
+            );
+        }
+        assert!(
+            !rl.check_and_record("10.0.0.250", "victim@example.com"),
+            "tras {LOGIN_RL_MAX_PER_EMAIL} intentos la cuenta debe quedar bloqueada"
+        );
+        // Otra cuenta NO está afectada.
+        assert!(rl.check_and_record("10.0.0.250", "otra@example.com"));
+    }
+
+    #[test]
+    fn login_rl_blocks_after_per_ip_cap() {
+        let rl = LoginRateLimiter::new();
+        // Credential stuffing: muchas cuentas distintas desde una sola IP. El cap
+        // por IP debe frenar aunque ninguna cuenta individual llegue a su tope.
+        for i in 0..LOGIN_RL_MAX_PER_IP {
+            let email = format!("user{i}@example.com");
+            assert!(
+                rl.check_and_record("203.0.113.7", &email),
+                "intento {i} debería pasar"
+            );
+        }
+        assert!(
+            !rl.check_and_record("203.0.113.7", "another@example.com"),
+            "tras {LOGIN_RL_MAX_PER_IP} intentos esa IP debe quedar bloqueada"
+        );
+    }
+
+    #[test]
+    fn login_rl_clear_email_resets_account_after_success() {
+        let rl = LoginRateLimiter::new();
+        for _ in 0..LOGIN_RL_MAX_PER_EMAIL {
+            assert!(rl.check_and_record("10.0.0.1", "u@example.com"));
+        }
+        assert!(!rl.check_and_record("10.0.0.1", "u@example.com"));
+        // Tras un password correcto se limpia el contador de la cuenta.
+        rl.clear_email("u@example.com");
+        assert!(rl.check_and_record("10.0.0.1", "u@example.com"));
     }
 }

@@ -38,10 +38,14 @@ pub fn start_monitor_runner(state: SharedState) {
                 _ = reload.tick() => {
                     match load_monitors(&state).await {
                         Ok(m) => monitors = m,
-                        Err(e) => tracing::warn!(error = %e, "falló el reload de la lista de monitores"),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "falló el reload de la lista de monitores");
+                            metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "monitor_runner").increment(1);
+                        }
                     }
                 }
                 _ = tick.tick() => {
+                    metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "monitor_runner").increment(1);
                     let now = Instant::now();
                     for m in &monitors {
                         if m.enabled == 0 || m.deleted == 1 {

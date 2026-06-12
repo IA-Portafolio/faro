@@ -19,7 +19,7 @@ use crate::storage::Client;
 /// hasta N o hasta T y vuelca a ClickHouse. En caso de fallo, las filas se descartan tras
 /// loguear — el buffering durable corresponde a una capa de cola (Redis/Kafka) que podemos
 /// cablear más adelante.
-pub fn start_ingest_writers(state: SharedState) {
+pub fn start_ingest_writers(state: SharedState, shutdown: tokio::sync::watch::Receiver<bool>) {
     let logs_rx = state
         .ingest
         .logs_rx
@@ -54,15 +54,37 @@ pub fn start_ingest_writers(state: SharedState) {
     let max = state.cfg.batch_max_rows;
     let flush_ms = state.cfg.batch_flush_ms;
 
-    spawn_writer("faro.logs", state.ch.clone(), logs_rx, max, flush_ms);
-    spawn_writer("faro.spans", state.ch.clone(), spans_rx, max, flush_ms);
-    spawn_writer("faro.metrics", state.ch.clone(), metrics_rx, max, flush_ms);
+    spawn_writer(
+        "faro.logs",
+        state.ch.clone(),
+        logs_rx,
+        max,
+        flush_ms,
+        shutdown.clone(),
+    );
+    spawn_writer(
+        "faro.spans",
+        state.ch.clone(),
+        spans_rx,
+        max,
+        flush_ms,
+        shutdown.clone(),
+    );
+    spawn_writer(
+        "faro.metrics",
+        state.ch.clone(),
+        metrics_rx,
+        max,
+        flush_ms,
+        shutdown.clone(),
+    );
     spawn_writer(
         "faro.monitor_results",
         state.ch.clone(),
         monitor_rx,
         max,
         flush_ms,
+        shutdown.clone(),
     );
     spawn_writer(
         "faro.product_events",
@@ -70,6 +92,7 @@ pub fn start_ingest_writers(state: SharedState) {
         events_rx,
         max,
         flush_ms,
+        shutdown,
     );
 }
 
@@ -79,6 +102,7 @@ fn spawn_writer<T>(
     mut rx: Receiver<T>,
     max_rows: usize,
     flush_ms: u64,
+    mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) where
     T: Serialize + Send + Sync + 'static,
 {
@@ -107,6 +131,27 @@ fn spawn_writer<T>(
                 _ = tick.tick() => {
                     if !buf.is_empty() {
                         flush(table, &ch, &mut buf).await;
+                    }
+                }
+                changed = shutdown.changed() => {
+                    // `Ok` = el watch cambió (apagado señalado). `Err` = el
+                    // coordinador se dropeó (la app está terminando). En ambos
+                    // casos drenamos el canal + buffer y salimos, para no perder
+                    // la telemetría en vuelo ni quedar girando en vacío.
+                    let stop = changed.map(|_| *shutdown.borrow_and_update()).unwrap_or(true);
+                    if stop {
+                        // Apagado ordenado: drenar lo que quede en el canal y vaciar
+                        // el buffer a ClickHouse antes de salir, para no perder la
+                        // telemetría en vuelo en cada deploy/restart.
+                        while let Ok(row) = rx.try_recv() {
+                            buf.push(row);
+                            if buf.len() >= max_rows {
+                                flush(table, &ch, &mut buf).await;
+                            }
+                        }
+                        flush(table, &ch, &mut buf).await;
+                        tracing::info!(%table, "writer drenado en apagado");
+                        break;
                     }
                 }
             }

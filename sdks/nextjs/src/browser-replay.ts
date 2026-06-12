@@ -36,6 +36,30 @@ export interface SessionReplayOptions {
    * `FaroBrowserOptions.scrubUrlQuery`.
    */
   scrubUrlQuery?: boolean;
+  /**
+   * Si true (DEFAULT), enmascara TODO el texto renderizado del DOM en el replay,
+   * no sólo los inputs. Sin esto, el replay captura verbatim emails, nombres,
+   * saldos, números de cuenta y cualquier PII visible en pantalla y la persiste
+   * en el backend. Privacidad primero: ponelo explícitamente en `false` sólo si
+   * necesitás replays con texto legible y ya controlás la PII con `.faro-mask`
+   * o `blockSelector`. Alinea la superficie de privacidad del replay con la de
+   * logs/events (que ya pasan por `scrub*`/`beforeSend`).
+   */
+  maskAllText?: boolean;
+  /** Clase CSS adicional cuyos nodos de texto se enmascaran (además de `.faro-mask`). */
+  maskTextClass?: string;
+  /** Clase CSS cuyos nodos se EXCLUYEN por completo de la grabación (no se capturan). */
+  blockClass?: string;
+  /** Selector CSS cuyos nodos se excluyen por completo de la grabación. */
+  blockSelector?: string;
+  /**
+   * Hook para inspeccionar / redactar / descartar cada evento rrweb ANTES de
+   * encolarlo. Devolvé el evento (posiblemente modificado) para conservarlo, o
+   * `null`/`undefined` para descartarlo. Es el equivalente de `beforeSend` para
+   * el replay: permite que la app consumidora filtre PII que el masking de DOM
+   * no cubra. Si el hook lanza, se conserva el evento original.
+   */
+  beforeEmit?: (event: unknown) => unknown | null | undefined;
 }
 
 /**
@@ -47,7 +71,11 @@ export interface SessionReplayOptions {
 type RrwebRecord = (opts: {
   emit: (event: unknown, isCheckout?: boolean) => void;
   maskAllInputs?: boolean;
+  maskAllText?: boolean;
   maskTextSelector?: string;
+  maskTextClass?: string;
+  blockClass?: string;
+  blockSelector?: string;
   recordCanvas?: boolean;
   checkoutEveryNms?: number;
   sampling?: { mousemove?: number | boolean };
@@ -128,7 +156,7 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
   let active = false;
   let stopping = false;
 
-  const flush = async (useBeacon = false): Promise<void> => {
+  const flush = async (): Promise<void> => {
     if (buffer.length === 0) return;
     const events = buffer.splice(0, maxEventsPerChunk);
     const chunk = {
@@ -142,14 +170,12 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
     };
     const body = JSON.stringify(chunk);
 
-    if (useBeacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      // sendBeacon no permite headers personalizados — token va en query string.
-      const beaconUrl = `${url}?_token=${encodeURIComponent(opts.token)}`;
-      const ok = navigator.sendBeacon(beaconUrl, new Blob([body], { type: 'application/json' }));
-      if (ok) return;
-      // Si falla beacon, intenta fetch keepalive abajo.
-    }
-
+    // Siempre `fetch` con keepalive: funciona durante visibilitychange/pagehide
+    // (igual que sendBeacon) PERO soporta el header Authorization. Antes el path
+    // de cierre usaba `sendBeacon(url?_token=...)`, que filtra el token de
+    // ingesta a access-logs, history del browser y Referer hacia terceros. El
+    // hardening ya había sacado el token de la URL en logs/events; el replay era
+    // el único `?_token=` que quedaba.
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -171,8 +197,18 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
     }
   };
 
-  const pushEvent = (event: unknown): void => {
+  const pushEvent = (rawEvent: unknown): void => {
     if (stopping) return;
+    let event = rawEvent;
+    if (opts.beforeEmit) {
+      try {
+        const out = opts.beforeEmit(rawEvent);
+        if (out == null) return; // el consumidor descartó este evento
+        event = out;
+      } catch {
+        // si el hook lanza, conservamos el evento original (no perdemos el replay)
+      }
+    }
     if (buffer.length >= maxQueueSize) {
       // Antes que crecer sin límite, descartamos los más viejos. Replay degradado
       // > replay que tira un OOM del browser.
@@ -208,7 +244,14 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
     stopRrweb = mod.record({
       emit: pushEvent,
       maskAllInputs: true,
+      // Privacidad primero: enmascara TODO el texto renderizado del DOM por
+      // defecto (no sólo inputs). El consumidor puede bajarlo con
+      // `maskAllText: false` si controla la PII por otros medios.
+      maskAllText: opts.maskAllText ?? true,
       maskTextSelector: '.faro-mask',
+      maskTextClass: opts.maskTextClass,
+      blockClass: opts.blockClass,
+      blockSelector: opts.blockSelector,
       recordCanvas: false,
       // Snapshot completo cada 60s — limita el costo de recuperar una sesión
       // a partir de cualquier punto del medio.
@@ -222,9 +265,9 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
     timer = setInterval(() => void flush(), flushIntervalMs);
 
     const onHide = (): void => {
-      if (document.visibilityState === 'hidden') void flush(true);
+      if (document.visibilityState === 'hidden') void flush();
     };
-    const onPageHide = (): void => void flush(true);
+    const onPageHide = (): void => void flush();
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', onPageHide);
     cleanup.push(() => document.removeEventListener('visibilitychange', onHide));
@@ -233,7 +276,7 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
 
   return {
     get active() { return active; },
-    async flush(useBeacon = false) { await flush(useBeacon); },
+    async flush(_useBeacon = false) { await flush(); },
     stop() {
       if (stopping) return;
       stopping = true;
@@ -244,7 +287,7 @@ export function initSessionReplay(opts: SessionReplayOptions): SessionReplayCont
       }
       for (const fn of cleanup) fn();
       cleanup = [];
-      void flush(true);
+      void flush();
     },
   };
 }

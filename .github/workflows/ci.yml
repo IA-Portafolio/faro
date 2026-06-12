@@ -29,6 +29,16 @@ concurrency:
 
 jobs:
   changes:
+    # SEGURIDAD: el runner `self-hosted, faro-ci` ES el host de producción
+    # (mismo box que sirve Faro y aloja .env.prod + el socket de Docker). El
+    # repo es PÚBLICO, así que un PR desde un fork podría ejecutar código no
+    # confiable (build scripts de cargo, postinstall de npm, scripts/*.sh) en
+    # producción. Este guard salta el pipeline entero para PRs de fork: como
+    # todos los demás jobs dependen de `changes`, al saltarse este no se hace
+    # checkout ni se corre nada del PR en el host. Los push a `main` y los PRs
+    # del MISMO repo (colaboradores) sí corren. (Defensa en profundidad sobre
+    # la política de "Require approval for fork PRs" del repo.)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     outputs:

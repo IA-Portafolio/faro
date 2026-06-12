@@ -35,6 +35,11 @@ jobs:
       - name: Sync source to ${{ env.FARO_DIR }}
         # --delete para limpiar archivos eliminados del repo; conserva .env.prod,
         # backups y volúmenes via la lista de excludes.
+        #
+        # `backups/` está en .gitignore → NO existe en el checkout (origen ./).
+        # Sin excluirlo, `--delete` borraría /opt/faro/backups/ (los tarballs e
+        # imágenes-source de rollback) en cada deploy. Idem .lycheecache y
+        # .playwright-mcp (artefactos locales del host, no del repo).
         run: |
           rsync -av --delete \
             --exclude='.git' \
@@ -46,6 +51,10 @@ jobs:
             --exclude='.env' \
             --exclude='.env.prod' \
             --exclude='*.bak.*' \
+            --exclude='backups' \
+            --exclude='backups/' \
+            --exclude='.lycheecache' \
+            --exclude='.playwright-mcp' \
             ./ "$FARO_DIR/"
 
       - name: Apply pending ClickHouse migrations

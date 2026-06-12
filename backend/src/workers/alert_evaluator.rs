@@ -21,7 +21,25 @@ use crate::storage::{AlertIncidentRow, AlertRuleRow};
 pub fn start_alert_evaluator(state: SharedState) {
     tokio::spawn(async move {
         let mut next_run: HashMap<Uuid, Instant> = HashMap::new();
+        // Estado en memoria: rule_id → incidente `firing`. Repoblado desde la
+        // tabla al arrancar para SOBREVIVIR a restarts (cada deploy reinicia el
+        // proceso). Sin esto, tras un restart `active` arranca vacío y: (a) cada
+        // regla aún disparada re-inserta un incidente nuevo y RE-NOTIFICA (spam),
+        // y (b) las reglas que se normalizaron durante el downtime nunca se
+        // cierran (incidentes zombi). Mismo patrón que `anomaly_detector`.
         let mut active: HashMap<Uuid, AlertIncidentRow> = HashMap::new();
+        match load_active_incidents(&state).await {
+            Ok(rows) => {
+                let n = rows.len();
+                for row in rows {
+                    active.insert(row.rule_id, row);
+                }
+                tracing::info!(active = n, "incidentes de alerta recuperados al arrancar");
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "no se pudieron recuperar incidentes de alerta activos — empezamos en blanco");
+            }
+        }
 
         let mut reload = interval(Duration::from_secs(15));
         reload.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -35,10 +53,14 @@ pub fn start_alert_evaluator(state: SharedState) {
                 _ = reload.tick() => {
                     match load_rules(&state).await {
                         Ok(r) => rules = r,
-                        Err(e) => tracing::warn!(error = %e, "falló el reload de reglas de alerta"),
+                        Err(e) => {
+                            tracing::warn!(error = %e, "falló el reload de reglas de alerta");
+                            metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "alert_evaluator").increment(1);
+                        }
                     }
                 }
                 _ = tick.tick() => {
+                    metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "alert_evaluator").increment(1);
                     let now = Instant::now();
                     for rule in &rules {
                         if rule.enabled == 0 || rule.deleted == 1 {
@@ -67,6 +89,46 @@ async fn load_rules(state: &SharedState) -> anyhow::Result<Vec<AlertRuleRow>> {
              FROM faro.alert_rules FINAL WHERE deleted = 0",
         )
         .await
+}
+
+/// Recarga los incidentes `firing` de reglas de alerta (NO los del
+/// `anomaly_detector`, que tienen su propio prefijo `anomaly:` y los gestiona
+/// aquel worker) para repoblar el set `active` tras un restart. `FINAL` sobre el
+/// ReplacingMergeTree da el último estado por incidente.
+async fn load_active_incidents(state: &SharedState) -> anyhow::Result<Vec<AlertIncidentRow>> {
+    state
+        .ch
+        .select::<AlertIncidentRow>(
+            "SELECT id, project_id, rule_id, rule_name, started_at, resolved_at, \
+                    value, threshold, severity, status, note, version \
+             FROM faro.alert_incidents FINAL \
+             WHERE status = 'firing' AND NOT startsWith(rule_name, 'anomaly:') LIMIT 1000",
+        )
+        .await
+}
+
+/// Loguea el resultado del dispatch de una notificación. Antes el resultado se
+/// descartaba (`let _ = ...`): un webhook caído o un token inválido se tragaba
+/// en silencio mientras el panel marcaba "firing". Ahora un fallo de entrega
+/// queda en logs (y en `faro_alert_notify_total{outcome="failed"}`).
+fn log_dispatch(rule_name: &str, res: anyhow::Result<crate::notify::NotifyOutcome>) {
+    match res {
+        Ok(o) if o.failed > 0 || o.unroutable > 0 => {
+            tracing::warn!(
+                rule = %rule_name,
+                sent = o.sent,
+                failed = o.failed,
+                unroutable = o.unroutable,
+                "algunos destinos de notificación no recibieron la alerta"
+            );
+        }
+        Ok(_) => {}
+        Err(e) => tracing::error!(
+            rule = %rule_name,
+            error = %e,
+            "el dispatch de notificación falló por completo"
+        ),
+    }
 }
 
 #[derive(Deserialize)]
@@ -111,6 +173,7 @@ pub async fn evaluate_rule(
         Ok(None) => 0.0,
         Err(e) => {
             tracing::warn!(rule = %rule.name, error = %e, "falló el query de alerta");
+            metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "alert_evaluator").increment(1);
             return;
         }
     };
@@ -150,9 +213,13 @@ pub async fn evaluate_rule(
                 .await
             {
                 tracing::error!(error = %e, "falló el insert del incidente");
+                metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "alert_evaluator").increment(1);
             }
             active.insert(rule.id, incident.clone());
-            let _ = crate::notify::dispatch(&state, &rule.notification_targets, &incident).await;
+            log_dispatch(
+                &rule.name,
+                crate::notify::dispatch(&state, &rule.notification_targets, &incident).await,
+            );
             tracing::warn!(rule = %rule.name, value, threshold = rule.threshold, "alerta disparada");
         }
     } else if let Some(mut incident) = active.remove(&rule.id) {
@@ -165,8 +232,12 @@ pub async fn evaluate_rule(
             .await
         {
             tracing::error!(error = %e, "falló el insert de resolución del incidente");
+            metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "alert_evaluator").increment(1);
         }
-        let _ = crate::notify::dispatch(&state, &rule.notification_targets, &incident).await;
+        log_dispatch(
+            &rule.name,
+            crate::notify::dispatch(&state, &rule.notification_targets, &incident).await,
+        );
         tracing::info!(rule = %rule.name, "alerta resuelta");
     }
 }

@@ -38,11 +38,13 @@ pub fn start_error_indexer(state: SharedState, bus: LiveBus) {
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!(missed = n, "indexador de errores rezagado respecto al bus de logs");
+                            metrics::counter!(crate::observability::names::WORKER_ERRORS, "worker" => "error_indexer").increment(1);
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
                 }
                 _ = tick.tick() => {
+                    metrics::counter!(crate::observability::names::WORKER_RUNS, "worker" => "error_indexer").increment(1);
                     if !buf.is_empty() {
                         flush(&ch, &mut buf).await;
                     }

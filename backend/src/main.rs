@@ -7,6 +7,7 @@
 //! vive en la crate `faro` (`lib.rs`); esto es solo el `fn main`.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use axum::http::HeaderValue;
@@ -57,6 +58,12 @@ async fn main() -> Result<()> {
 
     let state = Arc::new(AppState::new(cfg.clone(), storage));
 
+    // Coordinador de apagado ordenado: SIGTERM/SIGINT ponen este watch en `true`.
+    // Los servidores HTTP cierran con graceful shutdown (terminan las requests en
+    // vuelo) y los ingest writers hacen un flush final del buffer, en vez de morir
+    // por SIGKILL perdiendo en silencio la telemetría en vuelo en cada deploy.
+    let (shutdown_tx, _shutdown_rx) = tokio::sync::watch::channel(false);
+
     // Bootstrap + caché de proyectos.
     if let Err(e) = projects::bootstrap_if_empty(&state).await {
         tracing::warn!(error = %e, "falló el bootstrap de proyectos");
@@ -95,7 +102,7 @@ async fn main() -> Result<()> {
     // saturación antes de que se descarten records. Arranca antes que el writer
     // (sólo lee capacity() de los senders, no toca los receivers).
     observability::spawn_channel_depth_sampler(state.clone());
-    workers::start_ingest_writers(state.clone());
+    workers::start_ingest_writers(state.clone(), shutdown_tx.subscribe());
     workers::start_monitor_runner(state.clone());
     workers::start_alert_evaluator(state.clone());
     workers::start_anomaly_detector(state.clone());
@@ -161,34 +168,82 @@ async fn main() -> Result<()> {
         anyhow::anyhow!("FARO_OTLP_GRPC_ADDR inválido ({}): {e}", cfg.otlp_grpc_addr)
     })?;
 
-    let api_task = tokio::spawn(serve(
+    let mut api_task = tokio::spawn(serve(
         "api",
         api_addr,
         api_router,
         Some(prom_layer.clone()),
         dashboard_cors(&cfg.dashboard_origins),
+        shutdown_tx.subscribe(),
     ));
-    let otlp_task = tokio::spawn(serve(
+    let mut otlp_task = tokio::spawn(serve(
         "otlp",
         otlp_addr,
         otlp_router,
         Some(prom_layer),
         ingest_cors(),
+        shutdown_tx.subscribe(),
     ));
     let otlp_grpc_state = state.clone();
-    let otlp_grpc_task =
+    let mut otlp_grpc_task =
         tokio::spawn(
             async move { ingest::otlp_grpc::serve(otlp_grpc_state, otlp_grpc_addr).await },
         );
 
+    // Espera la señal de apagado (SIGTERM/SIGINT) o que un servidor muera por su
+    // cuenta (en cuyo caso igual iniciamos el apagado ordenado del resto).
     tokio::select! {
-        _ = signal::ctrl_c() => tracing::info!("ctrl-c received, shutting down"),
-        r = api_task => { tracing::error!(?r, "el servidor api terminó"); }
-        r = otlp_task => { tracing::error!(?r, "el servidor otlp terminó"); }
-        r = otlp_grpc_task => { tracing::error!(?r, "el servidor otlp/grpc terminó"); }
+        _ = shutdown_signal() => {
+            tracing::info!("señal de apagado recibida (SIGTERM/SIGINT), drenando…");
+        }
+        r = &mut api_task => tracing::error!(?r, "el servidor api terminó inesperadamente"),
+        r = &mut otlp_task => tracing::error!(?r, "el servidor otlp terminó inesperadamente"),
+        r = &mut otlp_grpc_task => tracing::error!(?r, "el servidor otlp/grpc terminó inesperadamente"),
     }
 
+    // Propaga el apagado: los servidores HTTP cierran graceful (terminan las
+    // requests en vuelo y `serve` retorna) y los ingest writers vacían su buffer.
+    let _ = shutdown_tx.send(true);
+    let _ = tokio::time::timeout(Duration::from_secs(10), async {
+        let _ = api_task.await;
+        let _ = otlp_task.await;
+    })
+    .await;
+    // gRPC no tiene drain propio (sus rows ya pasaron a los canales de ingesta);
+    // lo abortamos tras señalar el apagado al resto.
+    otlp_grpc_task.abort();
+    // Margen final para que los ingest writers terminen su último flush.
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    tracing::info!("apagado completado");
     Ok(())
+}
+
+/// Future que resuelve al recibir SIGINT (Ctrl-C) o SIGTERM (el que envían
+/// `docker stop` y el redeploy). Antes sólo se escuchaba `ctrl_c` (SIGINT): en
+/// cada deploy el contenedor ignoraba el SIGTERM, colgaba ~10s y moría por
+/// SIGKILL sin drenar nada.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut s) => {
+                s.recv().await;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "no se pudo instalar el handler de SIGTERM");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }
 
 fn dashboard_cors(origins: &[String]) -> CorsLayer {
@@ -235,6 +290,7 @@ async fn serve(
     router: Router,
     prom: Option<axum_prometheus::PrometheusMetricLayer<'static>>,
     cors: CorsLayer,
+    shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!(%name, %addr, "escuchando");
@@ -242,6 +298,18 @@ async fn serve(
     if let Some(prom) = prom {
         app = app.layer(prom);
     }
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(wait_for_shutdown(shutdown))
+        .await?;
+    tracing::info!(%name, "listener cerrado (graceful)");
     Ok(())
+}
+
+/// Resuelve cuando el coordinador de apagado pone el watch en `true`.
+async fn wait_for_shutdown(mut rx: tokio::sync::watch::Receiver<bool>) {
+    while !*rx.borrow_and_update() {
+        if rx.changed().await.is_err() {
+            break;
+        }
+    }
 }
