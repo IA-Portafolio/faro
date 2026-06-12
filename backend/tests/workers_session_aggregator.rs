@@ -8,6 +8,14 @@ use serde::Deserialize;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+// `aggregate_once()` opera cross-project (su SQL no filtra por `project_id`)
+// sobre ventanas de tiempo que se pisan entre tests, así que estos tests NO
+// pueden correr en paralelo entre sí. Este Mutex solo los serializa bajo
+// `cargo test` (todos los tests del binario comparten proceso); bajo nextest
+// cada test corre en su PROPIO proceso y el lock no serializa nada — ahí la
+// serialización real la da el test-group `session-aggregator` de
+// `.config/nextest.toml`. No borrar el Mutex: sigue siendo necesario para
+// `cargo test` puro.
 static SESSION_AGGREGATOR_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
 fn event(

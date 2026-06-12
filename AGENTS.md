@@ -45,7 +45,7 @@ su suite igual que tocar el test.
 | --- | --- | --- |
 | `backend/src/**`, `backend/tests/*.rs` | **backend** (Rust) | `cd backend && cargo test` (o `cargo nextest run`) |
 | `cli/src/**` (cualquier `.rs`) | **cli** (Rust) | `cd cli && cargo test` |
-| `frontend/src/lib/**` (el `.ts` fuente **y** sus `*.test.ts`) | **frontend** (SvelteKit/vitest) | `cd frontend && npm test` |
+| `frontend/src/**` (el `.ts` fuente, sus `*.test.ts` **y** los `*.component.test.ts` de páginas) | **frontend** (SvelteKit/vitest) | `cd frontend && npm test` |
 | `sdks/node/**` (src o `test/*.test.mjs`) | **sdk-node** | `cd sdks/node && npm test` |
 | `sdks/nextjs/**` | **sdk-nextjs** | `cd sdks/nextjs && npm test` |
 | `sdks/expo/**` | **sdk-expo** | `cd sdks/expo && npm test` |

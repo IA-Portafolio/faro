@@ -4,9 +4,15 @@
 # **cross-binary** — `cargo test` corre los 11 archivos de `tests/*.rs` uno a
 # uno, mientras que nextest los pone todos en un único pool. Con la fixture
 # actual (`tests/common/mod.rs` genera `project_id` UUID por test y bind a
-# puerto efímero), todos los tests son seguros de correr concurrentemente
+# puerto efímero), casi todos los tests son seguros de correr concurrentemente
 # contra el mismo ClickHouse compartido — el aislamiento es por `project_id`,
 # no por base de datos.
+#
+# La excepción es `workers_session_aggregator`: `aggregate_once()` NO filtra
+# por proyecto (agrega los product_events de TODOS los proyectos desde `from`),
+# así que el aislamiento por `project_id` no lo cubre y sus tests se contaminan
+# entre sí si corren en paralelo. Por eso ese binario corre serializado vía el
+# test-group `session-aggregator` de abajo.
 #
 # Ver: docs/development.md → "Tests en paralelo (nextest)"
 
@@ -33,6 +39,27 @@ final-status-level = "fail"
 # Por default nextest sigue corriendo aunque un test falle (igual que
 # `cargo test --no-fail-fast` que usamos hoy en CI).
 fail-fast = false
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Serialización del session aggregator.
+#
+# Los tests de `tests/workers_session_aggregator.rs` llaman `aggregate_once()`,
+# que opera **cross-project** (su SQL no filtra por `project_id`) sobre ventanas
+# de tiempo que se pisan entre tests. El `static Mutex` del archivo solo
+# serializa bajo `cargo test` (un proceso por binario); bajo nextest cada test
+# corre en su PROPIO proceso, así que la serialización real la da este
+# test-group con max-threads = 1: a lo sumo un test del grupo en vuelo a la
+# vez, sin afectar el paralelismo del resto de la suite.
+# ─────────────────────────────────────────────────────────────────────────────
+[test-groups]
+session-aggregator = { max-threads = 1 }
+
+# Ojo: los overrides de `profile.default` aplican también al perfil `ci` —
+# nextest evalúa primero los overrides del perfil seleccionado y después los
+# del default — así que no hace falta duplicar esto en `[profile.ci]`.
+[[profile.default.overrides]]
+filter = 'binary(workers_session_aggregator)'
+test-group = 'session-aggregator'
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Perfil que usa CI (.github/workflows/ci.yml → `cargo nextest run --profile ci`).

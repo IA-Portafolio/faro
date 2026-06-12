@@ -9,33 +9,13 @@ echo "[setup] installing curl + pkg-config (for swagger-ui build.rs)"
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends curl pkg-config
 
-echo "[setup] applying clickhouse schema (one statement per request)"
-# CH HTTP por default ejecuta una sola sentencia por POST. Los .sql del repo
-# tienen varias CREATE TABLE / MV separadas por `;`. Quitamos TODOS los
-# comentarios `--` (de línea completa E inline) ANTES de colapsar los saltos de
-# línea: si no, un `-- comentario` inline (p. ej. en 60-alerts.sql) se come el
-# resto de la sentencia al unir las líneas con `tr` y la tabla nunca se crea.
-# Ningún `--` aparece dentro de literales de cadena en el schema, así que
-# borrar de `--` al fin de línea es seguro. Luego splitéo por `;`.
-for f in /clickhouse/init/*.sql /clickhouse/migrations/*.sql; do
-  [ -f "$f" ] || continue
-  echo "  applying $(basename "$f")"
-  sed 's/--.*$//' "$f" | tr '\n' ' ' | tr ';' '\n' \
-    | while IFS= read -r stmt; do
-        trimmed=$(echo "$stmt" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-        if [ -n "$trimmed" ]; then
-          resp=$(curl -sS -u faro:faro --data-binary "$trimmed" \
-            "http://clickhouse-test:8123/?database=faro" 2>&1) || \
-            echo "    warn: $resp"
-        fi
-      done
-done
-
-echo "[setup] verifying schema (faro.logs must exist)"
-curl -sSf -u faro:faro \
-  --data-binary "SELECT count() FROM faro.logs" \
-  "http://clickhouse-test:8123/?database=faro" \
-  || { echo "FATAL: faro.logs not present after schema bootstrap" >&2; exit 1; }
+echo "[setup] applying clickhouse schema (script compartido, estricto)"
+# El split de sentencias (una por POST, regla del HTTP API de CH) y la
+# verificación de tablas centinela viven en scripts/apply-clickhouse-schema.sh,
+# compartido con el job `backend` de ci.yml. Necesita el curl instalado arriba.
+# El compose monta ./scripts:/scripts y ./clickhouse:/clickhouse, así que el
+# SCHEMA_DIR default del script resuelve a /clickhouse acá adentro.
+CLICKHOUSE_URL=http://clickhouse-test:8123 bash /scripts/apply-clickhouse-schema.sh
 
 echo "[setup] installing cargo-nextest (binario precompilado, ~5 s)"
 # nextest paraleliza los 11 binarios de tests CROSS-BINARY usando un único

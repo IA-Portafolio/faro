@@ -173,9 +173,11 @@ bash clickhouse/test-migrations.sh        # requiere CH local o el container far
 ```
 
 El mismo script corre en CI bajo el job `migrations` de `.github/workflows/ci.yml`
-contra una instancia fresca de ClickHouse. Si agregás una tabla nueva en
-`init/` o `migrations/`, sumala al array `EXPECTED` del script — sino el test
-falla con "missing tables".
+contra una instancia fresca de ClickHouse. El check del catálogo es
+**bidireccional**: falla si falta una tabla esperada y también si aparece una
+tabla que no está registrada. Si agregás una tabla nueva en `init/` o
+`migrations/`, sumala al array `EXPECTED` del script (en orden alfabético) —
+sino el test falla con "tablas no registradas en el catálogo".
 
 ## Variables de entorno y dónde viven
 

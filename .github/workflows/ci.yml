@@ -118,19 +118,19 @@ jobs:
         run: cargo clippy --all-targets -- -D warnings
 
       - name: Bootstrap ClickHouse schema
-        # Aplica todos los init/ y migrations/ contra el servicio levantado,
-        # para que los tests que toquen ClickHouse encuentren el esquema.
+        # Aplica todos los init/ y migrations/ con el script compartido
+        # (sentencia por sentencia — el HTTP API de CH solo ejecuta una por
+        # POST — y ESTRICTO: cualquier sentencia rechazada corta el job, sin
+        # `|| true`). Mismo bootstrap que usa docker-compose.test.yml vía
+        # scripts/run-integration-tests.sh.
         # Puerto 18123 para no chocar con el CH de producción en el host
         # self-hosted (ver comment en `services.clickhouse.ports`).
-        run: |
-          for f in clickhouse/init/*.sql clickhouse/migrations/*.sql; do
-            [ -f "$f" ] || continue
-            echo "::group::Applying $(basename "$f")"
-            curl -sS -u faro:faro \
-              "http://localhost:18123/?database=faro" \
-              --data-binary "@$f" || true
-            echo "::endgroup::"
-          done
+        env:
+          CLICKHOUSE_URL: http://localhost:18123
+          CLICKHOUSE_USER: faro
+          CLICKHOUSE_PASSWORD: faro
+          CLICKHOUSE_DATABASE: faro
+        run: bash scripts/apply-clickhouse-schema.sh
 
       - name: cargo nextest run
         working-directory: backend
@@ -252,8 +252,10 @@ jobs:
     if: needs.changes.outputs.migrations == 'true'
     # Garantiza que init/ + migrations/ son aplicables limpios sobre DB vacía
     # y que correr migrations/ DOS veces no rompe (bug clásico de "una migración
-    # rompe en el segundo deploy"). El job `backend` también aplica el schema,
-    # pero usa `|| true` y enmascara errores; este job es el gate estricto.
+    # rompe en el segundo deploy"). El job `backend` aplica el mismo schema con
+    # el bootstrap estricto compartido (scripts/apply-clickhouse-schema.sh);
+    # este job suma lo que aquel no cubre: idempotencia (doble corrida de
+    # migrations/) y el catálogo exhaustivo de tablas.
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     services:

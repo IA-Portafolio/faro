@@ -31,7 +31,7 @@ sdk-go sdk-flutter sdk-kotlin`.
 | --- | --- | --- | --- | --- |
 | **backend** | lógica pura (redaction, rate-limit, fingerprint, feature-flags, auth, notify, workers…) + integration HTTP↔ClickHouse | `backend/src/**` (`#[cfg(test)]`) y `backend/tests/*.rs` | `cd backend && cargo test` (o `cargo nextest run`) | Rust |
 | **cli** | parsing de flags, querystring, cookies, severidades, duraciones | `cli/src/main.rs` (`#[cfg(test)]`) | `cd cli && cargo test` | Rust |
-| **frontend** | utilidades puras de `lib/` (palette, stores, sessions, retention, insights, product-users, url-filters, toasts, keyboard, sdk-snippets, sdk-docs, api) | `frontend/src/lib/*.test.ts` | `cd frontend && npm test` | Node ≥ 20 |
+| **frontend** | módulos puros de `lib/` (palette, stores, sessions, retention, insights, product-users, url-filters, toasts, keyboard, sdk-snippets, sdk-docs, api) **+ component tests** de Svelte (login) con `@testing-library/svelte` | `frontend/src/**/*.test.ts` (unit) y `frontend/src/**/*.component.test.ts` (components) | `cd frontend && npm test` | Node ≥ 20 |
 | **sdk-node** | cliente, tracing OTel, métricas, middleware express | `sdks/node/test/*.test.mjs` | `cd sdks/node && npm test` | Node ≥ 18 |
 | **sdk-nextjs** | RUM browser, web-vitals, replay, feature flags | `sdks/nextjs/test/*.test.mjs` | `cd sdks/nextjs && npm test` | Node ≥ 18 |
 | **sdk-expo** | cliente RN, cola/flush, close sin pérdida | `sdks/expo/test/*.test.mjs` | `cd sdks/expo && npm test` | Node ≥ 18 |
@@ -44,6 +44,13 @@ El frontend requiere **Node 20** (Vite 8 / Svelte 5); ver [`.nvmrc`](../.nvmrc).
 El primer `npm test` corre `svelte-kit sync` para generar
 `.svelte-kit/tsconfig.json` — sin eso, vitest falla al resolver el `tsconfig`.
 `scripts/test-all.sh` ya lo hace por ti.
+
+`npm test` corre **dos proyectos** de vitest en una sola pasada (ver
+[`frontend/vitest.config.ts`](../frontend/vitest.config.ts)): `unit`
+(environment node, sin plugin Svelte — los módulos puros, `src/**/*.test.ts`)
+y `components` (jsdom + `@testing-library/svelte`, compila los `.svelte` —
+`src/**/*.component.test.ts`). El sufijo importa: un component test que no
+termine en `.component.test.ts` cae al proyecto `unit`, que no compila Svelte.
 
 ## Cómo se mapea a CI
 

@@ -90,20 +90,27 @@ done
 
 echo
 echo "-- step 4: verifying expected tables / MVs via SHOW TABLES --"
-actual=$(ch_query "SELECT name FROM system.tables WHERE database = '$CH_DB' ORDER BY name")
+# Excluimos las tablas internas de MVs (.inner*): hoy todos los MVs usan TO
+# explícito y no generan ninguna, pero si algún día aparece una no queremos
+# que el check inverso explote por una tabla que no es nuestra.
+actual=$(ch_query "SELECT name FROM system.tables WHERE database = '$CH_DB' AND name NOT LIKE '.inner%' ORDER BY name")
 echo "found:"
 echo "$actual" | sed 's/^/  /'
 
-# Catálogo cerrado de tablas/MVs que init+migrations deben producir. Si añadís
-# una tabla nueva, actualizá este array — el test fallará si te olvidás.
+# Catálogo cerrado de tablas/MVs que init+migrations deben producir. El check
+# es BIDIRECCIONAL: falla si falta una tabla esperada Y también si aparece una
+# tabla que no está registrada acá. Si añadís una tabla nueva en una migración,
+# tenés que sumarla a este array (en orden alfabético) o el test va a fallar.
 EXPECTED=(
   alert_incidents
   alert_rules
   api_monitors
+  cohorts
   error_clusters
   error_events
   error_issue_status
   errors_hourly
+  feature_flags
   integrations
   logs
   logs_stats
@@ -151,6 +158,29 @@ done
 if [[ ${#missing[@]} -gt 0 ]]; then
   echo "ERROR: faltan ${#missing[@]} tablas/MVs:" >&2
   printf '  - faro.%s\n' "${missing[@]}" >&2
+  exit 1
+fi
+
+# Check inverso: ninguna tabla real puede quedar fuera del catálogo, sino el
+# "catálogo cerrado" sería puro verso (una tabla nueva pasaría en silencio).
+unexpected=()
+while IFS= read -r t; do
+  [[ -z "$t" ]] && continue
+  found=0
+  for e in "${EXPECTED[@]}"; do
+    if [[ "$t" == "$e" ]]; then
+      found=1
+      break
+    fi
+  done
+  if [[ $found -eq 0 ]]; then
+    unexpected+=("$t")
+  fi
+done <<<"$actual"
+
+if [[ ${#unexpected[@]} -gt 0 ]]; then
+  echo "ERROR: ${#unexpected[@]} tablas no registradas en el catálogo — agregalas a EXPECTED en test-migrations.sh:" >&2
+  printf '  - faro.%s\n' "${unexpected[@]}" >&2
   exit 1
 fi
 
