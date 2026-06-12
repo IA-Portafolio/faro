@@ -35,9 +35,12 @@ on:
         description: 'Versión (sin "v")'
         required: true
 
+# Least-privilege a nivel workflow: read por defecto. Cada job que publica
+# eleva SÓLO lo que necesita (go + github-release → contents:write;
+# pypi → id-token:write para trusted publishing OIDC; npm → id-token:write
+# para provenance). Así un job de test comprometido no tiene write al repo.
 permissions:
-  contents: write   # crear releases en GitHub
-  id-token: write   # npm/pypi trusted publishing
+  contents: read
 
 jobs:
   ctx:
@@ -47,17 +50,49 @@ jobs:
       version: ${{ steps.parse.outputs.version }}
     steps:
       - id: parse
+        # Seguridad: NUNCA interpolar ${{ }} de input no confiable (tag,
+        # workflow_dispatch) dentro del script `run:` — GitHub expande la
+        # expresión ANTES de invocar el shell, así que un valor con
+        # metacaracteres (git permite `, $(), ; en refnames) se ejecutaría
+        # como código en el runner (que es el host de prod) → RCE. Patrón
+        # seguro, igual que validate-tag.yml: pasar por env: y referenciar la
+        # var entrecomillada, que llega como dato y nunca como texto del script.
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_SDK: ${{ inputs.sdk }}
+          INPUT_VERSION: ${{ inputs.version }}
+          REF_NAME: ${{ github.ref_name }}           # ej: sdk-node-v0.1.0
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "sdk=${{ inputs.sdk }}" >> $GITHUB_OUTPUT
-            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            sdk="$INPUT_SDK"
+            ver="$INPUT_VERSION"
           else
-            ref="${{ github.ref_name }}"           # ej: sdk-node-v0.1.0
-            sdk="$(echo "$ref" | sed -E 's/^sdk-([^-]+)-v.*$/\1/')"
-            ver="$(echo "$ref" | sed -E 's/^sdk-[^-]+-v(.*)$/\1/')"
-            echo "sdk=$sdk" >> $GITHUB_OUTPUT
-            echo "version=$ver" >> $GITHUB_OUTPUT
+            sdk="$(printf '%s' "$REF_NAME" | sed -E 's/^sdk-([^-]+)-v.*$/\1/')"
+            ver="$(printf '%s' "$REF_NAME" | sed -E 's/^sdk-[^-]+-v(.*)$/\1/')"
           fi
+
+          # Validación defensiva del shape (mismo contrato que validate-tag.yml
+          # y CONTRIBUTING.md). Con el env: de arriba ya no hay shell injection;
+          # esto cierra dos huecos residuales: (a) GITHUB_OUTPUT injection vía
+          # newline en un input de workflow_dispatch, y (b) que una versión
+          # malformada llegue a npm/sed y publique un paquete roto. El match es
+          # contra el string COMPLETO ([[ =~ ]] de bash, $ ancla fin de cadena),
+          # así que un valor con newline NO pasa.
+          lang_re='^(node|nextjs|expo|python|go|flutter|kotlin)$'
+          semver_re='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! "$sdk" =~ $lang_re ]]; then
+            echo "::error::SDK inválido: '$sdk' (esperado: node|nextjs|expo|python|go|flutter|kotlin)"
+            exit 1
+          fi
+          if [[ ! "$ver" =~ $semver_re ]]; then
+            echo "::error::Versión inválida: '$ver' (esperado semver MAJOR.MINOR.PATCH[-pre][+build])"
+            exit 1
+          fi
+
+          echo "sdk=$sdk" >> "$GITHUB_OUTPUT"
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
 
   # --------- Gates de test reusables (corren ANTES de cualquier publish) ---------
   # Filosofía: cada SDK reproduce su suite localmente en el job de publish para
@@ -72,8 +107,10 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with: { node-version: 20 }
       - working-directory: sdks/${{ needs.ctx.outputs.sdk }}
         # --legacy-peer-deps: nextjs declara `next` y `react` como peerDeps;
@@ -90,8 +127,10 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with: { python-version: '3.11' }
       - working-directory: sdks/python
         run: |
@@ -105,8 +144,10 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with: { go-version: '1.22' }
       - working-directory: sdks/go
         run: go test -race ./...
@@ -117,8 +158,10 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v6
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2
         with: { channel: stable }
       - working-directory: sdks/flutter
         run: |
@@ -131,10 +174,12 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
         with: { distribution: temurin, java-version: 17 }
-      - uses: gradle/actions/setup-gradle@v6
+      - uses: gradle/actions/setup-gradle@5e2ebd065dc2488b7a6ad670704656cbbe1e8f60  # v6
       - working-directory: sdks/kotlin
         run: |
           if [ ! -f ./gradlew ]; then
@@ -153,7 +198,9 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
       - run: |
           # UID_GID se inyecta para que el sdk-runner cree node_modules/ con
           # ownership del runner-user en vez de root (sino el siguiente
@@ -170,71 +217,96 @@ jobs:
     needs: [ctx, test-node, test-integration]
     if: needs.ctx.outputs.sdk == 'node'
     runs-on: [self-hosted, faro-ci]
+    permissions:
+      contents: read
+      id-token: write   # npm provenance / trusted publishing
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
       - working-directory: sdks/node
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.ctx.outputs.version }}
         run: |
-          npm pkg set version="${{ needs.ctx.outputs.version }}"
+          npm pkg set version="$VERSION"
           npm install --legacy-peer-deps
           npm run build
           npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   npm-nextjs:
     needs: [ctx, test-node, test-integration]
     if: needs.ctx.outputs.sdk == 'nextjs'
     runs-on: [self-hosted, faro-ci]
+    permissions:
+      contents: read
+      id-token: write   # npm provenance / trusted publishing
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with: { node-version: 20, registry-url: 'https://registry.npmjs.org' }
       - working-directory: sdks/nextjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.ctx.outputs.version }}
         run: |
-          npm pkg set version="${{ needs.ctx.outputs.version }}"
+          npm pkg set version="$VERSION"
           npm install --legacy-peer-deps
           npm run build
           npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   npm-expo:
     needs: [ctx, test-node, test-integration]
     if: needs.ctx.outputs.sdk == 'expo'
     runs-on: [self-hosted, faro-ci]
+    permissions:
+      contents: read
+      id-token: write   # npm provenance / trusted publishing
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
         with: { node-version: 20, registry-url: 'https://registry.npmjs.org' }
       - working-directory: sdks/expo
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ needs.ctx.outputs.version }}
         run: |
-          npm pkg set version="${{ needs.ctx.outputs.version }}"
+          npm pkg set version="$VERSION"
           npm install --legacy-peer-deps
           npm run build
           npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   pypi:
     needs: [ctx, test-python, test-integration]
     if: needs.ctx.outputs.sdk == 'python'
     runs-on: [self-hosted, faro-ci]
+    permissions:
+      contents: read
+      id-token: write   # PyPI trusted publishing (OIDC, sin password)
     environment:
       name: pypi
       url: https://pypi.org/p/faro-sdk
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with: { python-version: '3.11' }
       - name: Set version
         working-directory: sdks/python
+        env:
+          VERSION: ${{ needs.ctx.outputs.version }}
         run: |
           # Reemplaza la versión en pyproject.toml
-          sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" pyproject.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
       - name: Build
         working-directory: sdks/python
         run: |
@@ -242,7 +314,7 @@ jobs:
           python -m build
       # Trusted publishing — configura el proyecto faro-sdk en PyPI con esta repo.
       # Alternativa: usar secret PYPI_API_TOKEN y `with: password: ...`.
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b  # release/v1
         with:
           packages-dir: sdks/python/dist
 
@@ -250,48 +322,65 @@ jobs:
     needs: [ctx, test-go, test-integration]
     if: needs.ctx.outputs.sdk == 'go'
     runs-on: [self-hosted, faro-ci]
+    permissions:
+      contents: write   # git push del tag go-modules `sdks/go/vX`
     steps:
       # Go modules indexa por tags del repo. Para un SDK que vive en un subdir
       # del monorepo, el tag debe tener prefijo de path: `sdks/go/v0.1.0`.
       # Re-tag el commit con ese formato para que `go get` lo encuentre.
-      - uses: actions/checkout@v6
-        with: { fetch-depth: 0 }
+      # Excepción deliberada a persist-credentials:false (resto de checkouts):
+      # este job hace `git push origin "$GO_TAG"`, que necesita el token
+      # persistido en .git/config. Por eso conserva credenciales (y el job
+      # tiene contents:write). fetch-depth:0 para que el tag apunte al commit.
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with: { fetch-depth: 0, persist-credentials: true }  # zizmor: ignore[artipacked]
       - name: Create go-modules-compatible tag
+        env:
+          VERSION: ${{ needs.ctx.outputs.version }}
+          SHA: ${{ github.sha }}
         run: |
-          GO_TAG="sdks/go/v${{ needs.ctx.outputs.version }}"
+          GO_TAG="sdks/go/v$VERSION"
           git config user.email "ci@iaportafolio.com"
           git config user.name "faro-ci"
           if git rev-parse "$GO_TAG" >/dev/null 2>&1; then
             echo "tag $GO_TAG already exists"
           else
-            git tag "$GO_TAG" "${{ github.sha }}"
+            git tag "$GO_TAG" "$SHA"
             git push origin "$GO_TAG"
           fi
       - name: Warm proxy.golang.org
         # proxy.golang.org case-folded path: mayúsculas se escapan como !letra.
+        env:
+          VERSION: ${{ needs.ctx.outputs.version }}
         run: |
-          curl -fsSL "https://proxy.golang.org/github.com/!i!a-!portafolio/faro/sdks/go/@v/v${{ needs.ctx.outputs.version }}.info" || true
+          curl -fsSL "https://proxy.golang.org/github.com/!i!a-!portafolio/faro/sdks/go/@v/v$VERSION.info" || true
 
   pub-dev:
     needs: [ctx, test-flutter]
     if: needs.ctx.outputs.sdk == 'flutter'
     runs-on: [self-hosted, faro-ci]
     steps:
-      - uses: actions/checkout@v6
-      - uses: subosito/flutter-action@v2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2
         with: { channel: stable }
       - name: Set version
         working-directory: sdks/flutter
+        env:
+          VERSION: ${{ needs.ctx.outputs.version }}
         run: |
-          sed -i "s/^version: .*/version: ${{ needs.ctx.outputs.version }}/" pubspec.yaml
+          sed -i "s/^version: .*/version: $VERSION/" pubspec.yaml
       - name: Restore pub credentials
         # PUB_CREDENTIALS_JSON: el contenido del archivo ~/.config/dart/pub-credentials.json
         # que se obtiene corriendo `dart pub token add https://pub.dev` localmente.
         # Si el secret está vacío/inválido, `flutter pub publish` queda colgado
         # esperando OAuth interactivo (que en CI nunca llega) — chequeamos antes.
+        env:
+          PUB_CREDENTIALS_JSON: ${{ secrets.PUB_CREDENTIALS_JSON }}
         run: |
           mkdir -p ~/.config/dart
-          printf '%s' "${{ secrets.PUB_CREDENTIALS_JSON }}" > ~/.config/dart/pub-credentials.json
+          printf '%s' "$PUB_CREDENTIALS_JSON" > ~/.config/dart/pub-credentials.json
           if [ ! -s ~/.config/dart/pub-credentials.json ]; then
             echo "::error::PUB_CREDENTIALS_JSON está vacío — regenera con 'dart pub token add https://pub.dev'"
             exit 1
@@ -317,17 +406,21 @@ jobs:
     if: needs.ctx.outputs.sdk == 'kotlin'
     runs-on: [self-hosted, faro-ci]
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-java@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
         with:
           distribution: temurin
           java-version: 17
       - name: Set version
         working-directory: sdks/kotlin
+        env:
+          VERSION: ${{ needs.ctx.outputs.version }}
         run: |
-          sed -i "s/^version = .*/version = \"${{ needs.ctx.outputs.version }}\"/" build.gradle.kts
+          sed -i "s/^version = .*/version = \"$VERSION\"/" build.gradle.kts
       - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v7
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd  # v7
         id: gpg
         with:
           gpg_private_key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
@@ -408,9 +501,13 @@ jobs:
     needs: [ctx]
     if: github.event_name == 'push'
     runs-on: [self-hosted, faro-ci]
+    permissions:
+      contents: write   # crear el GitHub Release del tag
     steps:
-      - uses: actions/checkout@v6
-      - uses: softprops/action-gh-release@v3
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
+      - uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda  # v3
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}

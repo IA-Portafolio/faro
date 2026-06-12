@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::{
-    hash_password, revoke_user_sessions, AuthUser, CurrentSessionTokenHash, UserRow,
+    hash_password, revoke_user_sessions, AdminUser, CurrentSessionTokenHash, UserRow,
 };
 use crate::error::{ApiError, ApiResult};
 use crate::state::SharedState;
@@ -53,7 +53,7 @@ const SELECT_COLS: &str = "id, email, password_hash, name, role, \
     created_at, updated_at, deleted, version, totp_secret, totp_enabled";
 
 async fn list_users(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
 ) -> ApiResult<Json<Vec<UserView>>> {
     let rows: Vec<UserRow> = state
@@ -80,7 +80,7 @@ fn default_role() -> String {
 }
 
 async fn create_user(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Json(input): Json<CreateInput>,
 ) -> ApiResult<Json<UserView>> {
@@ -124,7 +124,7 @@ async fn create_user(
 }
 
 async fn get_user(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<UserView>> {
@@ -150,7 +150,7 @@ pub struct UpdateInput {
 }
 
 async fn update_user(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
     Json(input): Json<UpdateInput>,
@@ -173,7 +173,7 @@ async fn update_user(
 }
 
 async fn delete_user(
-    admin: AuthUser,
+    admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
@@ -213,7 +213,7 @@ pub struct PasswordInput {
 }
 
 async fn change_password(
-    admin: AuthUser,
+    admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
     current_session: CurrentSessionTokenHash,

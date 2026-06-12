@@ -12,6 +12,7 @@ use regex::Regex;
 use tokio::time::{interval, MissedTickBehavior};
 use uuid::Uuid;
 
+use crate::monitor_url::validate_monitor_url;
 use crate::state::SharedState;
 use crate::storage::{MonitorResultRow, MonitorRow};
 
@@ -51,6 +52,28 @@ pub fn start_monitor_runner(state: SharedState) {
                             continue;
                         }
                         next_run.insert(m.id, now + Duration::from_secs(m.interval_seconds as u64));
+                        if let Err(reason) = validate_monitor_url(&m.url) {
+                            tracing::warn!(
+                                monitor_id = %m.id,
+                                url = %m.url,
+                                reason = %reason,
+                                "URL de monitor bloqueada (SSRF); omitiendo check"
+                            );
+                            let row = MonitorResultRow {
+                                monitor_id: m.id,
+                                project_id: m.project_id.clone(),
+                                timestamp: Utc::now(),
+                                success: 0,
+                                status_code: 0,
+                                duration_ms: 0,
+                                error_message: format!(
+                                    "URL bloqueada por política de seguridad: {reason}"
+                                ),
+                                response_size: 0,
+                            };
+                            let _ = state.ingest.monitor_results_tx.try_send(row);
+                            continue;
+                        }
                         let client = client.clone();
                         let mc = m.clone();
                         let state = state.clone();

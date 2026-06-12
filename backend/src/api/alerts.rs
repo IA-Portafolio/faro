@@ -15,6 +15,7 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::api::params::Range;
+use crate::auth::AdminUser;
 use crate::error::ApiResult;
 use crate::state::SharedState;
 use crate::storage::{AlertIncidentRow, AlertRuleRow};
@@ -30,6 +31,7 @@ pub fn router() -> Router<SharedState> {
 }
 
 async fn list_rules(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Query(range): Query<Range>,
 ) -> ApiResult<Json<Vec<AlertRuleRow>>> {
@@ -88,6 +90,7 @@ fn default_project_rule() -> String {
 }
 
 async fn create_rule(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Json(input): Json<RuleInput>,
 ) -> ApiResult<Json<AlertRuleRow>> {
@@ -128,6 +131,7 @@ const RULE_COLS: &str = "id, project_id, name, description, source, query, condi
      created_at, updated_at, deleted, version";
 
 async fn get_rule(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<AlertRuleRow>> {
@@ -144,6 +148,7 @@ async fn get_rule(
 }
 
 async fn update_rule(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
     Json(input): Json<RuleInput>,
@@ -178,6 +183,7 @@ async fn update_rule(
 }
 
 async fn delete_rule(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
@@ -197,6 +203,7 @@ async fn delete_rule(
 }
 
 async fn list_incidents(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Query(range): Query<Range>,
 ) -> ApiResult<Json<Vec<AlertIncidentRow>>> {

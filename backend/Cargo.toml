@@ -116,6 +116,8 @@ governor = "0.7"
 # axum-prometheus hay que mover `metrics` a la mayor que use su exporter.
 axum-prometheus = "0.10"
 metrics = "0.24"
+# Constant-time byte comparison para el bearer token de /metrics.
+subtle = "2"
 
 # 2FA TOTP (RFC 6238). `totp-rs` con `gen_secret` produce el secreto Base32 y
 # el otpauth:// URL para enrolar la cuenta en Google Authenticator / Authy / 1Password.

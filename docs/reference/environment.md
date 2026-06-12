@@ -115,8 +115,9 @@ falla el PR si los dos archivos están desincronizados.
 
 | Variable | Default | Descripción |
 | -------- | ------- | ----------- |
-| `FARO_METRICS_TOKEN` | _(sin setear)_ · opcional | Si está definido, `/metrics` exige `Authorization: Bearer <token>` y rechaza cualquier otra cosa con 401. Vacío/sin definir = endpoint abierto (apropiado para dev o cuando `/metrics` no es accesible públicamente). |
+| `FARO_METRICS_TOKEN` | _(sin setear)_ · opcional | Si está definido, `/metrics` exige `Authorization: Bearer <token>` y rechaza cualquier otra cosa con 401. Sin definir = 401 (fail-closed); en ese caso no hay forma de acceder a las métricas internas. |
 | `FARO_ENABLE_HSTS` | `false` · opcional | Si `true`, el backend agrega `Strict-Transport-Security` a las respuestas del dashboard. El browser cachea HSTS por un año por origen, así que encenderlo en dev rompe testing en HTTP. Activar SÓLO en producción con TLS estable. |
+| `FARO_DASHBOARD_ORIGINS` | _(sin setear)_ · opcional | Orígenes permitidos para CORS del dashboard (lista separada por comas). En producción DEBES definirlo para que el browser envíe la cookie de sesión sólo hacia orígenes conocidos (ej. `https://faro.example.com,https://app.example.com`). Si está vacío (dev), el backend permite los orígenes localhost típicos sin credenciales. |
 | `FARO_PUBLIC_BASE_URL` | `http://localhost:8080` · opcional | URL pública del backend, usada por el backend mismo para armar enlaces absolutos (ej. el reset-password de email). Cambialo al dominio público cuando expongas la API. |
 
 ## Detector de anomalías por z-score

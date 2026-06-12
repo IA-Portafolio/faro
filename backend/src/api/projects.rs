@@ -15,6 +15,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::auth::AdminUser;
 use crate::error::{ApiError, ApiResult};
 use crate::origin_check::{validate_pattern as validate_origin, OriginConfig};
 use crate::redaction::{builtin_catalog, validate_custom_pattern, BuiltinInfo, RedactionConfig};
@@ -75,7 +76,10 @@ impl ProjectView {
 const SELECT_COLS: &str = "id, slug, name, description, ingest_token, redaction_rules, \
     allowed_origins, created_at, updated_at, deleted, version";
 
-async fn list_projects(State(state): State<SharedState>) -> ApiResult<Json<Vec<ProjectView>>> {
+async fn list_projects(
+    _admin: AdminUser,
+    State(state): State<SharedState>,
+) -> ApiResult<Json<Vec<ProjectView>>> {
     let rows: Vec<ProjectRow> = state
         .ch
         .select(&format!(
@@ -126,6 +130,7 @@ fn random_token() -> String {
 }
 
 async fn create_project(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Json(input): Json<ProjectInput>,
 ) -> ApiResult<Json<ProjectView>> {
@@ -175,6 +180,7 @@ async fn create_project(
 }
 
 async fn get_project(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<ProjectView>> {
@@ -193,6 +199,7 @@ async fn get_project(
 }
 
 async fn update_project(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
     Json(input): Json<ProjectInput>,
@@ -219,6 +226,7 @@ async fn update_project(
 }
 
 async fn delete_project(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
@@ -241,6 +249,7 @@ async fn delete_project(
 }
 
 async fn rotate_token(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<ProjectView>> {
@@ -275,6 +284,7 @@ pub struct RedactionView {
 }
 
 async fn get_redaction(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<RedactionView>> {
@@ -301,6 +311,7 @@ async fn get_redaction(
 }
 
 async fn put_redaction(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
     Json(input): Json<RedactionConfig>,
@@ -351,6 +362,7 @@ pub struct OriginsView {
 }
 
 async fn get_origins(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
 ) -> ApiResult<Json<OriginsView>> {
@@ -374,6 +386,7 @@ async fn get_origins(
 }
 
 async fn put_origins(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(slug): Path<String>,
     Json(input): Json<OriginConfig>,

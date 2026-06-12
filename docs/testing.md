@@ -89,7 +89,7 @@ Cobertura verificada en verde al escribir esta guía:
 - backend: **137** unit tests inline (`cargo test --lib`) + 21 binarios de
   integration tests (requieren ClickHouse).
 - cli: **11** unit tests.
-- frontend: **144** tests (12 archivos).
+- frontend: **181** tests (16 archivos: 15 unit + 1 component test).
 - sdk-node: **37** · sdk-nextjs: **24** · sdk-expo: **14** · sdk-python: **62**.
 - sdk-go / sdk-flutter / sdk-kotlin: suites existentes (se corren en CI con su
   toolchain).

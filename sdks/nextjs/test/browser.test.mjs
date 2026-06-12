@@ -867,3 +867,62 @@ test('feature flags: isFeatureEnabled emite exposure una sola vez por variante y
     server.close();
   }
 });
+
+// ---- 9. seguridad: beacon (useBeacon=true) NO filtra el token en la URL ----
+//
+// `navigator.sendBeacon` no permite custom headers en los browsers principales,
+// por lo que una versión naive embebe el bearer en `?_token=` y lo filtra a
+// access-logs, history, referer y proxies. La fix usa `fetch keepalive`,
+// que sí soporta headers, así que el token viaja en `Authorization: Bearer`
+// y la URL queda limpia. Estos tests pin el contrato: si alguien vuelve a
+// meter el token en query string, rompen en rojo.
+
+test('beacon-flush: el token NO aparece en la URL del POST a /logs', async () => {
+  const seen = [];
+  const { server, port } = await startServer((req, res, body) => {
+    seen.push({ method: req.method, url: req.url, body });
+    res.writeHead(200);
+    res.end('{}');
+  });
+  const c = faro.initFaroClient({ ...commonOpts(port), token: 'secreto-privado' });
+  try {
+    c.log({ level: 'INFO', message: 'beacon-test' });
+    // useBeacon=true ejercita el path que antes usaba sendBeacon con ?_token=.
+    await c.flush(true);
+    await delay(50);
+
+    const logReq = seen.find((s) => s.url.startsWith('/api/v1/ingest/logs'));
+    assert.ok(logReq, 'debe llegar POST a /api/v1/ingest/logs');
+    assert.ok(!logReq.url.includes('?'), `URL no debe llevar query string: ${logReq.url}`);
+    assert.ok(
+      !logReq.url.includes('secreto-privado') && !logReq.body.includes('secreto-privado'),
+      'el token NO debe aparecer ni en URL ni en body'
+    );
+  } finally {
+    c.close();
+    server.close();
+  }
+});
+
+test('beacon-flush: el token viaja en Authorization: Bearer, no en query string', async () => {
+  const seen = [];
+  const { server, port } = await startServer((req, res, _body) => {
+    seen.push({ url: req.url, auth: req.headers['authorization'] });
+    res.writeHead(200);
+    res.end('{}');
+  });
+  const c = faro.initFaroClient({ ...commonOpts(port), token: 'mi-token' });
+  try {
+    c.log({ level: 'INFO', message: 'auth-header' });
+    await c.flush(true);
+    await delay(50);
+
+    const logReq = seen.find((s) => s.url.startsWith('/api/v1/ingest/logs'));
+    assert.ok(logReq, 'debe llegar POST a /api/v1/ingest/logs');
+    assert.equal(logReq.url, '/api/v1/ingest/logs', 'URL limpia, sin query string');
+    assert.equal(logReq.auth, 'Bearer mi-token', 'el token viaja en Authorization header');
+  } finally {
+    c.close();
+    server.close();
+  }
+});

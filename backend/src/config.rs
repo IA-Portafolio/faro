@@ -43,10 +43,10 @@ pub struct Config {
     /// — suficiente para flujo legítimo y atrapa loops accidentales que mandan
     /// miles/seg por accidente. Configurable vía `FARO_INGEST_RATE_PER_SECOND`.
     pub ingest_rate_per_second: u32,
-    /// Si está definido, `/metrics` exige `Authorization: Bearer <token>` y
-    /// rechaza cualquier otra cosa con 401. Si está vacío/no definido, queda
-    /// abierto — apropiado para dev o cuando `/metrics` no es accesible
-    /// públicamente. Configurable vía `FARO_METRICS_TOKEN`.
+    /// `/metrics` exige `Authorization: Bearer <token>` y rechaza cualquier
+    /// otra cosa con 401. Si no está definido, devuelve 401 (fail-closed) —
+    /// en ese caso no hay forma de acceder a las métricas internas.
+    /// Configurable vía `FARO_METRICS_TOKEN`.
     pub metrics_token: Option<String>,
     pub public_base_url: String,
     /// Token global del bot de Telegram. Si se define, los targets `tg://<chat_id>`
@@ -56,6 +56,13 @@ pub struct Config {
     /// Base de la API de Telegram. Configurable solo para pruebas — en producción
     /// se usa el valor por defecto.
     pub telegram_api_base: String,
+    /// Orígenes permitidos para CORS en el API del dashboard (`:8080`).
+    /// Lista separada por comas: `https://faro.example.com,https://app.example.com`.
+    /// Si está vacío (dev), permite cualquier origen sin credenciales.
+    /// En producción deberías definir `FARO_DASHBOARD_ORIGINS` para que el browser
+    /// sólo envíe la cookie de sesión hacia los orígenes conocidos y no hacia
+    /// cualquier sitio que lo solicite. Configurable vía `FARO_DASHBOARD_ORIGINS`.
+    pub dashboard_origins: Vec<String>,
     /// Si `true`, el backend agrega `Strict-Transport-Security: max-age=31536000;
     /// includeSubDomains` a las respuestas del dashboard. Default: `false` porque
     /// el browser cachea HSTS por un año por origen, lo que rompe testing en HTTP
@@ -167,6 +174,16 @@ impl Config {
                 .map(|s| s.trim().to_string())
                 .filter(|s| !s.is_empty()),
             telegram_api_base: env_or("TELEGRAM_API_BASE", "https://api.telegram.org"),
+            dashboard_origins: std::env::var("FARO_DASHBOARD_ORIGINS")
+                .ok()
+                .map(|s| {
+                    s.split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default(),
             enable_hsts: matches!(
                 env_or("FARO_ENABLE_HSTS", "false").to_lowercase().as_str(),
                 "1" | "true" | "yes" | "on"

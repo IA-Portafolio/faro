@@ -9,6 +9,11 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# El deploy sólo checkoutea + rsync local + docker + curl; no usa el
+# GITHUB_TOKEN para push/release. Least-privilege explícito.
+permissions:
+  contents: read
+
 concurrency:
   group: deploy-faro
   cancel-in-progress: false
@@ -23,7 +28,9 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        with:
+          persist-credentials: false
 
       - name: Sync source to ${{ env.FARO_DIR }}
         # --delete para limpiar archivos eliminados del repo; conserva .env.prod,

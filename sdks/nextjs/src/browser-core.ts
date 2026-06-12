@@ -448,10 +448,20 @@ class FaroBrowser {
     const body = JSON.stringify({ service: this.opts.service, logs: batch });
     const url = `${this.opts.endpoint}/api/v1/ingest/logs`;
 
-    if (useBeacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      const beaconUrl = `${url}?_token=${encodeURIComponent(this.opts.token)}`;
-      const ok = navigator.sendBeacon(beaconUrl, new Blob([body], { type: 'application/json' }));
-      if (ok) return;
+    // En el path beacon (pagehide/visibilitychange) usamos `fetch keepalive` en
+    // lugar de `navigator.sendBeacon` porque éste último NO permite custom
+    // headers en Chromium/Firefox/WebKit, y meter el token en `?_token=` lo
+    // filtra a access-logs, history, referer y proxies. `keepalive: true` le
+    // pide al browser que complete el POST aunque la pestaña se cierre y
+    // permite enviar `Authorization: Bearer` como cualquier otro request.
+    if (useBeacon) {
+      const result = await this.postWithKeepalive(url, body);
+      if (result === 'sent') return;
+      if (result === 'retry') {
+        this.queue.unshift(...batch);
+        return;
+      }
+      // `unavailable`: caemos al POST normal de abajo.
     }
 
     try {
@@ -478,10 +488,14 @@ class FaroBrowser {
     const body = JSON.stringify({ service: this.opts.service, events: batch });
     const url = `${this.opts.endpoint}/api/v1/ingest/events`;
 
-    if (useBeacon && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-      const beaconUrl = `${url}?_token=${encodeURIComponent(this.opts.token)}`;
-      const ok = navigator.sendBeacon(beaconUrl, new Blob([body], { type: 'application/json' }));
-      if (ok) return;
+    // Ver flushLogs: misma justificación para evitar `?_token=` en URL.
+    if (useBeacon) {
+      const result = await this.postWithKeepalive(url, body);
+      if (result === 'sent') return;
+      if (result === 'retry') {
+        this.eventsQueue.unshift(...batch);
+        return;
+      }
     }
 
     try {
@@ -499,6 +513,34 @@ class FaroBrowser {
       }
     } catch {
       this.eventsQueue.unshift(...batch);
+    }
+  }
+
+  /**
+   * POST con `keepalive: true` para que el browser termine el envío aunque la
+   * pestaña se esté cerrando.
+   *
+   * - `'sent'`        → el server respondió (2xx/3xx/4xx). El batch se dio por entregado.
+   * - `'retry'`       → el server respondió 5xx. El caller re-encolará.
+   * - `'unavailable'` → `fetch` no existe o el POST falló de red; el caller cae al
+   *                     path normal (que también re-encola en 5xx / error).
+   */
+  private async postWithKeepalive(url: string, body: string): Promise<'sent' | 'retry' | 'unavailable'> {
+    if (typeof fetch === 'undefined') return 'unavailable';
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'Authorization': `Bearer ${this.opts.token}`,
+          'Content-Type': 'application/json',
+        },
+        body,
+      });
+      if (res.status >= 500) return 'retry';
+      return 'sent';
+    } catch {
+      return 'unavailable';
     }
   }
 

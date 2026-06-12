@@ -63,6 +63,7 @@ pub fn test_config() -> Config {
         public_base_url: "http://test".into(),
         telegram_bot_token: None,
         telegram_api_base: "https://api.telegram.org".into(),
+        dashboard_origins: vec![],
         enable_hsts: false,
         anomaly_enabled: false,
         anomaly_interval_secs: 300,

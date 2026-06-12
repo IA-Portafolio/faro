@@ -12,6 +12,7 @@
   import '../../app.css';
   import { login, loginTotp, me } from '$lib/api';
   import { currentUser } from '$lib/stores';
+  import { safeNext } from '$lib/safe-next';
 
   // Fase 1: email + password.
   let email = '';
@@ -31,7 +32,7 @@
     try {
       const u = await me();
       currentUser.set(u);
-      const next = $page.url.searchParams.get('next') || '/';
+      const next = safeNext($page.url.searchParams.get('next'));
       await goto(next, { replaceState: true });
     } catch (_e) {
       // sin sesión — muestra el formulario
@@ -53,7 +54,7 @@
         return;
       }
       currentUser.set(r);
-      const next = $page.url.searchParams.get('next') || '/';
+      const next = safeNext($page.url.searchParams.get('next'));
       await goto(next, { replaceState: true });
     } catch (err: unknown) {
       error = friendlyError(err);
@@ -73,7 +74,7 @@
         recovery: useRecovery,
       });
       currentUser.set(u);
-      const next = $page.url.searchParams.get('next') || '/';
+      const next = safeNext($page.url.searchParams.get('next'));
       await goto(next, { replaceState: true });
     } catch (err: unknown) {
       error = friendlyError(err);

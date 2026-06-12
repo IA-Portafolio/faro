@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::api::params::Range;
-use crate::error::ApiResult;
+use crate::auth::AdminUser;
+use crate::error::{ApiError, ApiResult};
+use crate::monitor_url::validate_monitor_url;
 use crate::state::SharedState;
 use crate::storage::{AttrMap, MonitorResultRow, MonitorRow};
 
@@ -29,6 +31,7 @@ pub fn router() -> Router<SharedState> {
 }
 
 async fn list_monitors(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Query(range): Query<Range>,
 ) -> ApiResult<Json<Vec<MonitorRow>>> {
@@ -92,9 +95,11 @@ fn default_project() -> String {
 }
 
 async fn create_monitor(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Json(input): Json<MonitorInput>,
 ) -> ApiResult<Json<MonitorRow>> {
+    validate_monitor_url(&input.url).map_err(ApiError::BadRequest)?;
     let now = Utc::now();
     let row = MonitorRow {
         id: Uuid::new_v4(),
@@ -124,6 +129,7 @@ async fn create_monitor(
 }
 
 async fn get_monitor(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<MonitorRow>> {
@@ -140,6 +146,7 @@ async fn get_monitor(
 }
 
 async fn update_monitor(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
     Json(input): Json<MonitorInput>,
@@ -156,6 +163,7 @@ async fn update_monitor(
         .select_one_with_params(existing_sql, &[("id", &id_s)])
         .await?
         .ok_or(crate::error::ApiError::NotFound)?;
+    validate_monitor_url(&input.url).map_err(ApiError::BadRequest)?;
     existing.name = input.name;
     existing.method = input.method;
     existing.url = input.url;
@@ -177,6 +185,7 @@ async fn update_monitor(
 }
 
 async fn delete_monitor(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
 ) -> ApiResult<Json<serde_json::Value>> {
@@ -199,6 +208,7 @@ async fn delete_monitor(
 }
 
 async fn monitor_results(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
     Query(range): Query<Range>,
@@ -233,6 +243,7 @@ pub struct UptimeStats {
 }
 
 async fn monitor_uptime(
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<Uuid>,
     Query(range): Query<Range>,

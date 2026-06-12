@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-use crate::auth::AuthUser;
+use crate::auth::{AdminUser, AuthUser};
 use crate::error::{ApiError, ApiResult};
 use crate::integrations::{self, TelegramConfig};
 use crate::notification_channels;
@@ -142,14 +142,14 @@ async fn read_telegram(state: &SharedState) -> ApiResult<TelegramView> {
 }
 
 async fn get_telegram(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
 ) -> ApiResult<Json<TelegramView>> {
     Ok(Json(read_telegram(&state).await?))
 }
 
 async fn put_telegram(
-    admin: AuthUser,
+    admin: AdminUser,
     State(state): State<SharedState>,
     Json(input): Json<TelegramInput>,
 ) -> ApiResult<Json<TelegramView>> {
@@ -183,7 +183,7 @@ async fn put_telegram(
 }
 
 async fn delete_telegram(
-    admin: AuthUser,
+    admin: AdminUser,
     State(state): State<SharedState>,
 ) -> ApiResult<Json<TelegramView>> {
     let cfg = TelegramConfig::default();
@@ -195,7 +195,7 @@ async fn delete_telegram(
 }
 
 async fn test_telegram(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Json(input): Json<TestInput>,
 ) -> ApiResult<Json<serde_json::Value>> {
@@ -283,12 +283,12 @@ struct ChannelTestInput {
     note: String,
 }
 
-async fn list_kinds(_admin: AuthUser) -> Json<Value> {
+async fn list_kinds(_admin: AdminUser) -> Json<Value> {
     Json(json!({ "kinds": notify::SUPPORTED_KINDS }))
 }
 
 async fn list_channels(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
 ) -> ApiResult<Json<Vec<ChannelView>>> {
     let rows = notification_channels::list_all(&state.ch).await?;
@@ -296,7 +296,7 @@ async fn list_channels(
 }
 
 async fn get_channel(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<ChannelView>> {
@@ -307,7 +307,7 @@ async fn get_channel(
 }
 
 async fn create_channel(
-    admin: AuthUser,
+    admin: AdminUser,
     State(state): State<SharedState>,
     Json(input): Json<ChannelInput>,
 ) -> ApiResult<Json<ChannelView>> {
@@ -334,7 +334,7 @@ async fn create_channel(
 }
 
 async fn put_channel(
-    admin: AuthUser,
+    admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<String>,
     Json(input): Json<ChannelInput>,
@@ -344,7 +344,7 @@ async fn put_channel(
 }
 
 async fn delete_channel(
-    admin: AuthUser,
+    admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<Value>> {
@@ -358,7 +358,7 @@ async fn delete_channel(
 }
 
 async fn test_channel(
-    _admin: AuthUser,
+    _admin: AdminUser,
     State(state): State<SharedState>,
     Path(id): Path<String>,
     Json(input): Json<ChannelTestInput>,

@@ -736,6 +736,37 @@ impl<S: Send + Sync> axum::extract::FromRequestParts<S> for CurrentSessionTokenH
     }
 }
 
+/// Extractor que requiere rol "admin". Rechaza con 403 si el usuario autenticado
+/// no tiene ese rol. Implementa Deref a AuthUser para que el código de los
+/// handlers acceda a `.id`, `.email`, etc. sin cambios.
+pub struct AdminUser(pub AuthUser);
+
+impl std::ops::Deref for AdminUser {
+    type Target = AuthUser;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<S: Send + Sync> axum::extract::FromRequestParts<S> for AdminUser {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        let user = parts
+            .extensions
+            .get::<AuthUser>()
+            .cloned()
+            .ok_or(ApiError::Unauthorized)?;
+        if user.role != "admin" {
+            return Err(ApiError::Forbidden("se requiere rol admin".into()));
+        }
+        Ok(AdminUser(user))
+    }
+}
+
 // ---------- Bootstrap admin ----------
 
 pub async fn bootstrap_admin_if_empty(state: &SharedState) -> anyhow::Result<()> {

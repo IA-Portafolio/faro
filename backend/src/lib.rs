@@ -14,6 +14,7 @@ pub mod fingerprint;
 pub mod ingest;
 pub mod integrations;
 pub mod minhash;
+pub mod monitor_url;
 pub mod notification_channels;
 pub mod notify;
 pub mod observability;

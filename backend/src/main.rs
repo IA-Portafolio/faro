@@ -9,6 +9,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use axum::http::HeaderValue;
 use axum::response::IntoResponse;
 use axum::Router;
 use tokio::net::TcpListener;
@@ -113,9 +114,9 @@ async fn main() -> Result<()> {
     // El layer Prometheus mide ambos routers HTTP (API y OTLP/HTTP) para tener
     // `faro_http_request_duration_seconds` por endpoint y status.
     //
-    // El handler valida `Authorization: Bearer <FARO_METRICS_TOKEN>` cuando el
-    // token está configurado (production); si no, queda abierto (dev). El path
-    // ya está exento de `require_session_mw` en `auth::is_public_path`.
+    // El handler exige `Authorization: Bearer <FARO_METRICS_TOKEN>`. Si el token
+    // no está configurado devuelve 401 (fail-closed). El path ya está exento de
+    // `require_session_mw` en `auth::is_public_path`.
     let metrics_token = cfg.metrics_token.clone();
     let api_router = api::router(state.clone()).route(
         "/metrics",
@@ -123,15 +124,21 @@ async fn main() -> Result<()> {
             let handle = prom_handle.clone();
             let token = metrics_token.clone();
             async move {
-                if let Some(expected) = token.as_deref() {
-                    let got = headers
-                        .get(axum::http::header::AUTHORIZATION)
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|v| v.strip_prefix("Bearer "))
-                        .map(str::trim);
-                    if got != Some(expected) {
-                        return (axum::http::StatusCode::UNAUTHORIZED, "unauthorized\n")
-                            .into_response();
+                use subtle::ConstantTimeEq as _;
+                let unauthorized =
+                    (axum::http::StatusCode::UNAUTHORIZED, "unauthorized\n").into_response();
+                match token.as_deref() {
+                    None => return unauthorized,
+                    Some(expected) => {
+                        let got = headers
+                            .get(axum::http::header::AUTHORIZATION)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|v| v.strip_prefix("Bearer "))
+                            .map(str::trim)
+                            .unwrap_or("");
+                        if got.as_bytes().ct_eq(expected.as_bytes()).unwrap_u8() != 1 {
+                            return unauthorized;
+                        }
                     }
                 }
                 (
@@ -154,8 +161,20 @@ async fn main() -> Result<()> {
         anyhow::anyhow!("FARO_OTLP_GRPC_ADDR inválido ({}): {e}", cfg.otlp_grpc_addr)
     })?;
 
-    let api_task = tokio::spawn(serve("api", api_addr, api_router, Some(prom_layer.clone())));
-    let otlp_task = tokio::spawn(serve("otlp", otlp_addr, otlp_router, Some(prom_layer)));
+    let api_task = tokio::spawn(serve(
+        "api",
+        api_addr,
+        api_router,
+        Some(prom_layer.clone()),
+        dashboard_cors(&cfg.dashboard_origins),
+    ));
+    let otlp_task = tokio::spawn(serve(
+        "otlp",
+        otlp_addr,
+        otlp_router,
+        Some(prom_layer),
+        ingest_cors(),
+    ));
     let otlp_grpc_state = state.clone();
     let otlp_grpc_task =
         tokio::spawn(
@@ -172,20 +191,54 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn dashboard_cors(origins: &[String]) -> CorsLayer {
+    if origins.is_empty() {
+        // Dev: sólo orígenes localhost típicos.  Sin credenciales — el browser
+        // no envía cookies a orígenes no listados explícitamente.
+        let dev: Vec<HeaderValue> = [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:8080",
+        ]
+        .iter()
+        .filter_map(|o| o.parse().ok())
+        .collect();
+        CorsLayer::new()
+            .allow_origin(dev)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        let vals: Vec<HeaderValue> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+        CorsLayer::new()
+            .allow_origin(vals)
+            .allow_methods(Any)
+            .allow_headers(Any)
+            .allow_credentials(true)
+    }
+}
+
+fn ingest_cors() -> CorsLayer {
+    // Los SDKs de telemetría web se originan desde cualquier dominio del cliente;
+    // no usan cookies — usan API keys en headers. `Any` es correcto aquí.
+    CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any)
+}
+
 async fn serve(
     name: &'static str,
     addr: String,
     router: Router,
     prom: Option<axum_prometheus::PrometheusMetricLayer<'static>>,
+    cors: CorsLayer,
 ) -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!(%name, %addr, "escuchando");
-    let mut app = router.layer(TraceLayer::new_for_http()).layer(
-        CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any),
-    );
+    let mut app = router.layer(TraceLayer::new_for_http()).layer(cors);
     if let Some(prom) = prom {
         app = app.layer(prom);
     }
