@@ -53,7 +53,7 @@
     "test": "npm run build && node --test --test-force-exit test/browser.test.mjs"
   },
   "peerDependencies": {
-    "@iaportafolio/node": "^0.1.0",
+    "@iaportafolio/node": "^0.3.0",
     "next": ">=13",
     "react": ">=16.8.0",
     "rrweb": "^2.0.0-alpha.4"
@@ -70,7 +70,7 @@
     "web-vitals": "^5.3.0"
   },
   "devDependencies": {
-    "@iaportafolio/node": "^0.1.0",
+    "@iaportafolio/node": "^0.3.0",
     "@iaportafolio/sdk-core": "file:../_shared/sdk-core",
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
