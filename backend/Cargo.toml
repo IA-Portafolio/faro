@@ -82,7 +82,7 @@ utoipa-axum = "0.2"
 # Ver docs/adr/0007-self-observability.md
 opentelemetry = { version = "0.27", default-features = false, features = ["trace", "metrics", "logs"] }
 opentelemetry_sdk = { version = "0.27", default-features = false, features = ["trace", "metrics", "logs", "rt-tokio"] }
-opentelemetry-otlp = { version = "0.27", default-features = false, features = ["http-proto", "reqwest-rustls", "trace", "metrics", "logs"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["http-proto", "reqwest-rustls", "trace", "metrics", "logs"] }
 opentelemetry-semantic-conventions = "0.27"
 tracing-opentelemetry = { version = "0.28", default-features = false }
 
