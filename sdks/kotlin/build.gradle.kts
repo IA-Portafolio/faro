@@ -29,7 +29,7 @@ dependencies {
     // kotlin-test). El bridge `kotlin-test-junit5` mapea las asserts
     // de kotlin.test al runtime de JUnit 5. `useJUnitPlatform()` abajo
     // asume JUnit 5 en el classpath.
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testImplementation(kotlin("test"))
     testImplementation(kotlin("test-junit5"))
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
