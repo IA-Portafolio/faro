@@ -80,7 +80,7 @@ utoipa-axum = "0.2"
 # Self-observability — opt-in vía FARO_SELF_OBSERVE=true. Emite traces,
 # logs y métricas del propio backend al endpoint OTLP local (`:4318`).
 # Ver docs/adr/0007-self-observability.md
-opentelemetry = { version = "0.27", default-features = false, features = ["trace", "metrics", "logs"] }
+opentelemetry = { version = "0.32", default-features = false, features = ["trace", "metrics", "logs"] }
 opentelemetry_sdk = { version = "0.27", default-features = false, features = ["trace", "metrics", "logs", "rt-tokio"] }
 opentelemetry-otlp = { version = "0.27", default-features = false, features = ["http-proto", "reqwest-rustls", "trace", "metrics", "logs"] }
 opentelemetry-semantic-conventions = "0.27"

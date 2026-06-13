@@ -547,7 +547,7 @@ dependencies = [
  "governor",
  "hex",
  "metrics",
- "opentelemetry 0.27.1",
+ "opentelemetry 0.32.0",
  "opentelemetry-otlp",
  "opentelemetry-proto 0.32.0",
  "opentelemetry-semantic-conventions",
