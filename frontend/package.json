@@ -26,6 +26,7 @@
     "vitest": "^3.2.6"
   },
   "overrides": {
-    "cookie": "^0.7.2"
+    "cookie": "^0.7.2",
+    "esbuild": "0.28.1"
   }
 }

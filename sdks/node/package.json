@@ -103,5 +103,8 @@
     "tsup": "^8.0.0",
     "typescript": "^6.0.3",
     "winston-transport": "^4.0.0"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
   }
 }
