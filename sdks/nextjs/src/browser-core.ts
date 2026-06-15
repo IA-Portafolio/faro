@@ -183,10 +183,17 @@ function getOrCreateAnonymousId(): string {
 }
 
 function randomAnonymousId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
+  if (typeof crypto !== 'undefined') {
+    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    // WebCrypto (getRandomValues está en todo navegador moderno y Node 15+);
+    // evitamos Math.random, que no es criptográficamente seguro.
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    return `anon_${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
   }
-  return `anon_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  // Entorno sin WebCrypto (muy raro): es solo un id de analítica anónima, no un
+  // secreto. Evitamos Math.random igual.
+  return `anon_${Date.now().toString(36)}`;
 }
 
 class FaroBrowser {

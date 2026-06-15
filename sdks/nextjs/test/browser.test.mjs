@@ -47,10 +47,6 @@ function removeListener(registry, type, handler) {
   registry.get(type)?.delete(handler);
 }
 
-function dispatchWindow(type, event = {}) {
-  for (const handler of windowListeners.get(type) ?? []) handler(event);
-}
-
 function dispatchDocument(type, event = {}) {
   for (const handler of documentListeners.get(type) ?? []) handler(event);
 }

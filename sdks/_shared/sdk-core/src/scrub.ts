@@ -29,7 +29,15 @@ export interface ScrubbableWire {
   attributes: Record<string, string>;
 }
 
+// Tope anti-ReDoS: algunos presets (p.ej. credit-card `(?:\d[ -]?){13,19}`)
+// tienen backtracking polinómico; aplicarlos sobre strings arbitrariamente
+// largos de telemetría no controlada permitiría un ReDoS. Acotamos la longitud
+// que pasa por los regexes — los valores reales de telemetría son cortos, y los
+// atributos largos igual quedan cubiertos por el redactado por nombre de campo.
+const MAX_REGEX_SCRUB_LEN = 8192;
+
 export function scrubString(s: string, regexes: RegExp[]): string {
+  if (s.length > MAX_REGEX_SCRUB_LEN) return s;
   let out = s;
   for (const re of regexes) out = out.replace(re, REDACTED);
   return out;

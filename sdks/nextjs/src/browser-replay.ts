@@ -115,15 +115,19 @@ export function getOrCreateSessionId(): string {
 
 function generateId(): string {
   try {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      return crypto.randomUUID();
+    if (typeof crypto !== 'undefined') {
+      if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+      // WebCrypto en vez de Math.random (no es cripto-seguro).
+      const bytes = new Uint8Array(8);
+      crypto.getRandomValues(bytes);
+      return `${Date.now().toString(36)}-${Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')}`;
     }
   } catch {
     // Continúa al fallback.
   }
-  // Fallback: time-prefixed random. No es cripto-fuerte, pero alcanza para
-  // distinguir sesiones humanas en un mismo proyecto.
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  // Fallback sin WebCrypto (entorno muy raro): es solo un id de sesión, no un
+  // secreto. Evitamos Math.random igual.
+  return `${Date.now().toString(36)}`;
 }
 
 export function initSessionReplay(opts: SessionReplayOptions): SessionReplayController {
