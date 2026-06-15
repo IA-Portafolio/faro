@@ -32,14 +32,18 @@ jobs:
         include:
           - language: javascript-typescript
           - language: python
-          # go y java-kotlin con build-mode: none (extracción buildless): el
-          # runner self-hosted no tiene go/java en PATH y el autobuild fallaba
-          # con "Unable to locate executable file: go". buildless no compila ni
-          # necesita toolchain.
+          # go: build-mode none (extracción buildless) — el runner self-hosted
+          # no tiene go en PATH y el autobuild fallaba con "Unable to locate
+          # executable file: go"; buildless no compila ni necesita toolchain.
           - language: go
             build-mode: none
+          # java-kotlin: build-mode MANUAL. Kotlin NO soporta build-mode none
+          # (buildless es solo Java) → con none el autobuild corría en la raíz
+          # sin compilar los .kt de sdks/kotlin y CodeQL fallaba con "no source
+          # code seen during build" (configuration error). Compilamos el SDK
+          # Kotlin entre init y analyze para que el tracer extraiga los fuentes.
           - language: java-kotlin
-            build-mode: none
+            build-mode: manual
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         with:
@@ -51,8 +55,24 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended,security-and-quality
 
-      # autobuild solo si build-mode es autobuild (ninguno hoy). Con build-mode:
-      # none la extracción no compila, así que este paso se saltea.
+      # java-kotlin (build-mode manual): compilamos el SDK Kotlin con el mismo
+      # setup que el job `kotlin` de sdk-tests.yml, ENTRE init y analyze, para
+      # que el tracer de CodeQL vea los .kt. Sin esto: "no source code seen".
+      - if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6
+      - if: matrix.language == 'java-kotlin'
+        working-directory: sdks/kotlin
+        run: |
+          if [ ! -f ./gradlew ]; then gradle wrapper --gradle-version 8.7; fi
+          ./gradlew compileKotlin compileTestKotlin --no-daemon
+
+      # autobuild solo si build-mode es autobuild (ninguno hoy). go usa none
+      # (buildless), java-kotlin usa manual (build arriba); este paso se saltea.
       - if: matrix.build-mode == 'autobuild'
         uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e  # v4
 
