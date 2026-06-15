@@ -2,7 +2,8 @@ name: codeql
 
 # Análisis estático de seguridad de GitHub. Cubre los lenguajes con
 # motor CodeQL nativo: JavaScript/TypeScript (frontend + SDKs npm),
-# Python (sdk python), Go (sdk go), Java/Kotlin (sdk kotlin).
+# Python (sdk python) y Go (sdk go). Java/Kotlin (sdk kotlin) está
+# temporalmente EXCLUIDO — CodeQL aún no soporta Kotlin 2.4.0 (ver matriz).
 # Rust (backend) y Dart (sdk flutter) no están soportados oficialmente
 # por CodeQL — se cubren con cargo-audit y dart analyze respectivamente.
 
@@ -32,18 +33,19 @@ jobs:
         include:
           - language: javascript-typescript
           - language: python
-          # go: build-mode none (extracción buildless) — el runner self-hosted
-          # no tiene go en PATH y el autobuild fallaba con "Unable to locate
-          # executable file: go"; buildless no compila ni necesita toolchain.
+          # go: build-mode MANUAL. Go NO soporta build-mode none (CodeQL exige
+          # autobuild|manual) y el runner self-hosted no trae go en PATH;
+          # instalamos go y compilamos el SDK entre init y analyze para que el
+          # tracer de CodeQL extraiga los fuentes.
           - language: go
-            build-mode: none
-          # java-kotlin: build-mode MANUAL. Kotlin NO soporta build-mode none
-          # (buildless es solo Java) → con none el autobuild corría en la raíz
-          # sin compilar los .kt de sdks/kotlin y CodeQL fallaba con "no source
-          # code seen during build" (configuration error). Compilamos el SDK
-          # Kotlin entre init y analyze para que el tracer extraiga los fuentes.
-          - language: java-kotlin
             build-mode: manual
+          # java-kotlin EXCLUIDO temporalmente: el bundle de CodeQL (2.25.6) no
+          # soporta Kotlin 2.4.0 ("KotlinVersionTooRecentError", soporta <2.3.30)
+          # y el SDK subió a 2.4.0 (Dependabot #56/#60). No hay fix de config
+          # posible. Re-agregar `- language: java-kotlin` (build-mode manual +
+          # setup-java + setup-gradle + ./gradlew compileKotlin) cuando CodeQL
+          # publique soporte para Kotlin 2.4. Mientras, el SDK Kotlin queda
+          # cubierto por su job `kotlin` de sdk-tests.yml (compile + tests).
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         with:
@@ -55,24 +57,19 @@ jobs:
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended,security-and-quality
 
-      # java-kotlin (build-mode manual): compilamos el SDK Kotlin con el mismo
-      # setup que el job `kotlin` de sdk-tests.yml, ENTRE init y analyze, para
-      # que el tracer de CodeQL vea los .kt. Sin esto: "no source code seen".
-      - if: matrix.language == 'java-kotlin'
-        uses: actions/setup-java@be666c2fcd27ec809703dec50e508c2fdc7f6654  # v5
+      # go (build-mode manual): instalamos go 1.25 (mismo que el job `go` de
+      # sdk-tests.yml) y compilamos el SDK ENTRE init y analyze para que el
+      # tracer de CodeQL extraiga los fuentes Go.
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
         with:
-          distribution: temurin
-          java-version: '17'
-      - if: matrix.language == 'java-kotlin'
-        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92  # v6
-      - if: matrix.language == 'java-kotlin'
-        working-directory: sdks/kotlin
-        run: |
-          if [ ! -f ./gradlew ]; then gradle wrapper --gradle-version 8.7; fi
-          ./gradlew compileKotlin compileTestKotlin --no-daemon
+          go-version: '1.25'
+      - if: matrix.language == 'go'
+        working-directory: sdks/go
+        run: go build ./...
 
-      # autobuild solo si build-mode es autobuild (ninguno hoy). go usa none
-      # (buildless), java-kotlin usa manual (build arriba); este paso se saltea.
+      # autobuild solo si build-mode es autobuild (ninguno: js-ts/python usan el
+      # default, go usa el build manual de arriba); este paso se saltea siempre.
       - if: matrix.build-mode == 'autobuild'
         uses: github/codeql-action/autobuild@8aad20d150bbac5944a9f9d289da16a4b0d87c1e  # v4
 
