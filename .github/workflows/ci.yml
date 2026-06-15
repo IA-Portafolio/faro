@@ -122,7 +122,7 @@ jobs:
       # correr concurrentemente sobre el mismo ClickHouse compartido.
       # Configuración en backend/.config/nextest.toml.
       - name: install cargo-nextest
-        uses: taiki-e/install-action@fd2f5e3d644b484055ebf4268f474c565f148f25  # v2
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912  # v2
         with:
           tool: cargo-nextest
 
@@ -180,7 +180,7 @@ jobs:
 
       - name: install cargo-audit
         # Binario precompilado (~5 s) vs `cargo install` (~2 min) cada corrida.
-        uses: taiki-e/install-action@fd2f5e3d644b484055ebf4268f474c565f148f25  # v2
+        uses: taiki-e/install-action@7a79fe8c3a13344501c80d99cae481c1c9085912  # v2
         with:
           tool: cargo-audit
 
