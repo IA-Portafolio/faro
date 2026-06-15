@@ -51,25 +51,27 @@ jobs:
         with:
           persist-credentials: false
 
+      # go (build-mode manual): setup-go ANTES de init. Para Go en modo manual,
+      # `init` antepone en el PATH un wrapper de `go` que traza la compilación;
+      # si setup-go corriera DESPUÉS de init, el go real shadowearía ese wrapper
+      # y CodeQL no vería el build ("CodeQL detected code written in Go but this
+      # run didn't build any of it"). Con setup-go antes, init gana precedencia.
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
+        with:
+          go-version: '1.25'
+
       - uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e  # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-extended,security-and-quality
 
-      # go (build-mode manual): instalamos go 1.25 (mismo que el job `go` de
-      # sdk-tests.yml) y compilamos el SDK ENTRE init y analyze para que el
-      # tracer de CodeQL extraiga los fuentes Go.
-      - if: matrix.language == 'go'
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6
-        with:
-          go-version: '1.25'
+      # build manual de go ENTRE init y analyze, trazado por el wrapper que
+      # init dejó en el PATH. `-a` fuerza recompilar (el runner persiste el
+      # build-cache de Go; sin -a sería cache-hit y no invocaría al compilador).
       - if: matrix.language == 'go'
         working-directory: sdks/go
-        # `-a` fuerza recompilar (cache fría): el runner self-hosted persiste el
-        # build-cache de Go entre runs, así que `go build` sin -a es cache-hit y
-        # no invoca al compilador → el tracer de CodeQL no ve fuentes ("Go ...
-        # didn't build any of it"). Con -a el compilador corre y queda trazado.
         run: go build -a ./...
 
       # autobuild solo si build-mode es autobuild (ninguno: js-ts/python usan el
