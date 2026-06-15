@@ -11,7 +11,7 @@ use axum::routing::get;
 use axum::{Json, Router};
 use chrono::Utc;
 use rand::distr::Alphanumeric;
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

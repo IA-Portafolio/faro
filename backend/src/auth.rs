@@ -27,7 +27,7 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use parking_lot::Mutex;
 use rand::distr::Alphanumeric;
-use rand::{Rng, RngCore};
+use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
