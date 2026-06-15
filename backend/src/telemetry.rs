@@ -20,7 +20,7 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::trace::TracerProvider;
+use opentelemetry_sdk::trace::SdkTracerProvider;
 use opentelemetry_sdk::Resource;
 
 /// Inicializa el exportador OTLP de tracing si `FARO_SELF_OBSERVE=true`.
@@ -43,29 +43,31 @@ pub fn init_otel() -> Result<Option<OtelGuard>> {
 
     opentelemetry::global::set_text_map_propagator(TraceContextPropagator::new());
 
-    let resource = Resource::new([
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-            service_name.clone(),
-        ),
-        KeyValue::new(
-            opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
-            env!("CARGO_PKG_VERSION"),
-        ),
-    ]);
+    let resource = Resource::builder()
+        .with_attributes([
+            KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                service_name.clone(),
+            ),
+            KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_VERSION,
+                env!("CARGO_PKG_VERSION"),
+            ),
+        ])
+        .build();
 
     // Exporter HTTP/proto apuntando al listener OTLP del propio backend.
-    // API migrada a opentelemetry-otlp 0.27: `new_exporter()` y
-    // `build_span_exporter()` fueron reemplazados por el patrón builder
-    // tipado.
+    // API migrada a opentelemetry-otlp 0.32: el builder tipado se mantiene,
+    // pero `with_batch_exporter` ya no recibe runtime — desde 0.28 el
+    // BatchSpanProcessor corre en su propio hilo dedicado.
     let exporter = SpanExporter::builder()
         .with_http()
         .with_endpoint(format!("{endpoint}/v1/traces"))
         .with_timeout(Duration::from_secs(5))
         .build()?;
 
-    let provider = TracerProvider::builder()
-        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
         .with_resource(resource)
         .build();
 
@@ -85,8 +87,8 @@ pub fn init_otel() -> Result<Option<OtelGuard>> {
 
 /// Drop guard que hace flush + shutdown ordenado del provider al salir.
 pub struct OtelGuard {
-    provider: TracerProvider,
-    _tracer: opentelemetry_sdk::trace::Tracer,
+    provider: SdkTracerProvider,
+    _tracer: opentelemetry_sdk::trace::SdkTracer,
 }
 
 impl Drop for OtelGuard {
