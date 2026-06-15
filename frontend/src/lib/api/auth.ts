@@ -1,4 +1,4 @@
-import { api, qs, type RangeArgs } from './core';
+import { api } from './core';
 
 export type AuthUser = { id: string; email: string; name: string; role: string };
 

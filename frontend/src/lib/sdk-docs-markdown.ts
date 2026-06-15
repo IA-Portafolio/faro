@@ -105,7 +105,7 @@ export function renderFullMarkdown(baseUrl: string): string {
   out.push('| Opción | Tipo | Default | Descripción |');
   out.push('| --- | --- | --- | --- |');
   for (const o of commonOptions) {
-    out.push(`| \`${o.name}\` | ${o.type} | ${o.default} | ${o.desc.replace(/\|/g, '\\|')} |`);
+    out.push(`| \`${o.name}\` | ${o.type} | ${o.default} | ${o.desc.replace(/([\\|])/g, '\\$1')} |`);
   }
   out.push('');
 
