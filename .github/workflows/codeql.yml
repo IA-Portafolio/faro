@@ -66,7 +66,11 @@ jobs:
           go-version: '1.25'
       - if: matrix.language == 'go'
         working-directory: sdks/go
-        run: go build ./...
+        # `-a` fuerza recompilar (cache fría): el runner self-hosted persiste el
+        # build-cache de Go entre runs, así que `go build` sin -a es cache-hit y
+        # no invoca al compilador → el tracer de CodeQL no ve fuentes ("Go ...
+        # didn't build any of it"). Con -a el compilador corre y queda trazado.
+        run: go build -a ./...
 
       # autobuild solo si build-mode es autobuild (ninguno: js-ts/python usan el
       # default, go usa el build manual de arriba); este paso se saltea siempre.
