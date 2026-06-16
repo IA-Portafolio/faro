@@ -10,12 +10,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use axum::http::HeaderValue;
 use axum::response::IntoResponse;
 use axum::Router;
 use tokio::net::TcpListener;
 use tokio::signal;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -168,20 +167,29 @@ async fn main() -> Result<()> {
         anyhow::anyhow!("FARO_OTLP_GRPC_ADDR inválido ({}): {e}", cfg.otlp_grpc_addr)
     })?;
 
+    // CORS del listener `api`: NO se aplica a nivel de servidor. Cada sub-router
+    // (dashboard, docs, ingest) lleva su propio CorsLayer dentro de `api::router`
+    // porque conviven políticas distintas: el dashboard restringe a
+    // `FARO_DASHBOARD_ORIGINS` con credenciales, mientras que `/api/v1/ingest/*`
+    // debe aceptar cualquier origen (browser/RUM SDK en dominios de clientes). Un
+    // CorsLayer server-wide cortocircuitaría el preflight OPTIONS de ingesta antes
+    // de llegar al layer permisivo y devolvería 200 sin `Access-Control-Allow-Origin`.
     let mut api_task = tokio::spawn(serve(
         "api",
         api_addr,
         api_router,
         Some(prom_layer.clone()),
-        dashboard_cors(&cfg.dashboard_origins),
+        None,
         shutdown_tx.subscribe(),
     ));
+    // El listener OTLP/HTTP sí es 100% ingesta, así que el CORS permisivo va
+    // server-wide sin conflicto.
     let mut otlp_task = tokio::spawn(serve(
         "otlp",
         otlp_addr,
         otlp_router,
         Some(prom_layer),
-        ingest_cors(),
+        Some(api::ingest_cors()),
         shutdown_tx.subscribe(),
     ));
     let otlp_grpc_state = state.clone();
@@ -246,55 +254,23 @@ async fn shutdown_signal() {
     }
 }
 
-fn dashboard_cors(origins: &[String]) -> CorsLayer {
-    if origins.is_empty() {
-        // Dev: sólo orígenes localhost típicos.  Sin credenciales — el browser
-        // no envía cookies a orígenes no listados explícitamente.
-        let dev: Vec<HeaderValue> = [
-            "http://localhost:5173",
-            "http://localhost:3000",
-            "http://localhost:8080",
-            "http://127.0.0.1:5173",
-            "http://127.0.0.1:3000",
-            "http://127.0.0.1:8080",
-        ]
-        .iter()
-        .filter_map(|o| o.parse().ok())
-        .collect();
-        CorsLayer::new()
-            .allow_origin(dev)
-            .allow_methods(Any)
-            .allow_headers(Any)
-    } else {
-        let vals: Vec<HeaderValue> = origins.iter().filter_map(|o| o.parse().ok()).collect();
-        CorsLayer::new()
-            .allow_origin(vals)
-            .allow_methods(Any)
-            .allow_headers(Any)
-            .allow_credentials(true)
-    }
-}
-
-fn ingest_cors() -> CorsLayer {
-    // Los SDKs de telemetría web se originan desde cualquier dominio del cliente;
-    // no usan cookies — usan API keys en headers. `Any` es correcto aquí.
-    CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any)
-}
-
 async fn serve(
     name: &'static str,
     addr: String,
     router: Router,
     prom: Option<axum_prometheus::PrometheusMetricLayer<'static>>,
-    cors: CorsLayer,
+    cors: Option<CorsLayer>,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<()> {
     let listener = TcpListener::bind(&addr).await?;
     tracing::info!(%name, %addr, "escuchando");
-    let mut app = router.layer(TraceLayer::new_for_http()).layer(cors);
+    let mut app = router.layer(TraceLayer::new_for_http());
+    // CORS opcional a nivel de servidor: el listener `api` lo deja en `None` y
+    // aplica CORS por sub-router (ver `api::router`); el OTLP/HTTP usa el CORS
+    // permisivo server-wide. `ingest_cors`/`dashboard_cors` viven en `api`.
+    if let Some(cors) = cors {
+        app = app.layer(cors);
+    }
     if let Some(prom) = prom {
         app = app.layer(prom);
     }
