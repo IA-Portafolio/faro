@@ -4,6 +4,39 @@ Faro trata los feature flags como parte del flujo de observabilidad de producto:
 un flag no solo decide UI, también crea la señal que permite medir conversión y
 errores por variante.
 
+## Crear y configurar flags
+
+Los flags viven en la tabla `faro.feature_flags` de ClickHouse. Hoy no hay
+endpoint REST de escritura — se crean/modifican con un `INSERT` directo contra
+ClickHouse:
+
+```sql
+INSERT INTO faro.feature_flags
+    (project_id, key, rollout_percentage, conditions, active, updated_at, version)
+VALUES
+    ('default', 'new-checkout', 50, '{"properties":{"plan":"pro"}}', 1, now64(3), 1);
+```
+
+Campos:
+
+| Campo | Tipo | Descripción |
+| ----- | ---- | ----------- |
+| `project_id` | `LowCardinality(String)` | Slug del proyecto. Default `'default'`. |
+| `key` | `String` | Identificador estable del flag (p. ej. `new-checkout`). |
+| `rollout_percentage` | `UInt8` | Porcentaje de usuarios expuestos (0–100). El SDK hace sticky bucketing por `distinct_id` (FNV-1a). |
+| `conditions` | `String` | JSON con reglas de targeting. Shape actual: `{"properties":{"plan":"pro"}}` — todas las properties listadas deben coincidir exactamente en el contexto del SDK. |
+| `active` | `UInt8` | `1` = servido a SDKs; `0` = oculto del payload. |
+| `updated_at` | `DateTime64(3,'UTC')` | Timestamp del último cambio (`now64(3)` al insertar). |
+| `version` | `UInt64` | Versión para `ReplacingMergeTree`. Bumpeala en cada upsert para que el `FINAL` del backend elija la fila más nueva. |
+
+La PK es `(project_id, key)`. El backend carga los flags activos en un cache
+in-memory al boot y refresca cada 30s; un `INSERT` nuevo tarda hasta 30s en
+verse reflejado en el próximo refresh de los SDKs.
+
+> **Seguridad:** las `conditions` se sirven a los SDKs (incluido el browser).
+> No pongas secretos ni reglas server-only en `conditions` — el flag es público
+> por diseño.
+
 ## SDK
 
 Los **7 SDKs** (Node, Next.js, Expo, Python, Go, Kotlin, Flutter) mantienen una

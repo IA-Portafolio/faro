@@ -37,8 +37,11 @@ docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 Verifica:
 
 ```bash
-curl https://faro.iaportafolio.com/healthz
+curl https://faro.iaportafolio.com/readyz
 ```
+
+> `/readyz` (no `/healthz`) valida que ClickHouse responde — falla si CH no
+> está listo. `/healthz` es un ping liveness sin dependencias.
 
 ## Despliegue continuo
 
@@ -55,8 +58,9 @@ Pasos del deploy automático:
 2. Aplica todas las migraciones idempotentes en `clickhouse/migrations/`.
 3. `docker compose build` (aprovecha cache de capas).
 4. `docker compose up -d --remove-orphans`.
-5. Polling de `https://faro.iaportafolio.com/healthz` (hasta 40 reintentos).
-6. `docker image prune -f`.
+5. Polling de `https://faro.iaportafolio.com/readyz` (hasta 40 reintentos).
+6. Smoke test post-deploy (`scripts/smoke-post-deploy.sh`): login + ingest + query round-trip contra el dominio público. Cubre el caso "readyz verde pero la auth/ingesta/CH están rotas".
+7. `docker image prune -f`.
 
 ## Variables de entorno productivas
 
@@ -209,3 +213,65 @@ docker compose -f docker-compose.prod.yml logs -f --tail=200 clickhouse
 - **No mezclar** datos sensibles con baja cardinalidad — incluso con
   redaction activa, lo que no matchee las reglas queda almacenado tal cual
   durante el período de retención.
+
+## Atajos del Makefile
+
+El [`Makefile`](../Makefile) del root expone targets para las tareas más
+comunes. `make help` lista todos:
+
+```bash
+make up              # Levanta el stack completo (dev)
+make down            # Detiene (preserva volúmenes)
+make reset           # Detiene y BORRA datos (volúmenes incluidos)
+make backend         # Corre backend en host contra CH de docker
+make backend-test    # cargo nextest (requiere CH arriba)
+make backend-check   # cargo fmt + clippy
+make frontend        # Dev server en :5173
+make frontend-check  # svelte-check + tsc
+make ch              # Cliente interactivo de ClickHouse
+make migrate         # Aplica migraciones de clickhouse/migrations/
+make send-log        # Envía un log de prueba al ingest
+make prod-deploy     # Rebuild + restart en prod (si auto-deploy falló)
+make prod-logs       # Logs del backend en prod
+make release-sdk SDK=node VER=0.3.0  # Tag + push de release de SDK
+```
+
+## Imágenes Docker (GHCR)
+
+El workflow `deploy.yml` construye y publica imágenes multi-arch a GitHub
+Container Registry bajo `ghcr.io/ia-portafolio/faro`:
+
+- `ghcr.io/ia-portafolio/faro:latest` — tag móvil, último deploy del runner
+- `ghcr.io/ia-portafolio/faro:<git-sha>` — tag inmutable por commit
+
+El `docker-compose.prod.yml` usa `build:` (construye local) en lugar de
+`image:` — el runner de prod hace el build in-situ. Si preferís pull de GHCR,
+cambiá el servicio `backend` a:
+
+```yaml
+backend:
+  image: ghcr.io/ia-portafolio/faro:latest
+  # elimina el bloque `build:`
+```
+
+## Compose de test e integración de SDKs
+
+### Backend integration (ClickHouse vivo)
+
+```bash
+docker compose -f docker-compose.test.yml -p faro-test up \
+  --abort-on-container-exit --exit-code-from backend-test
+```
+
+Levanta ClickHouse + backend con `cargo test --tests` (incluye integration).
+Ver [AGENTS.md §1.d](../AGENTS.md) para cuándo es obligatorio.
+
+### SDK integration
+
+```bash
+docker compose -f docker-compose.sdk-integration.yml up \
+  --abort-on-container-exit --exit-code-from sdk-test
+```
+
+Levanta backend + CH y corre los SDKs Node/Python/Go contra endpoints reales.
+Útil para validar que un cambio en el wire format no rompa ningún SDK.

@@ -6,6 +6,8 @@ empujando un tag `sdk-python-v<semver>`.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-16
+
 ### Breaking
 - **El tracing ahora está respaldado por OpenTelemetry SDK + auto-instrumentación.**
   La API pública (`start_span` / `use_span` / `active_span` / `Span` /

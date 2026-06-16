@@ -58,6 +58,22 @@ void didChangeAppLifecycleState(AppLifecycleState state) {
 }
 ```
 
+## Product analytics
+
+```dart
+// Eventos de producto
+Faro.instance.track('checkout_completed', {'amount': 99.50, 'currency': 'USD'});
+
+// Identificar usuario
+Faro.instance.identify('user_42', {'email': 'a@b.com', 'plan': 'pro'});
+
+// Fusionar sesión anónima con usuario post-login
+Faro.instance.alias('anon_abc123', 'user_42');
+```
+
+Ver [API uniforme](../README.md#api-uniforme-entre-sdks) para la semántica de
+`anonymous_id`/`distinct_id`/`session_id`.
+
 ## Opciones cross-SDK
 
 `warning()` (alias de `warn()`), `scrubFields`/`scrubHeaders`/`scrubPatterns` y el hook `beforeSend` están disponibles con la misma semántica que en el resto de SDKs. Ver [API uniforme entre SDKs](../README.md#api-uniforme-entre-sdks).

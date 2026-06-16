@@ -52,6 +52,35 @@ y `components` (jsdom + `@testing-library/svelte`, compila los `.svelte` —
 `src/**/*.component.test.ts`). El sufijo importa: un component test que no
 termine en `.component.test.ts` cae al proyecto `unit`, que no compila Svelte.
 
+## Testing con Docker
+
+Cuando no tenés el toolchain local (Rust, Go, Flutter) o necesitás ClickHouse
+vivo para integration tests, hay dos vías Docker documentadas:
+
+### Backend integration (ClickHouse vivo)
+
+```bash
+docker compose -f docker-compose.test.yml -p faro-test up \
+  --abort-on-container-exit --exit-code-from backend-test
+```
+
+Levanta ClickHouse + backend y corre `cargo test --tests` (unit + integration).
+Los integration tests cubren handlers HTTP, queries, ingest y schema — lo que
+`cargo test --lib` no ejercita.
+
+### SDK integration
+
+```bash
+docker compose -f docker-compose.sdk-integration.yml up \
+  --abort-on-container-exit --exit-code-from sdk-test
+```
+
+Levanta backend + CH y corre los SDKs (Node, Python, Go) contra endpoints
+reales. Útil para validar que un cambio en el wire format no rompa ningún SDK
+antes de publicar.
+
+Ver también [deployment.md — Compose de test](deployment.md#compose-de-test-e-integración-de-sdks).
+
 ## Cómo se mapea a CI
 
 - [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — job `backend`

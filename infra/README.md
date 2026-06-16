@@ -119,8 +119,9 @@ En cada push a `main`:
 2. Aplica todas las migraciones idempotentes de `clickhouse/migrations/*.sql`
 3. `docker compose build` (re-aprovecha cache de capas)
 4. `docker compose up -d --remove-orphans`
-5. `GET https://faro.iaportafolio.com/healthz` hasta 40 reintentos
-6. `docker image prune -f` (limpia capas viejas)
+5. `GET https://faro.iaportafolio.com/readyz` hasta 40 reintentos (valida ClickHouse)
+6. Smoke test post-deploy (`scripts/smoke-post-deploy.sh`)
+7. `docker image prune -f` (limpia capas viejas)
 
 `concurrency: deploy-faro` impide que dos deploys se pisen.
 

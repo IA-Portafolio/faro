@@ -1,5 +1,5 @@
 name: faro_sdk
-description: Faro SDK for Flutter / Dart — sends logs and captured exceptions to a Faro instance.
+description: Faro SDK for Flutter / Dart — logs, captured exceptions, product analytics (track/identify/alias) and tracing context to a Faro instance.
 version: 0.1.0
 homepage: https://github.com/iaportafolio/faro
 environment:

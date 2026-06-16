@@ -7,7 +7,7 @@ cuando se empuja un tag `sdk-go-v<semver>` al repo.
 
 ## [Unreleased]
 
-### Breaking — v0.2.0 (re-tracing sobre OTel)
+### Added — v0.2.0 (tracing)
 - **El tracing ahora está respaldado por `go.opentelemetry.io/otel/sdk`.**
   API pública (`StartSpan` / `WithSpan` / `Span` / `ContextWithSpan` /
   `SpanFromContext` / `Traceparent`) se mantiene compat, pero por dentro
@@ -48,9 +48,6 @@ cuando se empuja un tag `sdk-go-v<semver>` al repo.
 - **Auto-correlación logs ↔ trazas**: `client.LogContext(ctx, ...)` (alias
   `InfoContext / WarnContext / ErrorContext`) lee el span activo del `ctx`
   y adjunta `trace_id` + `span_id` automáticamente.
-- Pipeline de spans con worker dedicado + canal `spansCh` (separado de logs
-  y events) → batching cada `FlushInterval` y POST OTLP/JSON a `/v1/traces`.
-  Mismo `MaxBatchSize` / `MaxQueueSize` / retry-on-5xx que las otras colas.
 - Subpaquete `sdks/go/ginfaro` (go.mod aparte) con `ginfaro.Tracing()`
   middleware para Gin: crea span SERVER por request, hereda W3C `traceparent`
   entrante, propaga al response, registra status/errors. Lo separamos en

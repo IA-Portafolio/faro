@@ -67,6 +67,8 @@ export function FaroClient() {
       token:    process.env.NEXT_PUBLIC_FARO_TOKEN!,
       service:  'mi-next-app-web',
       // release se autodetecta desde NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA si no la pasas
+      scrubUrlQuery: true,   // default: remueve querystring+hash de la URL reportada (PII)
+      sessionReplaySampleRate: 1.0,  // 0-1, fracción de sesiones con replay
     });
   }, []);
 

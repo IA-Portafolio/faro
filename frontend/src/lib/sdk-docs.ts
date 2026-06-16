@@ -282,8 +282,8 @@ export function FaroClient() {
         methods: [
           { signature: 'isFeatureEnabled(key, context?)', summary: 'Evalúa un flag contra el snapshot local.', returns: 'boolean' },
           { signature: 'refreshFeatureFlags()', summary: 'Refresca el snapshot de flags desde el backend.', returns: 'Promise<void>' },
-          { signature: 'initSessionReplay(opts)', summary: 'Activa la grabación de sesión (rrweb).', returns: 'SessionReplayController' },
-          { signature: 'getOrCreateSessionId()', summary: 'Devuelve o crea el ID de sesión usado por el replay.', returns: 'string' },
+          { signature: 'captureSessionReplay (opción de init)', summary: 'Activa la grabación de sesión (rrweb) pasando `captureSessionReplay: true` a `initFaroClient`. Ver también `sessionReplaySampleRate` y `sessionReplayMaskAllText`.' },
+          { signature: 'getSessionId()', summary: 'Devuelve el ID de sesión actual del RUM.', returns: 'string' },
           { signature: '<FaroErrorBoundary>', summary: 'Componente React que captura errores de render del árbol hijo.' }
         ]
       }
@@ -524,7 +524,7 @@ faro.Info("arranque ok", map[string]any{"port": 8080})`,
         title: 'Integraciones',
         methods: [
           { signature: 'HTTPMiddleware(next)', summary: 'Middleware net/http que abre un span por request.', returns: 'http.Handler' },
-          { signature: 'ginfaro.Middleware()', summary: 'Middleware de Gin (subpaquete ginfaro).' }
+          { signature: 'ginfaro.Tracing()', summary: 'Middleware de Gin que abre un span SERVER por request (subpaquete ginfaro).' }
         ]
       }
     ]

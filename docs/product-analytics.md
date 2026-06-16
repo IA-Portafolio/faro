@@ -150,6 +150,92 @@ El parametro `service` filtra `product_events.source` para metricas virtuales
 de eventos. El parametro `agg` se ignora en estas metricas porque la agregacion
 siempre es `count()` por bucket.
 
+### Cohorts
+
+Un cohort segmenta usuarios de producto por comportamiento declarativo. La
+definición se evalúa al vuelo contra `faro.product_events` (no hay
+materialización de membership).
+
+Endpoints (bajo `/api/v1`):
+
+| Método | Ruta | Descripción |
+| ------ | ---- | ----------- |
+| `GET` | `/cohorts` | Lista (soft-delete filtrado) |
+| `POST` | `/cohorts` | Crear |
+| `GET` | `/cohorts/:id` | Detalle |
+| `PUT` | `/cohorts/:id` | Editar (bumpea version) |
+| `DELETE` | `/cohorts/:id` | Soft-delete |
+| `POST` | `/cohorts/preview` | Evaluar sin guardar → `size` + `sample` |
+| `GET` | `/cohorts/:id/users` | Miembros paginables |
+| `GET` | `/cohorts/:id/retention` | Fracción activa por día hacia atrás |
+| `GET` | `/cohorts/:id/overlap?other=<uuid>` | Intersección con otro cohort |
+
+Body de create/update (`CohortInput`):
+
+```json
+{
+  "name": "Power users checkout",
+  "description": "≥3 checkouts en 30 días, plan pro",
+  "definition": {
+    "event": "checkout_completed",
+    "op": ">=",
+    "count": 3,
+    "last_days": 30,
+    "filters": [
+      { "key": "plan", "value": "pro" }
+    ],
+    "user_filters": [
+      { "key": "industry", "value": "fintech" }
+    ]
+  }
+}
+```
+
+`definition` (`CohortDefinition`):
+
+| Campo | Tipo | Descripción |
+| ----- | ---- | ----------- |
+| `event` | `string` | Nombre del evento a contar. |
+| `op` | `string` | Comparador: `==`, `>=`, `>`, `<=`, `<`. |
+| `count` | `u32` | Umbral. Máx 1 000 000. |
+| `last_days` | `u32` | Ventana hacia atrás en días. Rango [1, 365]. |
+| `filters` | `CohortFilter[]` | Filtros sobre `properties` del evento. Máx 3 (sumados con `user_filters`). |
+| `user_filters` | `CohortFilter[]` | Filtros sobre traits del usuario (`product_users.properties` persistidos vía `identify`). Máx 3 (sumados con `filters`). |
+
+`CohortFilter`: `{ "key": string, "value": string }` — match exacto vía
+`JSONExtractString(properties, key) = value`.
+
+`preview` devuelve `{ size, sample: string[], took_ms }`. `retention` devuelve
+`{ cohort_size, horizon_days, points: [{ day_back, active_users }], took_ms }`
+(horizon default 30, máx 90). `overlap` devuelve
+`{ size_a, size_b, intersection, jaccard, took_ms }`.
+
+### Funnels
+
+Los funnels miden conversión entre secuencia de eventos. Endpoints (bajo
+`/api/v1`):
+
+| Método | Ruta | Descripción |
+| ------ | ---- | ----------- |
+| `POST` | `/funnels/compute` | Conversión de una secuencia de steps |
+| `POST` | `/funnels/drop-off` | Análisis de drop-off por step |
+| `POST` | `/funnels/time-to-convert` | Tiempo mediano entre primer y último step |
+
+Body de `/funnels/compute`:
+
+```json
+{
+  "steps": ["checkout_started", "checkout_completed"],
+  "from": "2026-05-01T00:00:00Z",
+  "to": "2026-05-31T23:59:59Z",
+  "project": "default",
+  "window_seconds": 3600
+}
+```
+
+`window_seconds` define el tiempo máximo permitido entre el primer y el último
+step para contar como conversión.
+
 ## Modelo de datos esperado
 
 - `faro.product_events` es la fuente de verdad de eventos. Para linkear bien
@@ -182,14 +268,14 @@ siempre es `count()` por bucket.
    en una respuesta backend instrumentada.
 4. Adjuntar `session.id` o `session_id` a errores frontend/backend para que
    `/sessions` e `/insights` puedan explicar que sesiones se rompieron.
-5. Enviar replay chunks con el mismo `session_id`; cuando el reproductor rrweb
-   este disponible, `/sessions` podra abrir la reproduccion desde la fila.
+5. Enviar replay chunks con el mismo `session_id`; `/sessions` muestra
+   `has_replay` y desde `/replays/:session_id` se reproduce con rrweb-player.
 
 ## Limitaciones actuales
 
 - La retencion soporta intervalos diarios y columnas fijas D1/D7/D30.
-- `/sessions` muestra disponibilidad y conteos de replay; la reproduccion rrweb
-  queda condicionada a completar la pieza de replay.
+- `/sessions` muestra disponibilidad y conteos de replay; la reproducción rrweb
+  está disponible en `/replays/:session_id` cuando la sesión tiene chunks grabados.
 - El link session -> traces depende de que los eventos de producto traigan
   `trace_id`; si el SDK no propaga ese valor, `trace_count` queda en cero aunque
   existan spans backend en ClickHouse.

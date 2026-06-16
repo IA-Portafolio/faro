@@ -164,7 +164,7 @@ El SDK bufferiza para no bloquear, lo que significa que un proceso/pestaña/app 
 
 Notas sobre el cierre acotado:
 
-- `close()` siempre **acepta un timeout** (`timeoutMs` en TS/Expo, `timeout=` en Python, `timeoutMs =` en Kotlin, `timeout:` Duration en Flutter, `ctx` en Go). Si la red está caída no debería bloquear el proceso indefinidamente.
+- `close()` siempre **acepta un timeout** (`timeoutMs` en TS/Expo, `timeout=` en Python, `timeout:` Duration en Flutter, `ctx` en Go). En Kotlin, `close()` no recibe parámetros pero llama internamente a `flush(timeoutMs = 2000)`; para un timeout distinto llamá `flush(timeoutMs)` antes de `close()`. Si la red está caída no debería bloquear el proceso indefinidamente.
 - En Python `close()` hace `worker.join(timeout=...)` además del drenado — el worker es daemon, sin join podría truncarse a mitad de POST.
 - En Node `close()` rompe el bucle si la cola no se reduce entre flushes (red caída → no insiste).
 - Lo que se pierde si el timeout vence: los eventos que ya estaban en cola pero no llegaron a salir. Llega como mucho **un** batch incompleto al servidor en ese escenario.
@@ -182,6 +182,35 @@ Content-Type: application/json
 ```
 
 Si prefieres **OpenTelemetry** estándar en lugar del SDK propio, apunta el OTLP exporter a `https://faro.iaportafolio.com/v1/logs|traces|metrics` con `Authorization: Bearer <token>` y `OTEL_EXPORTER_OTLP_PROTOCOL=http/json`.
+
+### Retry policy (común a todos los SDKs)
+
+| Status HTTP | Acción |
+| ----------- | ------ |
+| 2xx | Descarta el batch (éxito). |
+| 4xx | Descarta el batch (error del cliente — payload mal formado, token inválido, batch >100). No reintenta: el servidor no lo va a aceptar. |
+| 5xx | **Re-encola** el batch para el siguiente flush. Sin backoff exponencial (el siguiente flush respeta `flushIntervalMs`). Si la cola se llena durante un outage, descarta el más viejo. |
+| Timeout / network | Igual que 5xx: re-encola. |
+
+No hay reintentos infinitos: si la red está caída y la cola se llena, los
+eventos viejos se descartan para proteger la memoria del proceso host.
+
+### Auto-correlación logs ↔ spans
+
+Cuando tracing está activo, los logs emitidos dentro del scope de un span
+adhieren automáticamente `trace_id` y `span_id` — sin código manual.
+
+| SDK | Cómo se logra |
+| --- | ------------- |
+| **Node** | `AsyncLocalStorage` propaga el span activo a través de async boundaries. `faro.info()` dentro de un `withSpan()` o del middleware Express auto-trae los IDs. |
+| **Python** | `contextvars` + el `context` actual del OTel SDK. `faro.info()` dentro de un `with use_span()` los hereda. |
+| **Go** | `context.Context` explícito. Usar `faro.InfoContext(ctx, ...)` en vez de `faro.Info(...)`. El middleware HTTP inyecta el span en el `r.Context()`. |
+| **Kotlin** | `ThreadLocal` del span actual. `Faro.info()` dentro de un `withSpan {}` los hereda. |
+| **Flutter** | `Zone.current` propaga el span. `Faro.instance.info()` dentro de un `withSpan()` los hereda. |
+
+Sin tracing activo, los logs se envían sin `trace_id`/`span_id` — no fallan,
+solo pierden la correlación. Los product events (`track()`) también se
+auto-correlacionan cuando hay un span activo.
 
 ## API de tracking de eventos de producto
 
@@ -368,7 +397,7 @@ Conteos actuales (post 7.D.1):
 | Python  | [`python/`](./python)| `pytest tests/`     | 12    |
 | Go      | [`go/`](./go)        | `go test ./...`     | 12    |
 | Flutter | [`flutter/`](./flutter)| `flutter test`    | 11    |
-| Kotlin  | [`kotlin/`](./kotlin)| `./gradlew test`    | 10    |
+| Kotlin  | [`kotlin/`](./kotlin)| `./gradlew test`    | 17    |
 
 Los SDKs Node/Next.js/Expo necesitan correr `npm install && npm run build` antes (el `test` script ya los encadena). Kotlin necesita gradle wrapper; el job de CI lo bootstrappea si falta. Para HTTP mocks cada lenguaje usa lo natural: `http.createServer` en Node, `http.server` de stdlib en Python, `httptest.NewServer` en Go, `HttpServer.bind` de `dart:io` en Flutter, `com.sun.net.httpserver.HttpServer` del JDK en Kotlin.
 

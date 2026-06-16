@@ -18,6 +18,9 @@ Documentación de Faro. Organizada en tres tipos:
 | [anomaly-detection.md](anomaly-detection.md) | Cómo funciona el detector de anomalías por z-score (ventanas, baseline, fire/resolve, hysteresis). |
 | [feature-flags-experiments.md](feature-flags-experiments.md) | Feature flags, exposures, A/B testing y rollback recomendado cuando treatment sube errores. |
 | [product-analytics.md](product-analytics.md) | Vistas y APIs de product analytics: users, retention, sessions, replay e insights combinados. |
+| [alerts.md](alerts.md) | Reglas de alerta, condiciones, severities, incidentes y notificaciones multicanal. |
+| [monitors.md](monitors.md) | Monitores HTTP sintéticos: CRUD, resultados, uptime y validación anti-SSRF. |
+| [api-reference.md](api-reference.md) | Referencia completa de la API REST: todos los endpoints, query params y response shapes. |
 
 ## Reference
 

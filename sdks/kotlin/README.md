@@ -58,6 +58,41 @@ Asegúrate de tener `INTERNET` en el manifest (suele estar por defecto):
 <uses-permission android:name="android.permission.INTERNET" />
 ```
 
+## Product analytics
+
+```kotlin
+// Eventos de producto
+Faro.track("checkout_completed", mapOf("amount" to 99.50, "currency" to "USD"))
+
+// Identificar usuario
+Faro.identify("user_42", mapOf("email" to "a@b.com", "plan" to "pro"))
+
+// Fusionar sesión anónima con usuario post-login
+Faro.alias("anon_abc123", "user_42")
+```
+
+Ver [API uniforme](../README.md#api-uniforme-entre-sdks) para la semántica de
+`anonymous_id`/`distinct_id`/`session_id`.
+
+## Opciones de init
+
+| Opción | Default | Descripción |
+| ------ | ------- | ----------- |
+| `flushIntervalMs` | `1500` | Cadencia de flush (ms). |
+| `maxBatchSize` | `100` | Eventos por POST. |
+| `maxQueueSize` | `5000` | Cap de la cola. Al llenarse descarta el más viejo. |
+| `installGlobalHandlers` | `true` | Instala `Thread.setDefaultUncaughtExceptionHandler`. |
+| `httpTimeoutMs` | `8000` | Timeout de connect + read para HTTP. |
+
+```kotlin
+Faro.init(FaroOptions(
+    endpoint = "...", token = "...", service = "android-app",
+    flushIntervalMs = 3000,
+    installGlobalHandlers = false,
+    httpTimeoutMs = 5000,
+))
+```
+
 ## Opciones cross-SDK
 
 `Faro.warning()` (alias de `warn()`), `scrubFields`/`scrubHeaders`/`scrubPatterns` y el hook `beforeSend: (WireEntry) -> WireEntry?` están disponibles con la misma semántica que en el resto de SDKs. Ver [API uniforme entre SDKs](../README.md#api-uniforme-entre-sdks).

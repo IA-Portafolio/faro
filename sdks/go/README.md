@@ -93,6 +93,106 @@ faro.Init(faro.Options{
 })
 ```
 
+## Tracing (OpenTelemetry)
+
+El SDK trae su propio exporter OTLP/HTTP/JSON y un `TracerProvider` inicializable
+con una llamada. Tras `InitTracing`, cualquier librería auto-instrumentada
+(`otelhttp`, `otelgrpc`, `otelsql`, `otelpgx`) exporta a Faro automáticamente:
+
+```go
+faro.InitTracing(faro.TracingOptions{
+    Endpoint:    "https://faro.iaportafolio.com",
+    Token:       "...",
+    Service:     "checkout",
+    Environment: "production",
+    Release:     "v1.4.2",
+})
+defer faro.ShutdownTracing(context.Background())
+```
+
+Spans manuales:
+
+```go
+ctx, span := faro.StartSpan(ctx, "db-query", faro.SpanOptions{
+    Kind: faro.SpanKindInternal,
+    Attributes: map[string]any{"db.system": "postgresql"},
+})
+defer span.End()
+
+// o con WithSpan
+err := faro.WithSpan(ctx, "charge-order", func(ctx context.Context, span *faro.Span) error {
+    return charge(order)
+}, faro.SpanOptions{Kind: faro.SpanKindInternal})
+```
+
+API disponible: `StartSpan(ctx, name, opts)`, `WithSpan(ctx, name, fn, opts)`,
+`InitTracing(opts)`, `FlushTracing(ctx)`, `ShutdownTracing(ctx)`, `GetTracer()`,
+`SpanFromContext(ctx)`, `ContextWithSpan(ctx, span)`, `WithTraceparent(ctx, header)`.
+
+### Middleware de Gin
+
+Para Gin, el subpaquete `ginfaro` abre un span SERVER por request:
+
+```go
+import "github.com/IA-Portafolio/faro/sdks/go/ginfaro"
+
+r := gin.New()
+r.Use(ginfaro.Tracing()) // crea un span SERVER por request
+```
+
+El span hereda el `traceparent` entrante y lo propaga al response. Logs emitidos
+con `faro.InfoContext(c.Request.Context(), ...)` dentro del handler auto-heredan
+`trace_id`/`span_id`.
+
+### Auto-instrumentación con otelhttp
+
+Para propagar traces en requests HTTP salientes sin instrumentación manual:
+
+```go
+import "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+client := &http.Client{
+    Transport: otelhttp.NewTransport(http.DefaultTransport),
+}
+// cada Do() del client genera un span CLIENT auto-emitido a Faro
+```
+
+## Opciones de init
+
+### `faro.Options`
+
+| Campo | Default | Descripción |
+| ------ | ------- | ----------- |
+| `FlushInterval` | `750ms` | Cadencia de flush. |
+| `MaxBatchSize` | `200` | Eventos por POST (logs/events). |
+| `MaxQueueSize` | `10000` | Cap del canal. Al llenarse bloquea o descarta. |
+| `HTTPTimeout` | `5s` | Timeout del cliente HTTP. |
+| `HTTPClient` | `http.DefaultClient` | Inyectable para tests o custom transport. |
+
+### `faro.TracingOptions`
+
+| Campo | Default | Descripción |
+| ------ | ------- | ----------- |
+| `TracesEndpoint` | `${Endpoint}/v1/traces` | Override del path completo de traces. |
+| `ResourceAttributes` | `nil` | Atributos extra del Resource OTel (p. ej. `region`, `cloud.provider`). |
+| `Environment` | — | Mapeado a `deployment.environment.name`. |
+| `Release` | — | Mapeado a `service.version`. |
+| `HTTPClient` | `http.DefaultClient` | Inyectable. |
+| `OnInternalError` | `nil` | Callback para fallos internos del exporter. |
+
+## Product analytics
+
+```go
+faro.Track("checkout_completed", map[string]any{"amount": 99.50})
+faro.TrackContext(ctx, "checkout_completed", map[string]any{"amount": 99.50}) // con trace
+
+faro.Identify("user_42", map[string]any{"email": "a@b.com", "plan": "pro"})
+faro.Alias("anon_abc123", "user_42")
+```
+
+Ver [API uniforme](../README.md#api-uniforme-entre-sdks) para la semántica de
+`anonymous_id`/`distinct_id`/`session_id`.
+
 ## Cierre
 
 ```go

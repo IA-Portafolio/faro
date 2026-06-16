@@ -92,3 +92,19 @@ faro.init({ endpoint, token, service, persistence: false });
 ```
 
 Si `@react-native-async-storage/async-storage` no está instalado, el SDK **funciona igual** — solo pierde la cola al matar la app. No hay error, no hay warning ruidoso: simplemente la persistencia queda apagada.
+
+## Product analytics
+
+```ts
+// Eventos de producto
+faro.track('checkout_completed', { amount: 99.50, currency: 'USD' });
+
+// Identificar usuario
+faro.identify('user_42', { email: 'a@b.com', plan: 'pro' });
+
+// Fusionar sesión anónima con usuario post-login
+faro.alias('anon_abc123', 'user_42');
+```
+
+Ver [API uniforme](../README.md#api-uniforme-entre-sdks) para la semántica de
+`anonymous_id`/`distinct_id`/`session_id`.

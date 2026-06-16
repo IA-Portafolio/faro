@@ -75,6 +75,72 @@ curl -X POST http://localhost:8080/api/v1/ingest/logs \
   }'
 ```
 
+### Autenticación de ingesta
+
+Los endpoints de ingesta aceptan el token del proyecto de tres formas
+(en orden de precedencia):
+
+| Método | Header / param | Notas |
+| ------ | -------------- | ----- |
+| Bearer | `Authorization: Bearer <token>` | Estándar. |
+| Header directo | `x-faro-token: <token>` | Útil cuando no podés setear `Authorization` (p. ej. some SDKs nativos). |
+| Query param | `?_token=<token>` | Fallback para `sendBeacon` del browser (no permite headers custom). |
+
+El token es **por proyecto** (no global). Se obtiene en el dashboard bajo
+`/projects` → "Rotate token". `FARO_INGEST_TOKEN` como env var del backend **no
+existe** — el backend no lee ningún token global de ingesta.
+
+### Rate limiting
+
+La ingesta está protegida por un rate limiter por proyecto que devuelve `429 Too
+Many Requests` con header `Retry-After` (segundos) cuando se excede el cupo. El
+limite se configura vía `INGEST_RATE_LIMIT_PER_MIN` (default 10 000 req/min).
+
+Los endpoints de auth (`/auth/login`, `/auth/totp`) también tienen rate limiting
+por IP/usuario (5 intentos / 60s) con `429 + Retry-After: 60`.
+
+Los streams SSE (`/logs/live`, `/events/live`) no tienen rate limiting de ingesta
+(son de lectura) pero pueden cerrar la conexión si el cliente no consume rápido
+ suficiente (backpressure implícito del channel).
+
+### Spans y métricas HTTP nativos
+
+Además de OTLP, el backend acepta spans y métricas por HTTP/JSON nativo en
+`:8080`. Es lo que usan los SDKs `@iaportafolio/*` para no depender del stack
+protobuf de OTel:
+
+```bash
+# Spans
+curl -X POST http://localhost:8080/api/v1/ingest/spans \
+  -H "Authorization: Bearer dev-ingest-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "service": "billing",
+    "spans": [
+      {
+        "trace_id": "0123456789abcdef0123456789abcdef",
+        "span_id": "abcdef01234567",
+        "name": "charge",
+        "kind": "INTERNAL",
+        "start_ns": 1716300000000000000,
+        "end_ns": 1716300000005000000,
+        "attributes": { "amount": "19.99" }
+      }
+    ]
+  }'
+
+# Métricas
+curl -X POST http://localhost:8080/api/v1/ingest/metrics \
+  -H "Authorization: Bearer dev-ingest-token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "metrics": [
+      { "name": "orders_total", "value": 1, "kind": "counter" },
+      { "name": "queue_depth", "value": 42, "kind": "gauge" }
+    ]
+  }'
+```
+
 ### SDK de OpenTelemetry (cualquier lenguaje)
 
 Faro acepta los dos transportes estándar de OpenTelemetry. Elige uno:
@@ -204,6 +270,86 @@ Uptime de monitor por debajo del 99%:
   "severity": "critical"
 }
 ```
+
+## Canales de notificación
+
+Las reglas de alerta envían notificaciones a los destinos listados en
+`notification_targets`. Se soportan tres formatos:
+
+| Formato | Resolución | Ejemplo |
+| ------- | ---------- | ------- |
+| URL directa | POST a la URL | `https://discord.com/api/webhooks/...` |
+| `tg://...` | Alias legacy de Telegram | `tg://123456:ABC...` |
+| `channel://<id>` | Lookup en `faro.notification_channels` | `channel://ops-pagerduty` |
+
+### CRUD de canales
+
+Los canales se gestionan vía REST (requieren admin):
+
+| Método | Ruta | Descripción |
+| ------ | ---- | ----------- |
+| `GET` | `/api/v1/integrations/channels` | Lista todos los canales |
+| `POST` | `/api/v1/integrations/channels` | Crea un canal nuevo |
+| `GET` | `/api/v1/integrations/channels/kinds` | Lista los kinds soportados |
+| `GET` | `/api/v1/integrations/channels/:id` | Detalle de un canal |
+| `PUT` | `/api/v1/integrations/channels/:id` | Upsert (idempotente) |
+| `DELETE` | `/api/v1/integrations/channels/:id` | Soft-delete |
+| `POST` | `/api/v1/integrations/channels/:id/test` | Envía una notificación de prueba |
+
+Body de create/update:
+
+```json
+{
+  "id": "ops-pagerduty",
+  "name": "PagerDuty del equipo Ops",
+  "kind": "pagerduty",
+  "enabled": true,
+  "config": { "integration_key": "abc123..." }
+}
+```
+
+`id` es opcional en POST (se autogenera desde `name`). El backend valida el
+`config` contra el schema del kind antes de persistir.
+
+### Kinds soportados y su config
+
+| Kind | Campos de config | Notas |
+| ---- | ---------------- | ----- |
+| `webhook` | `url` (secret), `body_template?`, `headers?` | POST JSON genérico. Placeholders: `{rule_name} {severity} {status} {value} {threshold} {project_id} {text}` |
+| `slack` | `webhook_url` (secret), `channel?`, `username?` | Incoming Webhook de Slack |
+| `discord` | `webhook_url` (secret), `username?`, `avatar_url?` | Webhook de Discord |
+| `pagerduty` | `integration_key` (secret) | Events API v2 |
+| `opsgenie` | `api_key` (secret), `api_base?`, `responders?`, `tags?` | EU: `api_base=https://api.eu.opsgenie.com` |
+| `email_resend` | `api_key` (secret), `from`, `to` (JSON array), `subject_prefix?` | Vía Resend (dominio verificado) |
+| `telegram` | `bot_token` (secret), `chat_id` | Bot de Telegram por canal (distinto del Telegram global) |
+
+Los campos marcados **(secret)** se devuelven enmascarados en los GET; al
+editar, enviarlos vacíos conserva el valor previo.
+
+## Issues de errores
+
+Los errores capturados (`captureException`, logs con `severity >= ERROR`) se
+agrupan en **issues** por fingerprint (hash de `service_name + exception_type +
+message`). Cada issue tiene un estado gestionable:
+
+| Estado | Descripción |
+| ------ | ----------- |
+| `unresolved` | Default. Aparece en la lista de la UI y el CLI. |
+| `resolved` | Marcado manualmente. Re-abre automáticamente si un evento nuevo llega. |
+| `ignored` | Silenciado. No aparece en la lista default (filtrar con `?status=ignored`). |
+
+### Endpoints
+
+| Método | Ruta | Query params / body |
+| ------ | ---- | ------------------- |
+| `GET` | `/errors` | `?service=&status=&from=&to=&limit=` |
+| `GET` | `/errors/:fingerprint` | Detalle + eventos recientes |
+| `POST` | `/errors/:fingerprint/status` | `{ "status": "resolved", "assignee": "", "note": "", "service_name": "api" }` |
+| `GET` | `/errors/:fingerprint/sessions` | Sesiones donde ocurrió el issue |
+
+`status` en el body de POST puede ser `unresolved`, `resolved` o `ignored`.
+`service_name` es requerido (el fingerprint es por servicio). `assignee` y
+`note` son opcionales y se persisten en `faro.error_issue_status`.
 
 ## Estructura del repositorio
 
