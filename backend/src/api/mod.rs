@@ -4,12 +4,14 @@
 //! aplica el middleware de autenticación y compresión, y sirve la referencia
 //! OpenAPI interactiva (Scalar) leyendo el spec de `/api/v1/openapi.json`.
 
+use axum::http::HeaderValue;
 use axum::middleware::from_fn_with_state;
 use axum::response::Html;
 use axum::routing::get;
 use axum::Router;
 use bytes::Bytes;
 use tower_http::compression::CompressionLayer;
+use tower_http::cors::{AllowHeaders, AllowMethods, Any, CorsLayer};
 use utoipa::OpenApi;
 
 use crate::auth;
@@ -79,7 +81,11 @@ pub fn router(state: SharedState) -> Router {
                 .merge(v1_router()),
         )
         .layer(from_fn_with_state(state.clone(), auth::require_session_mw));
-    let dashboard = security::apply_dashboard_headers(dashboard, enable_hsts);
+    // CORS del dashboard: restringido a `FARO_DASHBOARD_ORIGINS` con credenciales
+    // (cookie de sesión). Va como layer más externo del sub-router para que el
+    // preflight OPTIONS se responda antes que el middleware de auth.
+    let dashboard = security::apply_dashboard_headers(dashboard, enable_hsts)
+        .layer(dashboard_cors(&state.cfg.dashboard_origins));
 
     // OpenAPI + Scalar (referencia pública). Pre-serializamos el spec una vez
     // al boot y lo servimos como bytes — el JSON no cambia entre requests y
@@ -104,20 +110,30 @@ pub fn router(state: SharedState) -> Router {
                 }
             }),
         );
-    let docs = security::apply_docs_headers(docs, enable_hsts);
+    let docs = security::apply_docs_headers(docs, enable_hsts)
+        .layer(dashboard_cors(&state.cfg.dashboard_origins));
 
-    // Ingest: SDKs no-browser. Sin auth de sesión (tienen su propio bearer token
-    // por proyecto), sin security headers (bytes desperdiciados en un endpoint
-    // que recibe miles de POSTs/segundo y nunca devuelve HTML a un browser).
-    let ingest: Router<SharedState> = Router::new().nest(
-        "/api/v1/ingest",
-        crate::ingest::logs::router()
-            .merge(crate::ingest::metrics::router())
-            .merge(crate::ingest::spans::router())
-            .merge(crate::ingest::events::router())
-            .merge(crate::ingest::replay::router())
-            .merge(feature_flags::router()),
-    );
+    // Ingest: la atacan tanto SDKs server-side (bearer en header) como el
+    // browser/RUM SDK, que corre en dominios ARBITRARIOS de clientes
+    // (p. ej. https://emporio.host) y postea telemetría a /api/v1/ingest/*.
+    // Por eso el CorsLayer debe ser permisivo (`Any`): sin él el preflight
+    // OPTIONS desde el dominio del cliente no recibe `Access-Control-Allow-Origin`
+    // y el browser bloquea logs/events/replay/feature-flags. La defensa real
+    // contra abuso es el bearer del proyecto + `ingest::check_origin` (whitelist
+    // de `Origin` por proyecto), ambas independientes de CORS. Sin auth de sesión
+    // ni security headers (bytes desperdiciados en un endpoint de alto QPS que
+    // nunca devuelve HTML a un browser).
+    let ingest: Router<SharedState> = Router::new()
+        .nest(
+            "/api/v1/ingest",
+            crate::ingest::logs::router()
+                .merge(crate::ingest::metrics::router())
+                .merge(crate::ingest::spans::router())
+                .merge(crate::ingest::events::router())
+                .merge(crate::ingest::replay::router())
+                .merge(feature_flags::router()),
+        )
+        .layer(ingest_cors());
 
     Router::new()
         .merge(dashboard)
@@ -129,6 +145,58 @@ pub fn router(state: SharedState) -> Router {
         // de las queries de logs/traces, que rutinariamente devuelven 500KB+.
         .layer(CompressionLayer::new().gzip(true).br(true))
         .with_state(state)
+}
+
+/// CORS para la API del dashboard (`:8080`). En dev (sin `FARO_DASHBOARD_ORIGINS`)
+/// permite los localhost típicos sin credenciales. En prod refleja sólo los
+/// orígenes configurados y habilita credenciales para que el browser envíe la
+/// cookie de sesión.
+pub fn dashboard_cors(origins: &[String]) -> CorsLayer {
+    if origins.is_empty() {
+        // Dev: sólo orígenes localhost típicos.  Sin credenciales — el browser
+        // no envía cookies a orígenes no listados explícitamente.
+        let dev: Vec<HeaderValue> = [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://localhost:8080",
+            "http://127.0.0.1:5173",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:8080",
+        ]
+        .iter()
+        .filter_map(|o| o.parse().ok())
+        .collect();
+        CorsLayer::new()
+            .allow_origin(dev)
+            .allow_methods(Any)
+            .allow_headers(Any)
+    } else {
+        let vals: Vec<HeaderValue> = origins.iter().filter_map(|o| o.parse().ok()).collect();
+        // `allow_credentials(true)` es INCOMPATIBLE con `Any` en methods/headers:
+        // tower-http hace `assert!` en `ensure_usable_cors_rules` y PANICA al
+        // construir el layer (regla del spec CORS). Usamos `mirror_request()`
+        // —refleja exactamente los methods/headers que el preflight pide—, que
+        // preserva la permisividad del branch dev sin violar esa regla.
+        CorsLayer::new()
+            .allow_origin(vals)
+            .allow_methods(AllowMethods::mirror_request())
+            .allow_headers(AllowHeaders::mirror_request())
+            .allow_credentials(true)
+    }
+}
+
+/// CORS para los endpoints de ingesta (`/api/v1/ingest/*` en `:8080` y todo el
+/// listener OTLP/HTTP `:4318`). El browser/RUM SDK corre en dominios arbitrarios
+/// de clientes y autentica con un token público en headers (no cookies), así que
+/// `Any` es correcto y necesario: sin él el preflight desde el dominio del cliente
+/// no recibe `Access-Control-Allow-Origin` y el browser bloquea la telemetría. La
+/// defensa real contra abuso es el bearer del proyecto + la whitelist de `Origin`
+/// por proyecto (`ingest::check_origin`), ambas independientes de CORS.
+pub fn ingest_cors() -> CorsLayer {
+    CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods(Any)
+        .allow_headers(Any)
 }
 
 fn v1_router() -> Router<SharedState> {
