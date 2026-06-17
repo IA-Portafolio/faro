@@ -125,13 +125,25 @@ async fn ingest_replay(
         (now, now)
     });
 
-    let events_json = serde_json::to_string(&payload.events)
+    let mut events_json = serde_json::to_string(&payload.events)
         .map_err(|e| ApiError::BadRequest(format!("events no serializable: {e}")))?;
 
     let svc = payload.service.unwrap_or_else(|| "unknown".into());
-    let user_id = payload.user_id.unwrap_or_default();
-    let page_url = payload.page_url.unwrap_or_default();
+    let mut user_id = payload.user_id.unwrap_or_default();
+    let mut page_url = payload.page_url.unwrap_or_default();
     let user_agent = payload.user_agent.unwrap_or_default();
+
+    // Redacción de PII: el snapshot rrweb serializa el DOM renderizado (formularios,
+    // PII tipeada) y `page_url` puede llevar tokens en la query. Sin esto, el replay
+    // sería el ÚNICO path de ingesta que persiste texto crudo — logs/spans/events ya
+    // pasan por `redact_*`. Resolvemos las reglas una vez por chunk (igual que logs).
+    let redaction_rules = state.projects.redaction(&project);
+    redact_replay_fields(
+        redaction_rules.as_ref(),
+        &mut events_json,
+        &mut page_url,
+        &mut user_id,
+    );
 
     let row = ReplayRow {
         timestamp: Utc::now(),
@@ -182,4 +194,56 @@ fn chunk_bounds(events: &[Value]) -> Option<(DateTime<Utc>, DateTime<Utc>)> {
 
 fn from_ms(ms: i64) -> DateTime<Utc> {
     DateTime::<Utc>::from_timestamp_millis(ms).unwrap_or_else(Utc::now)
+}
+
+/// Aplica las reglas de redacción del proyecto a los campos de texto libre del
+/// replay (DOM serializado, URL de página, user_id). No-op si el proyecto no tiene
+/// reglas activas, como el resto de los paths de ingesta.
+fn redact_replay_fields(
+    rules: Option<&crate::redaction::CompiledRules>,
+    events_json: &mut String,
+    page_url: &mut String,
+    user_id: &mut String,
+) {
+    let Some(rules) = rules else {
+        return;
+    };
+    rules.apply_in_place(events_json);
+    rules.apply_in_place(page_url);
+    rules.apply_in_place(user_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::redaction::CompiledRules;
+
+    #[test]
+    fn redacts_email_in_replay_fields() {
+        let rules =
+            CompiledRules::from_config_str(r#"{"enabled":true,"builtins":["email"],"custom":[]}"#)
+                .expect("reglas compiladas");
+        let mut events = r#"[{"data":{"text":"contacto: alice@example.com"}}]"#.to_string();
+        let mut page_url = "https://app.example.com/u?email=bob@example.com".to_string();
+        let mut user_id = "carol@example.com".to_string();
+        redact_replay_fields(Some(&rules), &mut events, &mut page_url, &mut user_id);
+        assert!(!events.contains("alice@example.com"), "events: {events}");
+        assert!(
+            !page_url.contains("bob@example.com"),
+            "page_url: {page_url}"
+        );
+        assert!(!user_id.contains("carol@example.com"), "user_id: {user_id}");
+    }
+
+    #[test]
+    fn no_rules_leaves_fields_untouched() {
+        let mut events = "raw".to_string();
+        let mut page_url = "url".to_string();
+        let mut user_id = "uid".to_string();
+        redact_replay_fields(None, &mut events, &mut page_url, &mut user_id);
+        assert_eq!(
+            (events.as_str(), page_url.as_str(), user_id.as_str()),
+            ("raw", "url", "uid")
+        );
+    }
 }

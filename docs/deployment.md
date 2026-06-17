@@ -124,8 +124,48 @@ Volúmenes Docker (declarados en `docker-compose.prod.yml`):
 | `faro-clickhouse` | Datos de ClickHouse (logs, traces, etc.) |
 | `faro-redis`      | Cola/cache (vacío por ahora)             |
 
-Backups: responsabilidad operacional, no automatizada en el repo. Ver
-faro-deploy en la memoria del operador para el procedimiento actual.
+## Backups de datos (ClickHouse)
+
+El volumen `clickhouse_data` es el **único** estado durable de producción. Un
+`docker volume rm`, un `make reset` (`down -v`) o un disco lleno lo destruyen sin
+punto de restauración. Por eso hay un backup automatizado en un script:
+
+```bash
+# Crea un tarball con el schema + datos (formato Native) de todas las tablas
+# MergeTree de la base `faro`, aplica retención local y, si FARO_BACKUP_REMOTE
+# está seteado, lo sincroniza OFF-HOST (un volumen único no replicado NO es backup).
+bash scripts/backup-clickhouse.sh
+```
+
+Variables (todas opcionales salvo el destino off-host):
+
+| Variable             | Default          | Para qué                                            |
+| -------------------- | ---------------- | --------------------------------------------------- |
+| `FARO_BACKUP_REMOTE` | _(vacío)_        | Destino off-host: `user@host:/ruta/` (rsync) o `s3://bucket/pref/` (aws s3). **Sin esto el backup queda solo en el host.** |
+| `FARO_BACKUP_DIR`    | `<repo>/backups` | Dir local de salida (excluido del rsync de deploy). |
+| `FARO_BACKUP_KEEP`   | `7`              | Tarballs locales a conservar.                       |
+| `FARO_CH_CONTAINER`  | `faro-clickhouse`| Contenedor de ClickHouse.                           |
+
+No requiere modificar el compose ni reiniciar ClickHouse: usa `clickhouse-client`
+vía `docker exec` y vuelca el dump por stdout.
+
+**Cron diario (3 AM) — ejemplo:**
+
+```cron
+0 3 * * * cd /opt/faro && FARO_BACKUP_REMOTE='user@backup-host:/srv/faro-backups/' bash scripts/backup-clickhouse.sh >> /var/log/faro-backup.log 2>&1
+```
+
+**Restore** (sobre un CH vacío, o tras truncar las tablas para un restore limpio —
+el INSERT es aditivo; los DDL se aplican con `IF NOT EXISTS`):
+
+```bash
+bash scripts/restore-clickhouse.sh /opt/faro/backups/faro-data-YYYYMMDD-HHMMSS.tar.gz
+```
+
+> El round-trip backup→restore (schema con `IF NOT EXISTS`, datos Native,
+> materialized views recreadas, tablas vacías saltadas) está verificado contra un
+> ClickHouse efímero. **Probá un restore periódicamente**: un backup que nunca se
+> restauró no es un backup.
 
 ## Rollback
 

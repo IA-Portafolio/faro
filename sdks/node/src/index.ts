@@ -841,6 +841,23 @@ class FaroClient {
     ]);
   }
 
+  /**
+   * Re-encola un batch fallido al frente, pero ACOTANDO la cola a `maxQueueSize`.
+   * Sin esto, durante un outage del backend la cola podía superar el tope —entran
+   * registros nuevos mientras el batch espera el `await` del fetch y luego se
+   * reinsertan encima con `unshift`— y crecer sin cota hasta agotar la memoria del
+   * proceso. Descartamos los registros más VIEJOS (frente), prefiriendo telemetría
+   * fresca, igual de acotado que el `trySend`+descarte de los SDKs Go/Kotlin.
+   */
+  private requeue<T>(queue: T[], batch: T[]): void {
+    queue.unshift(...batch);
+    const overflow = queue.length - this.opts.maxQueueSize;
+    if (overflow > 0) {
+      queue.splice(0, overflow);
+      this.diagLog(`cola llena durante outage: descartados ${overflow} registros`);
+    }
+  }
+
   private async flushLogs(): Promise<void> {
     if (this.queue.length === 0) return;
     const batch = this.queue.splice(0, this.opts.maxBatchSize);
@@ -858,11 +875,11 @@ class FaroClient {
         this.diagLog(`ingest HTTP ${res.status}: ${txt.slice(0, 200)}`);
         // 5xx → re-encolar para reintentar; 4xx → descartar (probablemente
         // batch malformado / auth inválida — re-encolar acumularía basura).
-        if (res.status >= 500) this.queue.unshift(...batch);
+        if (res.status >= 500) this.requeue(this.queue, batch);
       }
     } catch (e) {
       // Re-encola ante fallos transitorios de red para no perder datos.
-      this.queue.unshift(...batch);
+      this.requeue(this.queue, batch);
       this.diagLog('falló el flush', e);
     }
   }
@@ -882,10 +899,10 @@ class FaroClient {
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
         this.diagLog(`ingest events HTTP ${res.status}: ${txt.slice(0, 200)}`);
-        if (res.status >= 500) this.eventsQueue.unshift(...batch);
+        if (res.status >= 500) this.requeue(this.eventsQueue, batch);
       }
     } catch (e) {
-      this.eventsQueue.unshift(...batch);
+      this.requeue(this.eventsQueue, batch);
       this.diagLog('falló el flush de events', e);
     }
   }
@@ -905,10 +922,10 @@ class FaroClient {
       if (!res.ok) {
         const txt = await res.text().catch(() => '');
         this.diagLog(`ingest metrics HTTP ${res.status}: ${txt.slice(0, 200)}`);
-        if (res.status >= 500) this.metricsQueue.unshift(...batch);
+        if (res.status >= 500) this.requeue(this.metricsQueue, batch);
       }
     } catch (e) {
-      this.metricsQueue.unshift(...batch);
+      this.requeue(this.metricsQueue, batch);
       this.diagLog('falló el flush de metrics', e);
     }
   }

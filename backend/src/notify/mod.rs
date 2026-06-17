@@ -171,8 +171,14 @@ pub async fn dispatch(
     if targets.is_empty() {
         return Ok(outcome);
     }
+    // SSRF: los endpoints de notificación (Slack/Discord/PagerDuty/webhook) responden
+    // 2xx directo y nunca necesitan redirects. Sin `Policy::none()`, un webhook a un
+    // host público controlado por el atacante podría responder `302 → http://169.254.169.254/...`
+    // y el backend haría el request interno con su identidad de red. La validación del
+    // host del webhook (en `webhook::dispatch`) cubre la primera URL; esto cierra el salto.
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
 

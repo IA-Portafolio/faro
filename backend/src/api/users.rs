@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::auth::{
-    hash_password, revoke_user_sessions, AdminUser, CurrentSessionTokenHash, UserRow,
+    hash_password, revoke_user_sessions, verify_password, AdminUser, CurrentSessionTokenHash,
+    UserRow,
 };
 use crate::error::{ApiError, ApiResult};
 use crate::state::SharedState;
@@ -164,12 +165,37 @@ async fn update_user(
         )
         .await?
         .ok_or(ApiError::NotFound)?;
+    // No permitir quedarse sin administradores: si este usuario es admin y se lo está
+    // degradando, exigimos que quede al menos otro admin. Evita el lockout total del
+    // dashboard (nadie podría volver a entrar a operaciones gateadas por AdminUser).
+    if row.role == "admin" && input.role != "admin" && count_admins(&state).await? <= 1 {
+        return Err(ApiError::BadRequest(
+            "no puedes degradar al último administrador; el sistema quedaría sin admins".into(),
+        ));
+    }
     row.name = input.name;
     row.role = input.role;
     row.updated_at = Utc::now();
     row.version = Utc::now().timestamp_millis() as u64;
     state.ch.insert("faro.users", &[row.clone()]).await?;
     Ok(Json(row.into()))
+}
+
+/// Cuenta usuarios admin no borrados. Usado para impedir dejar el sistema sin admins.
+async fn count_admins(state: &SharedState) -> ApiResult<u64> {
+    #[derive(serde::Deserialize)]
+    struct Cnt {
+        n: u64,
+    }
+    let row: Option<Cnt> = state
+        .ch
+        .select_one_with_params(
+            "SELECT toUInt64(count()) AS n FROM faro.users FINAL \
+             WHERE deleted = 0 AND role = 'admin'",
+            &[],
+        )
+        .await?;
+    Ok(row.map(|c| c.n).unwrap_or(0))
 }
 
 async fn delete_user(
@@ -210,6 +236,9 @@ async fn delete_user(
 #[derive(Deserialize)]
 pub struct PasswordInput {
     pub password: String,
+    /// Password ACTUAL del que ejecuta la acción (re-autenticación). Obligatorio.
+    #[serde(default)]
+    pub current_password: String,
 }
 
 async fn change_password(
@@ -224,7 +253,27 @@ async fn change_password(
             "contraseña de al menos 8 caracteres".into(),
         ));
     }
-    // Solo el dueño o un admin pueden cambiar una contraseña. Por ahora todos son admin.
+    // Re-autenticación obligatoria: exigimos el password ACTUAL del que ejecuta la
+    // acción (no del target). Sin esto, cualquier sesión válida podía cambiar el
+    // password de cualquier usuario por su `{id}` y tomar la cuenta (todos los roles
+    // son admin hoy). Verificar el password del actor neutraliza el account-takeover
+    // desde una sesión robada y cubre tanto el self-service como el reset por admin.
+    let actor_id_s = admin.id.to_string();
+    let actor: UserRow = state
+        .ch
+        .select_one_with_params(
+            &format!(
+                "SELECT {SELECT_COLS} FROM faro.users FINAL \
+                 WHERE id = {{id:UUID}} AND deleted = 0 LIMIT 1"
+            ),
+            &[("id", &actor_id_s)],
+        )
+        .await?
+        .ok_or(ApiError::Unauthorized)?;
+    if !verify_password(&input.current_password, &actor.password_hash) {
+        return Err(ApiError::Unauthorized);
+    }
+
     let id_s = id.to_string();
     let mut row: UserRow = state
         .ch

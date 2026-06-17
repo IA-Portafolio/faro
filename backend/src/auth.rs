@@ -26,7 +26,6 @@ use axum::{Json, Router};
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use parking_lot::Mutex;
-use rand::distr::Alphanumeric;
 use rand::{Rng, RngExt};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -479,8 +478,15 @@ async fn login_totp(
         if user.totp_secret.is_empty() {
             return Err(ApiError::Unauthorized);
         }
-        totp::verify_totp(&user.totp_secret, &user.email, &input.code)
+        // Anti-replay: aceptamos el código sólo si su step no fue usado antes. Un
+        // código TOTP es válido ~90 s; sin esto, un código capturado (phishing, MITM,
+        // hombro) se reusa varias veces dentro de su ventana.
+        match totp::verify_totp_step(&user.totp_secret, &user.email, &input.code)
             .map_err(|e| ApiError::Internal(e.to_string()))?
+        {
+            Some(step) => state.totp_replay.check_and_record(user.id, step),
+            None => false,
+        }
     };
     if !ok {
         return Err(ApiError::Unauthorized);
@@ -907,21 +913,21 @@ pub async fn bootstrap_admin_if_empty(state: &SharedState) -> anyhow::Result<()>
             return Ok(());
         }
     };
-    let password = std::env::var("FARO_BOOTSTRAP_ADMIN_PASSWORD")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| {
-            let p: String = rand::rng()
-                .sample_iter(&Alphanumeric)
-                .take(20)
-                .map(char::from)
-                .collect();
+    // Fail-closed: NUNCA generamos un password y lo logueamos. Faro hace
+    // self-observability (los logs van a su propio backend / a un agregador), así
+    // que loguear el password en texto plano lo filtraría a la telemetría. Si no se
+    // setea `FARO_BOOTSTRAP_ADMIN_PASSWORD`, no creamos el admin y pedimos setearlo.
+    let password = match std::env::var("FARO_BOOTSTRAP_ADMIN_PASSWORD") {
+        Ok(v) if !v.is_empty() => v,
+        _ => {
             tracing::warn!(
-                generated_password = %p,
-                "FARO_BOOTSTRAP_ADMIN_PASSWORD not set; generated a random one — copy it now"
+                "FARO_BOOTSTRAP_ADMIN_EMAIL está seteado pero FARO_BOOTSTRAP_ADMIN_PASSWORD no; \
+                 no se crea el admin (no generamos ni logueamos un password en texto plano). \
+                 Definí FARO_BOOTSTRAP_ADMIN_PASSWORD y reiniciá."
             );
-            p
-        });
+            return Ok(());
+        }
+    };
     let row = UserRow {
         id: Uuid::new_v4(),
         email: email.clone(),

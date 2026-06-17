@@ -244,9 +244,18 @@
         de 6 dígitos que la app te genere para verificar y activar 2FA.
       </p>
       <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; margin-top: 12px;">
-        <!-- El SVG viene del backend, mismo origen; CSP `img-src 'self'` lo acepta. -->
+        <!-- El QR se renderiza como <img> con data-URI en vez de `{@html}`: un SVG
+             cargado vía `<img src>` NO ejecuta scripts ni event handlers, así que
+             aunque el backend devolviera SVG hostil no hay vector XSS (a diferencia
+             de inyectar el markup crudo en el DOM). CSP del backend permite
+             `img-src 'self' data: blob:`. -->
         <div style="background: white; padding: 8px; border-radius: 6px; width: 256px; height: 256px;">
-          {@html setup.qr_svg}
+          <img
+            src={'data:image/svg+xml;utf8,' + encodeURIComponent(setup.qr_svg)}
+            alt="Código QR para configurar 2FA"
+            width="240"
+            height="240"
+          />
         </div>
         <div style="flex: 1; min-width: 240px;">
           <div class="muted" style="font-size: 12px;">Entrada manual (si no podés escanear)</div>

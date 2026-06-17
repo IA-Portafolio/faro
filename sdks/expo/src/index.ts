@@ -460,6 +460,19 @@ class FaroExpoClient {
     await Promise.all([this.flushLogs(), this.flushEvents()]);
   }
 
+  /**
+   * Re-encola un batch fallido al frente acotando la cola a `maxQueueSize`. Sin
+   * esto, durante un outage del backend la cola podía exceder el tope (entran
+   * registros nuevos mientras el batch espera el `await` y luego se reinsertan con
+   * `unshift`) y crecer sin cota hasta agotar la RAM de la app. Descartamos los más
+   * viejos (frente), prefiriendo telemetría fresca.
+   */
+  private requeue<T>(queue: T[], batch: T[]): void {
+    queue.unshift(...batch);
+    const overflow = queue.length - this.opts.maxQueueSize;
+    if (overflow > 0) queue.splice(0, overflow);
+  }
+
   private async flushLogs(): Promise<void> {
     if (this.queue.length === 0) return;
     const batch = this.queue.splice(0, this.opts.maxBatchSize);
@@ -472,9 +485,9 @@ class FaroExpoClient {
         },
         body: JSON.stringify({ service: this.opts.service, logs: batch }),
       });
-      if (!res.ok && res.status >= 500) this.queue.unshift(...batch);
+      if (!res.ok && res.status >= 500) this.requeue(this.queue, batch);
     } catch (_e) {
-      this.queue.unshift(...batch); // fallo de red — los conservamos para el siguiente tick
+      this.requeue(this.queue, batch); // fallo de red — los conservamos para el siguiente tick
     }
   }
 
@@ -490,9 +503,9 @@ class FaroExpoClient {
         },
         body: JSON.stringify({ service: this.opts.service, events: batch }),
       });
-      if (!res.ok && res.status >= 500) this.eventsQueue.unshift(...batch);
+      if (!res.ok && res.status >= 500) this.requeue(this.eventsQueue, batch);
     } catch (_e) {
-      this.eventsQueue.unshift(...batch);
+      this.requeue(this.eventsQueue, batch);
     }
   }
 

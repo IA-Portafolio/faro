@@ -31,6 +31,9 @@
   let role = 'admin';
   let password = '';
   let password2 = '';
+  // Contraseña ACTUAL del admin que ejecuta el cambio (re-autenticación que el
+  // backend exige para cerrar el account-takeover desde una sesión robada).
+  let currentPassword = '';
 
   async function load(): Promise<void> {
     loading = true;
@@ -116,12 +119,17 @@
       error = 'Las contraseñas no coinciden';
       return;
     }
+    if (!currentPassword) {
+      error = 'Ingresá TU contraseña actual para confirmar el cambio';
+      return;
+    }
     try {
-      await changeUserPassword(changingPwd.id, password);
+      await changeUserPassword(changingPwd.id, password, currentPassword);
       const who = changingPwd.email;
       changingPwd = null;
       password = '';
       password2 = '';
+      currentPassword = '';
       toast.success(`Contraseña de ${who} cambiada`);
     } catch (e: unknown) {
       error = e instanceof Error ? e.message : String(e);
@@ -164,7 +172,7 @@
           <td class="muted mono">{formatTimestamp(u.created_at)}</td>
           <td>
             <button on:click={() => openEdit(u)}>Editar</button>
-            <button on:click={() => { changingPwd = u; password = ''; password2 = ''; error = ''; }}>Cambiar contraseña</button>
+            <button on:click={() => { changingPwd = u; password = ''; password2 = ''; currentPassword = ''; error = ''; }}>Cambiar contraseña</button>
             {#if !$currentUser || $currentUser.id !== u.id}
               <button class="danger" on:click={() => remove(u)}>Eliminar</button>
             {/if}
@@ -225,6 +233,10 @@
     <div class="field">
       <label>Repetir contraseña</label>
       <input type="password" bind:value={password2} />
+    </div>
+    <div class="field">
+      <label>Tu contraseña actual (confirmación)</label>
+      <input type="password" bind:value={currentPassword} autocomplete="current-password" />
     </div>
     {#if error}<div style="color: var(--danger); margin-bottom: 12px;">{error}</div>{/if}
     <button class="primary" on:click={setPassword}>Cambiar contraseña</button>

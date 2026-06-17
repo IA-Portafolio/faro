@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Context, Result};
 use parking_lot::Mutex;
@@ -95,6 +95,35 @@ pub fn verify_totp(secret_base32: &str, account_email: &str, code: &str) -> Resu
     Ok(totp.check_current(&trimmed).unwrap_or(false))
 }
 
+/// Igual que [`verify_totp`] pero devuelve el número de *step* (período de 30 s) que
+/// matcheó, o `None` si el código es inválido. El step permite detectar replay: un
+/// código TOTP es válido durante ~90 s (skew ±1), por lo que sin invalidar el step
+/// usado un atacante que capture un código puede reusarlo varias veces en su ventana.
+/// El caller registra el step máximo aceptado por usuario y rechaza reutilizaciones.
+pub fn verify_totp_step(
+    secret_base32: &str,
+    account_email: &str,
+    code: &str,
+) -> Result<Option<u64>> {
+    let trimmed: String = code.chars().filter(|c| c.is_ascii_digit()).collect();
+    if trimmed.len() != TOTP_DIGITS {
+        return Ok(None);
+    }
+    let totp = build_totp(secret_base32, account_email)?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let current = now / TOTP_STEP_SECS;
+    // Mismo rango que `check_current` con skew=1: período previo, actual y siguiente.
+    for step in [current.saturating_sub(1), current, current + 1] {
+        if totp.generate(step * TOTP_STEP_SECS) == trimmed {
+            return Ok(Some(step));
+        }
+    }
+    Ok(None)
+}
+
 // ---------- Recovery codes ----------
 
 /// Hash que se guarda en DB. SHA-256 alcanza — los plaintexts son aleatorios y de
@@ -172,6 +201,37 @@ impl TotpRateLimiter {
     }
 }
 
+/// Guard anti-replay de TOTP: recuerda el último *step* aceptado por usuario para
+/// que un código no pueda reutilizarse dentro de su ventana de validez (~90 s).
+///
+/// In-memory por proceso, como el resto de la gobernanza de auth (modelo de un nodo).
+/// Con múltiples nodos esto migraría a un store compartido; hoy single-instance es un
+/// invariante de despliegue documentado.
+#[derive(Clone, Default)]
+pub struct TotpReplayGuard {
+    inner: Arc<Mutex<HashMap<Uuid, u64>>>,
+}
+
+impl TotpReplayGuard {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Registra `step` como usado para `user_id`. Devuelve `true` si el step es nuevo
+    /// (mayor que el último aceptado) — login válido; `false` si es un replay del mismo
+    /// step o uno anterior.
+    pub fn check_and_record(&self, user_id: Uuid, step: u64) -> bool {
+        let mut guard = self.inner.lock();
+        match guard.get(&user_id) {
+            Some(&last) if step <= last => false,
+            _ => {
+                guard.insert(user_id, step);
+                true
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +292,46 @@ mod tests {
             assert!(rl.check_and_record(uid));
         }
         assert!(!rl.check_and_record(uid));
+    }
+
+    #[test]
+    fn verify_totp_step_returns_step_for_valid_code() {
+        let secret = generate_secret_base32();
+        let totp = build_totp(&secret, "test@example.com").unwrap();
+        let code = totp.generate_current().unwrap();
+        let step = verify_totp_step(&secret, "test@example.com", &code)
+            .unwrap()
+            .expect("código actual debe matchear un step");
+        // El step matcheado debe ser el actual (now / 30).
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        assert_eq!(step, now / TOTP_STEP_SECS);
+        // Código inválido → None.
+        assert!(
+            verify_totp_step(&secret, "test@example.com", "000000")
+                .unwrap()
+                .is_none()
+                || verify_totp_step(&secret, "test@example.com", "999999")
+                    .unwrap()
+                    .is_none()
+        );
+    }
+
+    #[test]
+    fn replay_guard_rejects_reused_step() {
+        let g = TotpReplayGuard::new();
+        let uid = Uuid::new_v4();
+        assert!(
+            g.check_and_record(uid, 100),
+            "primer uso del step debe pasar"
+        );
+        assert!(
+            !g.check_and_record(uid, 100),
+            "reuso del mismo step = replay"
+        );
+        assert!(!g.check_and_record(uid, 99), "step anterior = replay");
+        assert!(g.check_and_record(uid, 101), "step nuevo = OK");
     }
 }

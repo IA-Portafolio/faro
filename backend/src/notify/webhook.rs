@@ -71,6 +71,13 @@ impl Notifier for WebhookNotifier {
     }
 
     async fn dispatch(&self, client: &reqwest::Client, incident: &AlertIncidentRow) -> Result<()> {
+        // SSRF: el webhook lo configura un admin y apunta a una URL arbitraria. Igual
+        // que los monitores, rechazamos IPs privadas/metadata y hostnames internos sin
+        // dominio cualificado para que un target no pueda usar al backend como proxy
+        // hacia la red interna (169.254.169.254, clickhouse:8123, etc.). El cliente
+        // compartido ya va con `redirect(Policy::none())` para cerrar el salto vía 3xx.
+        crate::monitor_url::validate_monitor_url(&self.config.url)
+            .map_err(|reason| anyhow!("webhook.url bloqueada por política SSRF: {reason}"))?;
         let body = build_body(&self.config, incident)?;
         let mut req = client.post(&self.config.url).json(&body);
         for (k, v) in &self.config.headers {
@@ -219,5 +226,14 @@ mod tests {
     fn from_json_rejects_empty_url() {
         let r = WebhookNotifier::from_json(r#"{"url":""}"#);
         assert!(r.is_err());
+    }
+
+    #[tokio::test]
+    async fn dispatch_rejects_ssrf_url() {
+        // Un webhook a la IP de metadata cloud se rechaza ANTES de cualquier request.
+        let n = WebhookNotifier::inline("http://169.254.169.254/latest/meta-data/".into());
+        let client = reqwest::Client::new();
+        let err = n.dispatch(&client, &sample()).await.unwrap_err();
+        assert!(err.to_string().contains("SSRF"), "error real: {err}");
     }
 }

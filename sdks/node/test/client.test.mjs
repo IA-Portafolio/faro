@@ -57,6 +57,45 @@ test('queue cap: descarta nuevos eventos cuando se llena', async () => {
   }
 });
 
+// ---- 1b. requeue acotado durante outage ----
+
+test('requeue acotado: la cola no excede maxQueueSize aunque entren eventos durante un flush fallido', async () => {
+  // Server que tarda 80 ms y responde 500 → el batch se re-encola por el path 5xx.
+  // La ventana del await permite encolar nuevos eventos ANTES de que el batch
+  // fallido vuelva con unshift: sin la cota, la cola crecería por encima del tope.
+  const { server, port } = await startServer((_req, res) => {
+    setTimeout(() => {
+      res.writeHead(500);
+      res.end('boom');
+    }, 80);
+  });
+  const c = faro.init({
+    endpoint: `http://127.0.0.1:${port}`,
+    token: 'tk',
+    service: 'requeue-bound-test',
+    installGlobalHandlers: false,
+    flushIntervalMs: 100_000,
+    maxBatchSize: 3,
+    maxQueueSize: 5,
+    diag: () => {},
+  });
+  try {
+    for (let i = 0; i < 5; i++) c.log({ level: 'INFO', message: `a${i}` });
+    // flush SIN await: saca un batch de 3 (queue=2) y queda esperando el 500.
+    const p = c.flush();
+    // Durante el await del fetch entran más eventos (la cola tiene lugar hasta 5).
+    for (let i = 0; i < 5; i++) c.log({ level: 'INFO', message: `b${i}` });
+    await p; // el 500 dispara el requeue del batch → sin la cota la cola sería 8.
+    assert.ok(
+      c.queue.length <= 5,
+      `la cola debe quedar acotada a maxQueueSize=5, fue ${c.queue.length}`,
+    );
+  } finally {
+    await c.close(50);
+    server.close();
+  }
+});
+
 // ---- 2. retry sobre 5xx ----
 
 test('5xx: el batch se re-encola para reintentar', async () => {

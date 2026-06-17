@@ -196,14 +196,20 @@ impl TestApp {
     /// email; el caller usa `password` para hacer login. Email y password se
     /// generan aleatorios para no chocar entre tests paralelos.
     pub async fn create_user(&self, password: &str) -> String {
+        self.create_user_with_role(password, "admin").await.0
+    }
+
+    /// Igual que [`create_user`] pero con rol arbitrario. Devuelve `(email, id)`.
+    pub async fn create_user_with_role(&self, password: &str, role: &str) -> (String, Uuid) {
         let email = format!("u-{}@test.local", Uuid::new_v4().simple());
+        let id = Uuid::new_v4();
         let now = Utc::now();
         let row = auth::UserRow {
-            id: Uuid::new_v4(),
+            id,
             email: email.clone(),
             password_hash: auth::hash_password(password).expect("hash pwd"),
             name: "Test User".into(),
-            role: "admin".into(),
+            role: role.into(),
             created_at: now,
             updated_at: now,
             deleted: 0,
@@ -215,7 +221,7 @@ impl TestApp {
             .insert("faro.users", &[row])
             .await
             .expect("insert user");
-        email
+        (email, id)
     }
 
     /// Login HTTP y devuelve el valor crudo del cookie `faro_session`. La

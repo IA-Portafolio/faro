@@ -458,6 +458,19 @@ class FaroBrowser {
     await Promise.all([this.flushLogs(useBeacon), this.flushEvents(useBeacon)]);
   }
 
+  /**
+   * Re-encola un batch fallido al frente acotando la cola a `maxQueueSize`. Sin
+   * esto, durante un outage del backend la cola podía exceder el tope (entran
+   * registros nuevos mientras el batch espera el `await` y luego se reinsertan con
+   * `unshift`) y crecer sin cota hasta agotar la memoria de la pestaña. Descartamos
+   * los más viejos (frente), prefiriendo telemetría fresca.
+   */
+  private requeue<T>(queue: T[], batch: T[]): void {
+    queue.unshift(...batch);
+    const overflow = queue.length - this.opts.maxQueueSize;
+    if (overflow > 0) queue.splice(0, overflow);
+  }
+
   private async flushLogs(useBeacon = false): Promise<void> {
     if (this.queue.length === 0) return;
     const batch = this.queue.splice(0, this.opts.maxBatchSize);
@@ -474,7 +487,7 @@ class FaroBrowser {
       const result = await this.postWithKeepalive(url, body);
       if (result === 'sent') return;
       if (result === 'retry') {
-        this.queue.unshift(...batch);
+        this.requeue(this.queue, batch);
         return;
       }
       // `unavailable`: caemos al POST normal de abajo.
@@ -491,10 +504,10 @@ class FaroBrowser {
         body,
       });
       if (!res.ok && res.status >= 500) {
-        this.queue.unshift(...batch);
+        this.requeue(this.queue, batch);
       }
     } catch {
-      this.queue.unshift(...batch);
+      this.requeue(this.queue, batch);
     }
   }
 
@@ -509,7 +522,7 @@ class FaroBrowser {
       const result = await this.postWithKeepalive(url, body);
       if (result === 'sent') return;
       if (result === 'retry') {
-        this.eventsQueue.unshift(...batch);
+        this.requeue(this.eventsQueue, batch);
         return;
       }
     }
@@ -525,10 +538,10 @@ class FaroBrowser {
         body,
       });
       if (!res.ok && res.status >= 500) {
-        this.eventsQueue.unshift(...batch);
+        this.requeue(this.eventsQueue, batch);
       }
     } catch {
-      this.eventsQueue.unshift(...batch);
+      this.requeue(this.eventsQueue, batch);
     }
   }
 

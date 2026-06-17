@@ -138,3 +138,10 @@ tokio = { version = "1.40", features = ["test-util"] }
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+# Supervisión de workers: con `panic = "abort"` un panic en CUALQUIER tarea de
+# fondo (los 10 workers se lanzan fire-and-forget) aborta el proceso entero en vez
+# de matar esa sola tarea en silencio (dejando el pilar muerto pero /healthz en 200).
+# El proceso abortado lo reinicia Docker (`restart: unless-stopped` en
+# docker-compose.prod.yml), recuperando TODOS los workers. Convierte una pérdida
+# silenciosa de funcionalidad en un restart ruidoso y observable.
+panic = "abort"

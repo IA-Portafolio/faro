@@ -150,6 +150,30 @@ jobs:
           echo "::endgroup::"
           echo "::error::smoke FAIL — revisar logs arriba y, si la regresión es del binario, hacer rollback con 'git revert <sha> && git push' (las imágenes no están tageadas por SHA, no hay re-tag local instantáneo)."
 
+      - name: Notify on failure (Telegram, best-effort)
+        # Antes, un deploy roto sólo se notaba mirando la pestaña Actions (MTTR alto,
+        # dependiente de vigilancia manual). Esto avisa por Telegram en cuanto algún
+        # step falla (build/readyz/smoke), reusando el TELEGRAM_BOT_TOKEN que ya vive
+        # en .env.prod. Requiere además FARO_DEPLOY_ALERT_CHAT_ID en .env.prod; si
+        # falta, sólo emite un ::warning:: (no rompe nada más). Best-effort: no altera
+        # el estado del job (que ya está en rojo).
+        if: failure()
+        working-directory: ${{ env.FARO_DIR }}
+        run: |
+          TG_TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' .env.prod | cut -d= -f2- || true)
+          TG_CHAT=$(grep '^FARO_DEPLOY_ALERT_CHAT_ID=' .env.prod | cut -d= -f2- || true)
+          if [ -z "$TG_TOKEN" ] || [ -z "$TG_CHAT" ]; then
+            echo "::warning::deploy falló pero falta TELEGRAM_BOT_TOKEN o FARO_DEPLOY_ALERT_CHAT_ID en .env.prod; sin notificación automática"
+            exit 0
+          fi
+          MSG="🚨 Faro deploy FALLÓ — commit ${GITHUB_SHA:0:7} (${GITHUB_REF_NAME}). Logs: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          curl -sS --max-time 15 -X POST \
+            "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TG_CHAT}" \
+            --data-urlencode "text=${MSG}" >/dev/null \
+            && echo "notificación de fallo enviada" \
+            || echo "::warning::no se pudo enviar la notificación de Telegram"
+
       - name: Prune dangling images (best-effort)
         if: always()
         run: docker image prune -f

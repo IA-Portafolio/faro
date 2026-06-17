@@ -9,5 +9,11 @@ export const updateUser = (id: string, body: { name: string; role: string }) =>
   api<User>(`/api/v1/users/${id}`, { method: 'PUT', body: JSON.stringify(body) });
 export const deleteUser = (id: string) =>
   api(`/api/v1/users/${id}`, { method: 'DELETE' });
-export const changeUserPassword = (id: string, password: string) =>
-  api(`/api/v1/users/${id}/password`, { method: 'PUT', body: JSON.stringify({ password }) });
+// `currentPassword` es la contraseña ACTUAL de quien ejecuta la acción
+// (re-autenticación). El backend la exige para impedir el account-takeover desde
+// una sesión robada: una sesión válida ya no basta para cambiar contraseñas.
+export const changeUserPassword = (id: string, password: string, currentPassword: string) =>
+  api(`/api/v1/users/${id}/password`, {
+    method: 'PUT',
+    body: JSON.stringify({ password, current_password: currentPassword })
+  });

@@ -55,10 +55,12 @@ de `test-all.sh`. **Fabricar o reconstruir salida es la falta más grave.**
 ## VERDE de verdad (no te engañes con el RESUMEN)
 
 `fallaron: 0` NO es evidencia por sí solo: el runner da `fallaron: 0` aunque
-TODO se haya **saltado** (`pasaron: 0`). En este entorno faltan `cargo`, `go`,
-`flutter` y el módulo `pytest`. Verde = la suite que tocaste aparece en
-**`pasaron:`**, no en `saltadas:` ni `fallaron:`. Por cada suite tocada:
-`Suite de MI cambio: <x> → pasó`.
+TODO se haya **saltado** (`pasaron: 0`). Verificá el toolchain con `command -v`
+ANTES de declarar nada (no asumas qué falta): en el host de prod **`cargo`/`rustc`
+1.96 SÍ están** (corré los gates de backend), `node`/`npm`/`docker` también; suelen
+faltar `go`, `flutter` y el módulo `pytest` (esas suites quedan BLOQUEADAS, no
+"hechas"). Verde = la suite que tocaste aparece en **`pasaron:`**, no en
+`saltadas:` ni `fallaron:`. Por cada suite tocada: `Suite de MI cambio: <x> → pasó`.
 
 ## No hay excusa (restated — detalle completo en AGENTS.md §7)
 

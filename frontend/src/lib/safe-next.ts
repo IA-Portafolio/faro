@@ -12,6 +12,7 @@
  * Reglas:
  *   - `null` / `''` / whitespace → `'/'`
  *   - `//evil.com`               → `'/'`   (protocol-relative)
+ *   - `/\evil.com`               → `'/'`   (protocol-relative con backslash)
  *   - `https://evil.com`         → `'/'`   (URL absoluta)
  *   - `javascript:alert(1)`      → `'/'`   (esquema hostil)
  *   - `/foo`                     → `'/foo'`
@@ -24,5 +25,9 @@ export function safeNext(raw: string | null | undefined): string {
   if (v === '') return '/';
   // Debe arrancar con `/` y NO con `//` (protocol-relative).
   if (!v.startsWith('/') || v.startsWith('//')) return '/';
+  // Backslashes: el WHATWG URL parser y los browsers normalizan `\` → `/`, así
+  // que `/\evil.com` se interpreta como `//evil.com` (open redirect). Un path
+  // legítimo nunca contiene `\`, así que rechazamos cualquier ocurrencia.
+  if (v.includes('\\')) return '/';
   return v;
 }

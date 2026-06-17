@@ -515,6 +515,18 @@ class Faro {
     await Future.wait([_flushLogs(), _flushEvents()]);
   }
 
+  /// Reinserta un batch fallido al frente ACOTANDO la cola a `maxQueueSize`. Sin
+  /// esto, durante un outage del backend la cola podía exceder el tope (entran
+  /// registros nuevos mientras el batch espera el await del POST y luego se
+  /// reinsertan con insertAll) y crecer sin cota hasta agotar la memoria de la app.
+  /// Descartamos los más viejos (frente), prefiriendo telemetría fresca — igual de
+  /// acotado que el trySend+descarte de los SDKs Go/Kotlin.
+  void _requeue<T>(List<T> queue, List<T> batch) {
+    queue.insertAll(0, batch);
+    final overflow = queue.length - options.maxQueueSize;
+    if (overflow > 0) queue.removeRange(0, overflow);
+  }
+
   Future<void> _flushLogs() async {
     if (_queue.isEmpty) return;
     final batch = _queue.take(options.maxBatchSize).toList();
@@ -537,10 +549,10 @@ class Faro {
       if (res.statusCode >= 400) {
         developer.log('ingest ${res.statusCode}: ${res.body}', name: 'faro');
         // Reinserta para que un flush futuro reintente.
-        _queue.insertAll(0, batch);
+        _requeue(_queue, batch);
       }
     } catch (e, _) {
-      _queue.insertAll(0, batch);
+      _requeue(_queue, batch);
       developer.log('falló el flush: $e', name: 'faro');
     }
   }
@@ -566,10 +578,10 @@ class Faro {
           .timeout(options.httpTimeout);
       if (res.statusCode >= 400) {
         developer.log('ingest events ${res.statusCode}: ${res.body}', name: 'faro');
-        _eventsQueue.insertAll(0, batch);
+        _requeue(_eventsQueue, batch);
       }
     } catch (e, _) {
-      _eventsQueue.insertAll(0, batch);
+      _requeue(_eventsQueue, batch);
       developer.log('falló el flush de events: $e', name: 'faro');
     }
   }

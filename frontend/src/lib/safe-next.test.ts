@@ -23,6 +23,15 @@ describe('safeNext', () => {
     expect(safeNext('//evil.com/path')).toBe('/');
   });
 
+  it('bloquea protocol-relative con backslash (/\\evil.com)', () => {
+    // El WHATWG URL parser y los browsers normalizan `\` → `/`, así que
+    // `/\evil.com` ≡ `//evil.com`. Un check naive que solo mira `startsWith('//')`
+    // lo deja pasar; nosotros rechazamos cualquier backslash.
+    expect(safeNext('/\\evil.com')).toBe('/');
+    expect(safeNext('/\\/evil.com')).toBe('/');
+    expect(safeNext('/foo\\bar')).toBe('/');
+  });
+
   it('bloquea esquemas javascript:, data:, vbscript: (XSS pretext)', () => {
     expect(safeNext('javascript:alert(1)')).toBe('/');
     expect(safeNext('data:text/html,<script>alert(1)</script>')).toBe('/');

@@ -21,8 +21,16 @@ use crate::storage::{MonitorResultRow, MonitorRow};
 pub fn start_monitor_runner(state: SharedState) {
     tokio::spawn(async move {
         let mut next_run: HashMap<Uuid, Instant> = HashMap::new();
+        // SSRF: un monitor de uptime NO debe seguir redirects. `validate_monitor_url`
+        // solo valida la URL inicial; sin esta política reqwest sigue hasta 10 saltos
+        // y el destino del redirect NO se revalida contra la denylist — un host público
+        // que controla el atacante puede responder `302 Location: http://169.254.169.254/...`
+        // o `→ http://clickhouse:8123/` y el backend haría el request con su identidad
+        // de red interna. Un 3xx es un resultado de uptime válido para registrar, no algo
+        // a seguir.
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("cliente reqwest");
 
@@ -137,14 +145,23 @@ pub async fn run_check(client: reqwest::Client, m: MonitorRow, state: SharedStat
     let elapsed_ms = start.elapsed().as_millis() as u32;
 
     let (success, status_code, error_msg, size) = match res {
-        Ok(r) => {
+        Ok(mut r) => {
             let status = r.status().as_u16();
             let in_range = status >= m.expected_status_min && status <= m.expected_status_max;
-            let body = r.text().await.unwrap_or_default();
+            // Lee el body con tope: el monitor apunta a endpoints arbitrarios y un
+            // destino abusivo (o comprometido) podría responder un body enorme y
+            // agotar la RAM del worker. 1 MiB cubre cualquier health-check legítimo;
+            // si el body excede el tope, `response_size` reporta el tope.
+            let body = read_capped_body(&mut r).await;
             let size = body.len() as u32;
+            let body = String::from_utf8_lossy(&body);
             let mut ok = in_range;
             if ok && !m.expected_body_regex.is_empty() {
-                match Regex::new(&m.expected_body_regex) {
+                // Compila con límites de tamaño: el regex es input del usuario y un
+                // patrón patológico podría inflar el autómata. El crate `regex` ya es
+                // lineal (sin backtracking catastrófico), pero acotar el tamaño cierra
+                // el vector de consumo de memoria.
+                match compile_body_regex(&m.expected_body_regex) {
                     Ok(re) => ok = re.is_match(&body),
                     Err(e) => {
                         tracing::warn!(regex = %m.expected_body_regex, error = %e, "regex de monitor inválido");
@@ -177,4 +194,51 @@ pub async fn run_check(client: reqwest::Client, m: MonitorRow, state: SharedStat
         response_size: size,
     };
     let _ = state.ingest.monitor_results_tx.try_send(row);
+}
+
+/// Tope de bytes que leemos del body de un monitor. Display/regex-only; evita que
+/// un destino malicioso agote la RAM del worker con una respuesta sin fin.
+const MAX_MONITOR_BODY_BYTES: usize = 1024 * 1024;
+
+/// Lee el body de la respuesta hasta `MAX_MONITOR_BODY_BYTES` y descarta el resto.
+/// No usa `Response::text()` (que bufferiza el body completo sin tope).
+async fn read_capped_body(r: &mut reqwest::Response) -> Vec<u8> {
+    let mut body: Vec<u8> = Vec::new();
+    loop {
+        match r.chunk().await {
+            Ok(Some(chunk)) => {
+                let remaining = MAX_MONITOR_BODY_BYTES - body.len();
+                let take = chunk.len().min(remaining);
+                body.extend_from_slice(&chunk[..take]);
+                if body.len() >= MAX_MONITOR_BODY_BYTES {
+                    break;
+                }
+            }
+            Ok(None) => break,
+            Err(_) => break,
+        }
+    }
+    body
+}
+
+/// Compila el regex de body esperado con límites de tamaño para acotar el uso de
+/// memoria ante un patrón patológico provisto por el usuario.
+fn compile_body_regex(pattern: &str) -> Result<Regex, regex::Error> {
+    regex::RegexBuilder::new(pattern)
+        .size_limit(1 << 20)
+        .dfa_size_limit(1 << 20)
+        .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compile_body_regex_accepts_simple_and_rejects_invalid() {
+        let re = compile_body_regex("ok|healthy").expect("debe compilar");
+        assert!(re.is_match("status: healthy"));
+        assert!(!re.is_match("status: down"));
+        assert!(compile_body_regex("(unbalanced").is_err());
+    }
 }

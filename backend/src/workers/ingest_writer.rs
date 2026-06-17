@@ -129,6 +129,11 @@ fn spawn_writer<T>(
                     }
                 }
                 _ = tick.tick() => {
+                    // Heartbeat: el writer sigue vivo. El path de ingesta no tenía
+                    // heartbeat, así que un panic del writer era invisible salvo por la
+                    // caída indirecta de CH_ROWS_INSERTED. Ahora WORKER_RUNS{worker=<table>}
+                    // deja de avanzar y es alertable directamente.
+                    metrics::counter!(names::WORKER_RUNS, "worker" => table).increment(1);
                     if !buf.is_empty() {
                         flush(table, &ch, &mut buf).await;
                     }

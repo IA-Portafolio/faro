@@ -71,9 +71,18 @@ services:
       FARO_BOOTSTRAP_ADMIN_PASSWORD: ${FARO_BOOTSTRAP_ADMIN_PASSWORD:-}
       FARO_BOOTSTRAP_ADMIN_NAME: ${FARO_BOOTSTRAP_ADMIN_NAME:-Admin}
       FARO_PUBLIC_BASE_URL: ${FARO_PUBLIC_BASE_URL:-https://faro.iaportafolio.com}
+      # Orígenes permitidos del dashboard. SIN esta var el backend cae al branch DEV
+      # de `dashboard_cors` (cualquier origen, sin credenciales) AUNQUE esté en prod —
+      # el hardening de CORS configurado nunca entraba en vigor. Con la var, el browser
+      # sólo envía la cookie de sesión hacia los orígenes conocidos.
+      FARO_DASHBOARD_ORIGINS: ${FARO_DASHBOARD_ORIGINS:-https://faro.iaportafolio.com}
+      # HSTS a nivel app (defensa en profundidad; Caddy también puede inyectarlo). En
+      # prod la TLS es estable vía Caddy, así que es seguro encenderlo.
+      FARO_ENABLE_HSTS: ${FARO_ENABLE_HSTS:-true}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      # Bearer token requerido por /metrics. Si no está, /metrics queda abierto;
-      # en prod siempre debería estar — el stack Observability lo usa para scrapear.
+      # Bearer token requerido por /metrics. El handler es FAIL-CLOSED: si la var no
+      # está, /metrics devuelve 401 (no expone métricas). En prod debe estar igual —
+      # el stack Observability la usa para scrapear.
       FARO_METRICS_TOKEN: ${FARO_METRICS_TOKEN:-}
       RUST_LOG: ${RUST_LOG:-info,faro=info}
     networks: [faro-internal, ingress-caddy]
