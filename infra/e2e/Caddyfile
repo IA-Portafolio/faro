@@ -1,0 +1,23 @@
+# Proxy inverso para el e2e: pone frontend (SvelteKit) y backend (API) en el MISMO
+# origen (https://localhost:8889), igual que la topología de producción detrás de
+# Caddy. Same-origin → la cookie de sesión (SameSite=Lax, Secure) viaja sin que
+# entre CORS, que es exactamente cómo corre prod.
+#
+# `tls internal` sirve HTTPS con la CA local de Caddy (la cookie es Secure, así que
+# necesita HTTPS); Playwright corre con ignoreHTTPSErrors para aceptar ese cert.
+{
+	admin off
+}
+
+localhost:8889 {
+	tls internal
+
+	# API, health, docs y métricas → backend. El resto (rutas SvelteKit) → frontend.
+	@backend path /api/* /healthz /readyz /docs /metrics /openapi.json
+	handle @backend {
+		reverse_proxy backend:8080
+	}
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

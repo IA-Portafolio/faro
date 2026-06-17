@@ -24,6 +24,9 @@ export default defineConfig({
   use: {
     baseURL: process.env.FARO_E2E_BASE_URL ?? 'https://faro.iaportafolio.com',
     trace: 'on-first-retry',
+    // El stack e2e usa la CA interna de Caddy (cert no confiado por el sistema);
+    // contra prod este flag es inocuo porque el cert ahí sí es válido.
+    ignoreHTTPSErrors: true,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

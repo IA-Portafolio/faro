@@ -1,0 +1,100 @@
+# Stack efímero para los tests e2e (Playwright). Levanta CH + Redis + backend +
+# frontend detrás de un Caddy que los sirve en el MISMO origen (https://localhost:8889),
+# replicando la topología de producción. Seedea un admin de test para el login.
+#
+# Uso:
+#   docker compose -f docker-compose.e2e.yml up -d --build --wait
+#   FARO_E2E_BASE_URL=https://localhost:8889 \
+#   FARO_E2E_EMAIL=e2e@test.local FARO_E2E_PASSWORD=e2e-password-123 \
+#     npm --prefix frontend run test:e2e
+#   docker compose -f docker-compose.e2e.yml down -v
+#
+# Para reusar una imagen de backend ya construida (evita recompilar Rust):
+#   FARO_E2E_BACKEND_IMAGE=faro-backend:latest docker compose -f docker-compose.e2e.yml up -d --wait
+name: faro-e2e
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: faro
+      CLICKHOUSE_USER: faro
+      CLICKHOUSE_PASSWORD: faro
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse/config/users.d/faro.xml:/etc/clickhouse-server/users.d/faro.xml:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8123/ping"]
+      interval: 4s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 4s
+      timeout: 3s
+      retries: 15
+
+  backend:
+    image: ${FARO_E2E_BACKEND_IMAGE:-faro-e2e-backend}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      FARO_API_ADDR: 0.0.0.0:8080
+      FARO_BIND_ADDR: 0.0.0.0:4318
+      FARO_OTLP_GRPC_ADDR: 0.0.0.0:4317
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: faro
+      CLICKHOUSE_USER: faro
+      CLICKHOUSE_PASSWORD: faro
+      REDIS_URL: redis://redis:6379
+      # Same-origin vía Caddy: el dashboard se sirve en https://localhost:8889.
+      FARO_DASHBOARD_ORIGINS: https://localhost:8889
+      FARO_BOOTSTRAP_PROJECT_SLUG: e2e
+      FARO_BOOTSTRAP_PROJECT_NAME: E2E
+      FARO_BOOTSTRAP_INGEST_TOKEN: e2e-ingest-token
+      # Admin de test seedeado (creds de test, NO secretos): el e2e loguea con esto.
+      FARO_BOOTSTRAP_ADMIN_EMAIL: e2e@test.local
+      FARO_BOOTSTRAP_ADMIN_PASSWORD: e2e-password-123
+      FARO_BOOTSTRAP_ADMIN_NAME: E2E Admin
+      RUST_LOG: info,faro=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:8080/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # El bundle del browser llama a la API en este origen (el del proxy Caddy).
+        PUBLIC_API_BASE: https://localhost:8889
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+      ORIGIN: https://localhost:8889
+      PUBLIC_API_BASE: https://localhost:8889
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "8889:8889"
+    volumes:
+      - ./infra/e2e/Caddyfile:/etc/caddy/Caddyfile:ro

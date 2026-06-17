@@ -167,6 +167,48 @@ bash scripts/restore-clickhouse.sh /opt/faro/backups/faro-data-YYYYMMDD-HHMMSS.t
 > ClickHouse efímero. **Probá un restore periódicamente**: un backup que nunca se
 > restauró no es un backup.
 
+## Smoke test post-deploy (FARO_SMOKE_*)
+
+Tras cada deploy, `deploy.yml` corre `scripts/smoke-post-deploy.sh`: un round-trip
+real contra el dominio público (login + ingest + query) que cubre el caso "`/readyz`
+verde pero la auth/ingesta están rotas".
+
+**El smoke se auto-saltea** (sólo valida `/healthz`) si faltan estas vars en
+`/opt/faro/.env.prod` — por eso conviene definir las tres:
+
+```bash
+# Usuario de smoke (creá uno dedicado en Settings → Usuarios) y el bearer de un
+# proyecto (p.ej. el slug 'smoke'). NO uses el admin real.
+FARO_SMOKE_EMAIL=smoke@iaportafolio.com
+FARO_SMOKE_PASSWORD=<password del usuario de smoke>
+FARO_SMOKE_INGEST_TOKEN=<ingest_token de un proyecto>
+```
+
+Sin ellas el deploy puede pasar verde sin haber probado la ingesta real. (Ver
+`.env.prod.template` para los nombres canónicos.) Opcional: `FARO_DEPLOY_ALERT_CHAT_ID`
+para que un deploy fallido avise por Telegram.
+
+## Tests e2e (browser real)
+
+`npm run test:e2e` (Playwright) ejercita el dashboard de punta a punta —frontend
+SvelteKit → backend → ClickHouse— con cookie y CORS reales, la clase de bug que los
+component tests (con `fetch` simulado) no pueden cazar. Corre en CI vía
+`.github/workflows/e2e.yml` sobre el stack efímero `docker-compose.e2e.yml` (Caddy
+pone front y API en el mismo origen, como prod) y NO necesita secretos: crea un
+admin de test.
+
+Local:
+
+```bash
+# Reusá la imagen de backend ya construida para no recompilar Rust:
+FARO_E2E_BACKEND_IMAGE=faro-backend:latest \
+  docker compose -f docker-compose.e2e.yml up -d --build --wait
+FARO_E2E_BASE_URL=https://localhost:8889 \
+FARO_E2E_EMAIL=e2e@test.local FARO_E2E_PASSWORD=e2e-password-123 \
+  npm --prefix frontend run test:e2e
+docker compose -f docker-compose.e2e.yml down -v
+```
+
 ## Rollback
 
 Cualquiera de estas tres opciones:
