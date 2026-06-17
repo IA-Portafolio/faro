@@ -192,10 +192,15 @@ pub(crate) async fn compute(
         _ => "",
     };
 
+    // NOTA: `windowFunnel` exige que su 1er argumento sea Unsigned/Date/DateTime —
+    // NO acepta DateTime64. La columna `timestamp` es DateTime64(9), así que la
+    // envolvemos en `toDateTime(...)` (precisión de segundos, suficiente para la
+    // ventana del funnel). Sin esto, ClickHouse devuelve ILLEGAL_TYPE_OF_ARGUMENT y
+    // el endpoint 500ea. (Bug latente cazado al agregar el test de integración.)
     let sql = format!(
         "SELECT toUInt32(level) AS level, toUInt64(count()) AS users \
          FROM ( \
-           SELECT windowFunnel({{window:UInt32}})(timestamp, {conds}) AS level \
+           SELECT windowFunnel({{window:UInt32}})(toDateTime(timestamp), {conds}) AS level \
            FROM faro.product_events \
            WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) \
              AND timestamp <  toDateTime64({{to:DateTime64(9)}}, 9) \
@@ -231,15 +236,9 @@ pub(crate) async fn compute(
     let rows: Vec<LevelRow> = state.ch.select_with_params(&sql, &params).await?;
 
     // -- Convertir (level, users) → counts por paso (cumulative-from-top).
-    //    level=k significa "alcanzó k pasos", así que step_i = Σ users donde level ≥ i+1.
     let n = req.steps.len();
-    let mut step_users = vec![0u64; n];
-    for r in &rows {
-        let reached = (r.level as usize).min(n);
-        for i in 0..reached {
-            step_users[i] = step_users[i].saturating_add(r.users);
-        }
-    }
+    let levels: Vec<(u32, u64)> = rows.iter().map(|r| (r.level, r.users)).collect();
+    let step_users = cumulative_step_users(&levels, n);
     let total_entered = step_users.first().copied().unwrap_or(0);
 
     let steps: Vec<FunnelStep> = req
@@ -431,7 +430,7 @@ async fn drop_off(
     let cohort_sql = format!(
         "SELECT toUInt64(count()) AS users \
          FROM ( \
-           SELECT distinct_id, windowFunnel({{window:UInt32}})(timestamp, {conds}) AS level \
+           SELECT distinct_id, windowFunnel({{window:UInt32}})(toDateTime(timestamp), {conds}) AS level \
            FROM faro.product_events \
            WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) \
              AND timestamp <  toDateTime64({{to:DateTime64(9)}}, 9) \
@@ -487,7 +486,7 @@ async fn drop_off(
                cohort AS ( \
                  SELECT distinct_id \
                  FROM ( \
-                   SELECT distinct_id, windowFunnel({{window:UInt32}})(timestamp, {conds}) AS level \
+                   SELECT distinct_id, windowFunnel({{window:UInt32}})(toDateTime(timestamp), {conds}) AS level \
                    FROM faro.product_events \
                    WHERE timestamp >= toDateTime64({{from:DateTime64(9)}}, 9) \
                      AND timestamp <  toDateTime64({{to:DateTime64(9)}}, 9) \
@@ -838,23 +837,43 @@ async fn time_to_convert(
     }))
 }
 
+/// Convierte el resultado de `windowFunnel` —filas `(level, users)` donde `level=k`
+/// significa "alcanzó k pasos"— en el conteo cumulative-from-top por paso:
+/// `step_i = Σ users donde level ≥ i+1`. Función PURA: la usan tanto el handler
+/// `compute` como su test, para que el test ejercite la lógica REAL de producción
+/// (antes el test duplicaba este bucle y validaba su propia copia, no el handler).
+pub(crate) fn cumulative_step_users(levels: &[(u32, u64)], n: usize) -> Vec<u64> {
+    let mut step_users = vec![0u64; n];
+    for &(level, users) in levels {
+        let reached = (level as usize).min(n);
+        for s in step_users.iter_mut().take(reached) {
+            *s = s.saturating_add(users);
+        }
+    }
+    step_users
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn step_users_cumulative_from_levels() {
-        // 3 pasos. windowFunnel devuelve por usuario el nivel máximo alcanzado.
-        // 10 usuarios llegaron a paso 1, 4 a paso 2, 2 a paso 3.
-        let rows = vec![(1u32, 6u64), (2, 2), (3, 2)];
-        let n = 3;
-        let mut step_users = vec![0u64; n];
-        for (level, users) in rows {
-            let reached = (level as usize).min(n);
-            for i in 0..reached {
-                step_users[i] += users;
-            }
-        }
-        assert_eq!(step_users, vec![10, 4, 2]);
+        // windowFunnel devuelve por usuario el nivel máximo alcanzado.
+        // 6 usuarios pararon en paso 1, 2 en paso 2, 2 en paso 3 →
+        // step_0 = 6+2+2 = 10, step_1 = 2+2 = 4, step_2 = 2.
+        let levels = vec![(1u32, 6u64), (2, 2), (3, 2)];
+        assert_eq!(cumulative_step_users(&levels, 3), vec![10, 4, 2]);
+    }
+
+    #[test]
+    fn cumulative_clamps_level_above_step_count() {
+        // Un level mayor que n (no debería pasar, pero defensivo) no desborda.
+        assert_eq!(cumulative_step_users(&[(5, 3)], 2), vec![3, 3]);
+    }
+
+    #[test]
+    fn cumulative_empty_is_zeros() {
+        assert_eq!(cumulative_step_users(&[], 3), vec![0, 0, 0]);
     }
 }

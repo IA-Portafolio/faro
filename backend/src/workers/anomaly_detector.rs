@@ -175,66 +175,96 @@ async fn evaluate_signal(
             None => continue, // muy pocas muestras válidas
         };
 
-        if stat.mean < min_baseline {
-            // Serie de baja señal — descartamos para no aletear sobre ruido.
-            continue;
-        }
-
-        // Solo nos interesan desviaciones por arriba: un drop en cualquiera de
-        // las tres señales tiene interpretaciones ambiguas (¿el servicio está
-        // sano y bajó el tráfico? ¿se cayó? ¿es fin de semana?). Aprietas en
-        // V2 si hace falta.
-        let z = if stat.stddev > f64::EPSILON {
-            (row.current - stat.mean) / stat.stddev
-        } else if row.current > stat.mean * 2.0 {
-            // stddev = 0 (todas las muestras iguales) y subimos sobre el doble
-            // del baseline → fuerza un z grande para que dispare.
-            10.0
-        } else {
-            0.0
-        };
-
         let rule_id = anomaly_rule_id(&row.project_id, &row.service_name, signal);
-        let rule_name = format!(
-            "{}{}:{}:{}",
-            RULE_NAME_PREFIX,
-            signal.slug(),
-            row.project_id,
-            row.service_name
-        );
-
         let was_firing = active.contains_key(&rule_id);
 
-        if z >= z_fire && !was_firing {
-            fire(
-                state,
-                active,
-                rule_id,
-                rule_name,
-                row.project_id.clone(),
-                row.service_name.clone(),
-                signal,
-                row.current,
-                &stat,
-                z,
-            )
-            .await;
-        } else if was_firing && z <= z_resolve {
-            resolve(state, active, rule_id).await;
-        } else if z >= z_fire && was_firing {
-            // Ya está disparando — sólo loggeamos para visibilidad.
-            tracing::debug!(
-                signal = signal.slug(),
-                service = %row.service_name,
-                current = row.current,
-                mean = stat.mean,
-                z,
-                "anomalía sigue disparada"
-            );
+        // La decisión (z-score + histéresis fire/resolve + corte por baseline) es
+        // una función PURA y testeada (`anomaly_decision`); acá sólo aplicamos sus
+        // efectos (DB/notify), que es lo que no se puede unit-testear en aislamiento.
+        match anomaly_decision(
+            row.current,
+            stat.mean,
+            stat.stddev,
+            min_baseline,
+            z_fire,
+            z_resolve,
+            was_firing,
+        ) {
+            AnomalyDecision::Fire(z) => {
+                let rule_name = format!(
+                    "{}{}:{}:{}",
+                    RULE_NAME_PREFIX,
+                    signal.slug(),
+                    row.project_id,
+                    row.service_name
+                );
+                fire(
+                    state,
+                    active,
+                    rule_id,
+                    rule_name,
+                    row.project_id.clone(),
+                    row.service_name.clone(),
+                    signal,
+                    row.current,
+                    &stat,
+                    z,
+                )
+                .await;
+            }
+            AnomalyDecision::Resolve => resolve(state, active, rule_id).await,
+            AnomalyDecision::Hold => {}
         }
     }
 
     Ok(())
+}
+
+/// Decisión del detector de anomalías para una serie (proyecto, servicio, señal).
+/// PURA y testeable: aísla el z-score + la histéresis fire/resolve + el corte por
+/// baseline de los efectos (DB/notify) que viven en `evaluate_signal`. Sólo mira
+/// desviaciones por ARRIBA (un drop es ambiguo: ¿servicio sano con menos tráfico?
+/// ¿caído? ¿fin de semana?).
+#[derive(Debug, PartialEq)]
+pub(crate) enum AnomalyDecision {
+    /// Disparar un incidente nuevo, con el z-score que lo gatilló.
+    Fire(f64),
+    /// Resolver el incidente activo (bajó del umbral de resolución).
+    Resolve,
+    /// Sin cambio de estado (baja señal, o entre umbrales, o ya disparado).
+    Hold,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn anomaly_decision(
+    current: f64,
+    mean: f64,
+    stddev: f64,
+    min_baseline: f64,
+    z_fire: f64,
+    z_resolve: f64,
+    was_firing: bool,
+) -> AnomalyDecision {
+    // Serie de baja señal: no disparamos ni forzamos resolve sobre ruido.
+    if mean < min_baseline {
+        return AnomalyDecision::Hold;
+    }
+    let z = if stddev > f64::EPSILON {
+        (current - mean) / stddev
+    } else if current > mean * 2.0 {
+        // stddev = 0 (muestras históricas iguales) y subimos sobre el doble del
+        // baseline → forzamos un z grande para que dispare igual.
+        10.0
+    } else {
+        0.0
+    };
+    if z >= z_fire && !was_firing {
+        AnomalyDecision::Fire(z)
+    } else if was_firing && z <= z_resolve {
+        AnomalyDecision::Resolve
+    } else {
+        AnomalyDecision::Hold
+    }
 }
 
 #[derive(Debug)]
@@ -462,6 +492,55 @@ mod tests {
         assert_eq!(a, b);
         let c = anomaly_rule_id("p1", "svc-a", Signal::P95Latency);
         assert_ne!(a, c);
+    }
+
+    // ---- Decisión (z-score + histéresis) ----
+    // z_fire=3.0, z_resolve=1.5, min_baseline=2.0 en estos casos.
+
+    #[test]
+    fn decision_fires_when_z_exceeds_fire_and_not_already_firing() {
+        // mean=10, stddev=2, current=20 → z=5 ≥ 3 → Fire(5).
+        let d = anomaly_decision(20.0, 10.0, 2.0, 2.0, 3.0, 1.5, false);
+        assert_eq!(d, AnomalyDecision::Fire(5.0));
+    }
+
+    #[test]
+    fn decision_holds_in_hysteresis_band() {
+        // Estaba firing; z=2 cae entre resolve(1.5) y fire(3) → Hold (no aletea).
+        // mean=10, stddev=5, current=20 → z=2.
+        let d = anomaly_decision(20.0, 10.0, 5.0, 2.0, 3.0, 1.5, true);
+        assert_eq!(d, AnomalyDecision::Hold);
+    }
+
+    #[test]
+    fn decision_resolves_when_below_resolve_threshold() {
+        // Estaba firing; z=1 ≤ 1.5 → Resolve. mean=10, stddev=5, current=15 → z=1.
+        let d = anomaly_decision(15.0, 10.0, 5.0, 2.0, 3.0, 1.5, true);
+        assert_eq!(d, AnomalyDecision::Resolve);
+    }
+
+    #[test]
+    fn decision_does_not_refire_when_already_firing() {
+        // z alto pero ya estaba firing → Hold (no re-dispara un incidente nuevo).
+        let d = anomaly_decision(20.0, 10.0, 2.0, 2.0, 3.0, 1.5, true);
+        assert_eq!(d, AnomalyDecision::Hold);
+    }
+
+    #[test]
+    fn decision_holds_below_min_baseline() {
+        // mean (1.0) < min_baseline (2.0) → Hold aunque current sea enorme (anti-ruido).
+        let d = anomaly_decision(100.0, 1.0, 0.1, 2.0, 3.0, 1.5, false);
+        assert_eq!(d, AnomalyDecision::Hold);
+    }
+
+    #[test]
+    fn decision_stddev_zero_fires_when_more_than_double_baseline() {
+        // stddev=0 y current > 2×mean → z=10 forzado → Fire. mean=10, current=25.
+        let d = anomaly_decision(25.0, 10.0, 0.0, 2.0, 3.0, 1.5, false);
+        assert_eq!(d, AnomalyDecision::Fire(10.0));
+        // stddev=0 pero current no supera el doble → z=0 → Hold.
+        let d = anomaly_decision(15.0, 10.0, 0.0, 2.0, 3.0, 1.5, false);
+        assert_eq!(d, AnomalyDecision::Hold);
     }
 
     #[test]
