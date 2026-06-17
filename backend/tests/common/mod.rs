@@ -43,12 +43,33 @@ fn env_or(k: &str, d: &str) -> String {
 /// vars (alineados con el job de CI), batch flush a 50 ms (vs 750 ms de prod)
 /// para que `wait_for` no se quede largo, y workers que en tests no aportan
 /// (anomaly, fingerprint compactor, stale) desactivados.
+/// Guarda anti-producción: resuelve la URL de ClickHouse para los tests EXIGIENDO
+/// que esté explícita. Los tests de integración ESCRIBEN en ClickHouse (crean
+/// proyectos `test-*`, usuarios `@test.local`, logs/eventos). El default histórico
+/// `localhost:8123` ES, en el host de deploy, el ClickHouse de PRODUCCIÓN: un
+/// `cargo test` accidental contaminó prod (142 proyectos + 44 usuarios `@test.local`
+/// que hubo que borrar a mano). Por eso `Err` (var ausente) paniquea con la guía en
+/// vez de caer al default. Todos los caminos legítimos ya la setean
+/// (docker-compose.test.yml, ci.yml, scripts/run-integration-tests.sh). Pura para
+/// poder testearla sin tocar el entorno real (ver tests/fixture_guard.rs).
+pub fn require_test_clickhouse_url(var: Result<String, std::env::VarError>) -> String {
+    var.unwrap_or_else(|_| {
+        panic!(
+            "CLICKHOUSE_URL no está seteado. Los tests de integración ESCRIBEN en \
+             ClickHouse y nos negamos a usar el default (localhost:8123), que en el host \
+             de deploy es el CH de PRODUCCIÓN (un `cargo test` accidental ya contaminó \
+             prod). Apuntá a un CH efímero, p.ej.: `CLICKHOUSE_URL=http://localhost:18123 \
+             cargo test` (o usá docker-compose.test.yml). Ver docs/testing.md."
+        )
+    })
+}
+
 pub fn test_config() -> Config {
     Config {
         api_addr: "127.0.0.1:0".into(),
         otlp_addr: "127.0.0.1:0".into(),
         otlp_grpc_addr: "127.0.0.1:0".into(),
-        clickhouse_url: env_or("CLICKHOUSE_URL", "http://localhost:8123"),
+        clickhouse_url: require_test_clickhouse_url(std::env::var("CLICKHOUSE_URL")),
         clickhouse_database: env_or("CLICKHOUSE_DATABASE", "faro"),
         clickhouse_user: env_or("CLICKHOUSE_USER", "faro"),
         clickhouse_password: env_or("CLICKHOUSE_PASSWORD", "faro"),

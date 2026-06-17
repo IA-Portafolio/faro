@@ -21,9 +21,13 @@ pre-merge gate local.
 Suites válidas: `backend cli frontend sdk-node sdk-nextjs sdk-expo sdk-python
 sdk-go sdk-flutter sdk-kotlin`.
 
-> Si seteas `CLICKHOUSE_URL` y ClickHouse responde, la suite `backend` corre
-> **también** los integration tests de `backend/tests/*.rs`. Sin eso corre sólo
-> los unit tests inline (`cargo test --lib`), que no necesitan base de datos.
+> Los integration tests de `backend/tests/*.rs` **EXIGEN `CLICKHOUSE_URL`
+> explícito** y se niegan a correr (abortan con una guía) si no está definido: el
+> default `localhost:8123` es, en el host de deploy, el ClickHouse de PRODUCCIÓN, y
+> un `cargo test` accidental ya contaminó prod una vez. Usá un CH efímero/de
+> test, p.ej. `CLICKHOUSE_URL=http://localhost:18123 cargo test` (o usá
+> `docker-compose.test.yml`). Para sólo los unit tests inline, sin base de datos:
+> `cargo test --lib`.
 
 ## Mapa de la suite
 

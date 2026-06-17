@@ -69,3 +69,7 @@ sdks/go/vendor/
 
 # Backups locales ad-hoc (snapshots de src/, tarballs) — no van al repo
 backups/
+
+# Backups locales (secretos / datos) — nunca commitear
+.env.prod.bak.*
+backups/
