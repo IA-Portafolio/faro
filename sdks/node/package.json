@@ -99,7 +99,7 @@
   "devDependencies": {
     "@iaportafolio/sdk-core": "file:../_shared/sdk-core",
     "@types/node": "^20.0.0",
-    "pino-abstract-transport": "^1.0.0",
+    "pino-abstract-transport": "^3.0.0",
     "tsup": "^8.0.0",
     "typescript": "^6.0.3",
     "winston-transport": "^4.0.0"
