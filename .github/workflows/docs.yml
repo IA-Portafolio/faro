@@ -34,11 +34,11 @@ jobs:
       orphan: ${{ steps.filter.outputs.orphan }}
       env_ref: ${{ steps.filter.outputs.env_ref }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           persist-credentials: false
       - id: filter
-        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d  # v4
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4
         with:
           filters: |
             docs:
@@ -65,10 +65,10 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           persist-credentials: false
-      - uses: DavidAnson/markdownlint-cli2-action@ded1f9488f68a970bc66ea5619e13e9b52e601cd  # v23
+      - uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25  # v24.0.0
         with:
           config: .markdownlint.jsonc
           # markdownlint-cli2 acepta patrones negativos con `!`. Excluimos
@@ -90,7 +90,7 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 4
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           persist-credentials: false
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
@@ -114,14 +114,14 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           persist-credentials: false
       - name: Restore lychee cache
         # Persistimos el cache de URLs externas resueltas (1 día) para no
         # martillar CDNs y dominios cada PR. El cache es por commit pero
         # `restore-keys` cae al más reciente disponible.
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v5
         with:
           path: .lycheecache
           key: lychee-${{ github.run_id }}
@@ -142,7 +142,7 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           persist-credentials: false
       - name: check orphan docs
@@ -160,7 +160,7 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           persist-credentials: false
       - name: check env reference sync
