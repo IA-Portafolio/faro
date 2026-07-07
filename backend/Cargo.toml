@@ -97,7 +97,7 @@ opentelemetry-proto = { version = "0.32", default-features = false, features = [
 # con un único backend por instancia no necesitamos coordinación distribuida. Si en
 # algún momento corremos múltiples nodos, esto migra a Redis manteniendo la misma
 # interfaz (`IngestLimiter::check`).
-governor = "0.7"
+governor = "0.10"
 
 # Métricas Prometheus del propio backend. Faro mide a las apps; este exporter
 # permite que un Prometheus externo mida a Faro (Tier 1: ingesta por proyecto,
