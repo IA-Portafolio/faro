@@ -68,7 +68,7 @@ rand = "0.10"
 argon2 = "0.5"
 # governor 0.10 ya no arrastra rand_core 0.6 con `getrandom`; sin esta feature
 # explícita, `argon2::password_hash::rand_core::OsRng` (auth.rs) deja de existir.
-password-hash = { version = "0.5", features = ["getrandom"] }
+password-hash = { version = "0.6", features = ["getrandom"] }
 axum-extra = { version = "0.12", features = ["query", "cookie"] }
 time = "0.3"
 
