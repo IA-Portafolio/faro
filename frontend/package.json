@@ -13,7 +13,7 @@
     "test:e2e": "playwright test"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.0",
     "@sveltejs/adapter-node": "^5.5.7",
     "@sveltejs/kit": "^2.69.1",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
