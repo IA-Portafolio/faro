@@ -47,7 +47,7 @@ jobs:
           # publique soporte para Kotlin 2.4. Mientras, el SDK Kotlin queda
           # cubierto por su job `kotlin` de sdk-tests.yml (compile + tests).
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
@@ -57,11 +57,11 @@ jobs:
       # y CodeQL no vería el build ("CodeQL detected code written in Go but this
       # run didn't build any of it"). Con setup-go antes, init gana precedencia.
       - if: matrix.language == 'go'
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e  # v7.0.0
         with:
           go-version: '1.25'
 
-      - uses: github/codeql-action/init@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a  # v4
+      - uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3  # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
@@ -77,8 +77,8 @@ jobs:
       # autobuild solo si build-mode es autobuild (ninguno: js-ts/python usan el
       # default, go usa el build manual de arriba); este paso se saltea siempre.
       - if: matrix.build-mode == 'autobuild'
-        uses: github/codeql-action/autobuild@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a  # v4
+        uses: github/codeql-action/autobuild@5595ccaf912efad79be6eef63a5619ff05969be3  # v4
 
-      - uses: github/codeql-action/analyze@54f647b7e1bb85c95cddabcd46b0c578ec92bc1a  # v4
+      - uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3  # v4
         with:
           category: '/language:${{ matrix.language }}'
