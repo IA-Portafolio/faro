@@ -34,11 +34,11 @@ jobs:
       orphan: ${{ steps.filter.outputs.orphan }}
       env_ref: ${{ steps.filter.outputs.env_ref }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - id: filter
-        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706  # v4
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4
         with:
           filters: |
             docs:
@@ -65,10 +65,10 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: DavidAnson/markdownlint-cli2-action@8de2aa07cae85fd17c0b35642db70cf5495f1d25  # v24.0.0
+      - uses: DavidAnson/markdownlint-cli2-action@21c1be1b93ad9ed58fa840aacc3f279cde2a72ff  # v24.2.0
         with:
           config: .markdownlint.jsonc
           # markdownlint-cli2 acepta patrones negativos con `!`. Excluimos
@@ -90,10 +90,10 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 4
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v6
         with:
           node-version: '20'
       - name: install cspell + es-ES dict
@@ -114,7 +114,7 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - name: Restore lychee cache
@@ -126,7 +126,7 @@ jobs:
           path: .lycheecache
           key: lychee-${{ github.run_id }}
           restore-keys: lychee-
-      - uses: lycheeverse/lychee-action@8646ba30535128ac92d33dfc9133794bfdd9b411  # v2
+      - uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8  # v2
         with:
           # `fail: true` rompe el build ante el PRIMER link roto; sin esto
           # lychee imprime pero retorna 0 (CI verde con links rotos = inútil).
@@ -142,7 +142,7 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - name: check orphan docs
@@ -160,7 +160,7 @@ jobs:
     runs-on: [self-hosted, faro-ci]
     timeout-minutes: 2
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - name: check env reference sync
